@@ -1,19 +1,17 @@
 use crate::activity_data::deserialize_derived_activity_data;
-use crate::activity_import_lock::{
-    mark_user_activity_import_lock_stage, release_user_activity_import_lock, ActivityImportLockError,
-    ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-};
 use crate::analytics::{
     mark_segment_activity_changes, rebuild_activity_analytics_cache, rebuild_segment_analytics_cache,
 };
-use crate::entities::{activities, segment_efforts, segments};
+use crate::entities::{activities, segments};
 use crate::segment_support::{
-    deserialize_segment_route_points, replace_segment_efforts_for_activity, replace_segment_efforts_for_segment,
-    SegmentSupportError,
+    deserialize_segment_route_points, replace_segment_efforts_for_segment, SegmentSupportError,
 };
 use chrono::Utc;
 use sea_orm::{DatabaseConnection, DbErr};
 use std::fmt;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug)]
 pub struct SegmentRegenerationError {
@@ -42,12 +40,6 @@ impl From<DbErr> for SegmentRegenerationError {
     }
 }
 
-impl From<ActivityImportLockError> for SegmentRegenerationError {
-    fn from(error: ActivityImportLockError) -> Self {
-        Self::internal(error.to_string())
-    }
-}
-
 impl From<SegmentSupportError> for SegmentRegenerationError {
     fn from(error: SegmentSupportError) -> Self {
         Self::internal(error.message)
@@ -72,139 +64,33 @@ pub async fn regenerate_segment_efforts(
     Ok(())
 }
 
-pub async fn regenerate_segments_for_user(
+pub async fn match_activity(
     db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<Vec<i32>, SegmentRegenerationError> {
-    let mut affected_segment_ids = Vec::new();
-    let mut after_id = 0;
-    loop {
-        let candidates = activities::Model::matching_routes_page(db, user_id, after_id, 16).await?;
-        let Some(last) = candidates.last() else {
-            break;
-        };
-        after_id = last.id;
-        for activity in candidates {
-            let route_points = deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
-            let affected_for_activity =
-                refresh_activity_segment_efforts(db, user_id, activity.id, &route_points).await?;
-            affected_segment_ids.extend(affected_for_activity);
-        }
-    }
-
-    affected_segment_ids.sort_unstable();
-    affected_segment_ids.dedup();
-
-    if !affected_segment_ids.is_empty() {
-        mark_segment_activity_changes(db, &affected_segment_ids, Utc::now()).await?;
-    }
-
-    Ok(affected_segment_ids)
-}
-
-async fn refresh_activity_segment_efforts(
-    db: &DatabaseConnection,
-    user_id: i32,
-    activity_id: i32,
-    route_points: &[crate::activity_data::ActivityRoutePoint],
-) -> Result<Vec<i32>, SegmentRegenerationError> {
-    let mut affected_segment_ids = load_segment_ids_for_activity(db, activity_id).await?;
-
-    replace_segment_efforts_for_activity(db, user_id, activity_id, route_points).await?;
-
-    affected_segment_ids.extend(load_segment_ids_for_activity(db, activity_id).await?);
-    affected_segment_ids.sort_unstable();
-    affected_segment_ids.dedup();
-
-    rebuild_segment_analytics_cache(db, &affected_segment_ids).await?;
-    rebuild_activity_analytics_cache(db, &[activity_id]).await?;
-
-    Ok(affected_segment_ids)
-}
-
-async fn load_segment_ids_for_activity(db: &DatabaseConnection, activity_id: i32) -> Result<Vec<i32>, DbErr> {
-    let mut segment_ids = segment_efforts::Model::segment_ids_for_activity(db, activity_id).await?;
-    segment_ids.sort_unstable();
-    segment_ids.dedup();
-
-    Ok(segment_ids)
-}
-
-pub async fn process_user_segment_regeneration(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<(), SegmentRegenerationError> {
-    mark_user_activity_import_lock_stage(
-        db,
-        user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
-        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-    )
-    .await?;
-
-    let result = regenerate_segments_for_user(db, user_id).await;
-    let release_result =
-        release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION).await;
-
-    match (result, release_result) {
-        (Err(error), _) => Err(error),
-        (Ok(_), Err(error)) => Err(error.into()),
-        (Ok(_), Ok(())) => Ok(()),
-    }
-}
-
-pub async fn process_activity_segment_regeneration(
-    db: &DatabaseConnection,
-    activity_id: i32,
-) -> Result<(), SegmentRegenerationError> {
-    use crate::background_jobs::execution::{measured, WorkCounts, WorkScope};
-    let activity = activities::Model::find_by_id(db, activity_id)
+    activity: &activities::Model,
+) -> Result<Vec<i32>, crate::workflow_error::WorkflowError> {
+    use sea_orm::TransactionTrait;
+    let txn = db.begin().await?;
+    let current = activities::Model::lock_owned(&txn, activity.id, activity.user_id)
         .await?
-        .ok_or_else(|| SegmentRegenerationError::internal("Activity disappeared"))?;
-    let points = deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
-    let scope = WorkScope {
-        kind: "segment_match",
-        work_key: format!("activity:{activity_id}"),
-        revision: activity.updated_at.timestamp_micros().to_string(),
-        mode: "full",
-        reason: "user_regeneration",
-    };
-    measured(db, scope, async {
-        let old_count = segment_efforts::Model::count_for_activity(db, activity_id).await?;
-        let mut affected = load_segment_ids_for_activity(db, activity_id).await?;
-        replace_segment_efforts_for_activity(db, activity.user_id, activity_id, &points).await?;
-        affected.extend(load_segment_ids_for_activity(db, activity_id).await?);
-        affected.sort_unstable();
-        affected.dedup();
-        mark_segment_activity_changes(db, &affected, Utc::now()).await?;
-        refresh_matched_activity_analytics(db, activity_id, &affected).await?;
-        let count = segment_efforts::Model::count_for_activity(db, activity_id).await?;
-        Ok::<_, SegmentRegenerationError>((
-            (),
-            WorkCounts {
-                inputs_read: points.len() as u64,
-                units_computed: points.len() as u64,
-                rows_written: old_count + count,
-                outputs_published: 0,
-                outcome: "matched",
-            },
-        ))
-    })
-    .await
-}
-
-async fn refresh_matched_activity_analytics(
-    db: &DatabaseConnection,
-    activity_id: i32,
-    affected: &[i32],
-) -> Result<(), SegmentRegenerationError> {
-    if crate::background_jobs::batches::current().is_some() {
-        crate::background_jobs::batches::affected_segments(db, affected).await?;
+        .ok_or_else(|| crate::workflow_error::WorkflowError::not_found("Activity was deleted"))?;
+    let route = if current.is_bike_activity() {
+        deserialize_derived_activity_data(current.derived_data_json.as_ref()).route_points
     } else {
-        rebuild_segment_analytics_cache(db, affected).await?;
-    }
-    // A removed last match is absent from the segment rebuild's remaining
-    // effort holders. Always clear/rebuild this activity's own cached counts.
-    rebuild_activity_analytics_cache(db, &[activity_id]).await?;
-    Ok(())
+        Vec::new()
+    };
+    let mut ids = crate::entities::segment_user_summaries::Model::segment_ids_for_user(&txn, current.user_id).await?;
+    ids.extend(
+        crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebuilds(
+            &txn,
+            current.user_id,
+            current.id,
+            &route,
+        )
+        .await?,
+    );
+    ids.sort_unstable();
+    ids.dedup();
+    segments::Model::mark_activity_changes(&txn, &ids, Utc::now()).await?;
+    txn.commit().await?;
+    Ok(ids)
 }

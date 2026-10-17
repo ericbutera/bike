@@ -8,6 +8,7 @@ accounts, admin operations, and durable background processing.
 | ---------------- | ------------------------------------------------------------- |
 | `api`            | HTTP API, authentication integration, rider/admin endpoints   |
 | `bike-core`      | Domain models, queries, services, parsers, platform modules   |
+| `integrations`   | Strava provider calls, OAuth, request acceptance, domain operations |
 | `worker`         | Import processing, analytics rebuilds, background maintenance |
 | `migration`      | Append-only SeaORM schema migrations                          |
 
@@ -36,7 +37,7 @@ mise run test
 mise run coverage
 ```
 
-Use `mise exec -- cargo test -p bike-core <test_filter>` for a focused regression.
+`mise run test` runs `cargo test --workspace --locked` with automatic discovery.
 See the [CI specification](../docs/specs/ci-checks.md) for suite and coverage policy.
 Run direct API/worker processes with `api:dev` and `worker:dev` after configuring
 the database and other values from [`.env.example`](.env.example).

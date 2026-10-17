@@ -450,7 +450,7 @@ fn verify_provider_identity(
     activity: &activities::Model,
 ) -> Result<(), AppError> {
     if artifact.artifact_kind == "provider_payload" {
-        let payload: crate::strava::provider_payload::StoredStravaProviderPayload =
+        let payload: crate::activity_parser::strava::StoredStravaProviderPayload =
             serde_json::from_slice(bytes).map_err(|_| AppError::bad_request("Invalid retained provider source"))?;
         let id = payload.activity.id.to_string();
         let correlation = activity.source_correlation_id.as_deref();
@@ -474,7 +474,7 @@ pub async fn apply_recovery(
         return Ok(false);
     };
     if plan.reprocessing_required {
-        plan.import.require_sql_processing()?;
+        plan.import.require_retained_file_processing()?;
     }
     let mut artifact = source.artifact;
     let mut copied_path = None;

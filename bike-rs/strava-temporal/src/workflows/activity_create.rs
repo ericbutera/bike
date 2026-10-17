@@ -1,5 +1,5 @@
 use super::{logging, options, UpsertActivity};
-use bike_core::strava::{events::StravaEvent, native::ActivityChange};
+use integrations::strava::{events::StravaEvent, native::ActivityChange};
 use temporalio_macros::{workflow, workflow_methods};
 use temporalio_sdk::{WorkflowContext, WorkflowResult};
 
@@ -14,7 +14,7 @@ impl CreateActivity {
         logging::started(ctx, &event);
         let options = options::upsert_child(&event);
         let result = options::execute_child_workflow(ctx, UpsertActivity::run, event.clone(), options).await;
-        let result = options::workflow_result(ctx, result);
+        let result = options::command_result(ctx, result);
         let log_event = result.as_ref().map_or(&event, |value| &value.event);
         logging::finished(ctx, log_event, &result);
         result

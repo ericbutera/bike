@@ -2,36 +2,23 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import ImportDetail from "../imports/ImportDetail";
 
-const mocks = vi.hoisted(() => ({ trace: vi.fn() }));
-vi.mock("../../lib/queries", () => ({ useActivityImportTrace: mocks.trace }));
-vi.mock("../activity-detail/ActivityImportTracePanel", () => ({
-  default: ({ canReplay }: { canReplay: boolean }) => (
-    <p>{canReplay ? "Replay available" : "Read only"}</p>
-  ),
-}));
-vi.mock("../admin/ActivityPipelines", () => ({
-  default: ({ activityId }: { activityId: number }) => (
-    <p>Worker runs for activity #{activityId}</p>
-  ),
-}));
-
+const mocks = vi.hoisted(() => ({ detail: vi.fn() }));
+vi.mock("../../lib/queries", () => ({ useAdminActivityImport: mocks.detail }));
 describe("import detail", () => {
   it("shows the source summary and links to its saved activity", () => {
-    mocks.trace.mockReturnValue({
+    mocks.detail.mockReturnValue({
       data: {
-        import: {
-          original_filename: "ride.gpx",
-          status: "processed",
-          source: "manual_upload",
-          size_bytes: 4096,
-          activity_id: 42,
-        },
+        original_filename: "ride.gpx",
+        status: "processed",
+        source: "manual_upload",
+        size_bytes: 4096,
+        activity_id: 42,
       },
       isLoading: false,
       error: null,
     });
     render(<ImportDetail importId="17" />);
-    expect(mocks.trace).toHaveBeenCalledWith("17");
+    expect(mocks.detail).toHaveBeenCalledWith("17");
     expect(
       screen.getByRole("heading", { name: "ride.gpx" }),
     ).toBeInTheDocument();
@@ -43,16 +30,12 @@ describe("import detail", () => {
     expect(
       screen.getByRole("link", { name: /Import history/ }),
     ).toHaveAttribute("href", "/admin/imports");
-    expect(screen.getByText("Replay available")).toBeInTheDocument();
-    expect(
-      screen.getByText("Worker runs for activity #42"),
-    ).toBeInTheDocument();
     expect(screen.getByText("manual upload")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   it("keeps the import identifiable before its summary is loaded", () => {
-    mocks.trace.mockReturnValue({
+    mocks.detail.mockReturnValue({
       data: undefined,
       isLoading: true,
       error: null,
@@ -66,25 +49,30 @@ describe("import detail", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("retains stage recovery before activity creation", () => {
-    mocks.trace.mockReturnValue({
-      data: { import: { id: 17, status: "failed", source: "archive" } },
+  it("shows failure details without stage replay controls", () => {
+    mocks.detail.mockReturnValue({
+      data: {
+        id: 17,
+        status: "failed",
+        source: "archive",
+        size_bytes: 4096,
+        processing_error: "Invalid source",
+      },
       isLoading: false,
       error: null,
     });
     render(<ImportDetail importId="17" />);
-    expect(screen.getByText("Replay available")).toBeInTheDocument();
     expect(screen.getByText("No activity created")).toBeInTheDocument();
-    expect(screen.getByText(/Worker runs will appear/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Invalid source");
     expect(
-      screen.queryByText(/Worker runs for activity/),
+      screen.queryByRole("button", { name: /Replay/ }),
     ).not.toBeInTheDocument();
   });
 
   it("refreshes the selected import only when requested", () => {
     const refetch = vi.fn();
-    mocks.trace.mockReturnValue({
-      data: { import: { id: 17, status: "processing" } },
+    mocks.detail.mockReturnValue({
+      data: { id: 17, status: "processing", size_bytes: 4096 },
       isLoading: false,
       isFetching: false,
       error: null,
@@ -94,8 +82,8 @@ describe("import detail", () => {
     expect(refetch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     expect(refetch).toHaveBeenCalledOnce();
-    mocks.trace.mockReturnValue({
-      data: { import: { id: 17, status: "processing" } },
+    mocks.detail.mockReturnValue({
+      data: { id: 17, status: "processing", size_bytes: 4096 },
       isLoading: false,
       isFetching: true,
       error: null,

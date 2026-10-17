@@ -1,33 +1,21 @@
-use crate::activity_import_lock::{
-    acquire_user_activity_import_lock, release_user_activity_import_lock,
-    ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-    ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP, ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
-    ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-};
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::controllers::activity_import_history;
-use crate::controllers::activity_imports as activity_imports_controller;
 use crate::storage::AppStorage;
 use crate::xc_goal_backfill::queue_user_xc_goal_backfill;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
-use bike_core::activity_import_pipeline::ACTIVITY_PROCESSING_PROVIDER;
 use bike_core::activity_lifecycle::cleanup_duplicate_activities_for_user;
 use bike_core::analytics::mark_user_activity_changes;
-use bike_core::archive_import::{
-    import_activity_archive_from_path, resolve_local_archive_import_path, ImportActivityArchiveRequest,
-};
+use bike_core::archive_import::{enqueue_activity_archive_import_job, resolve_local_archive_import_path};
 use bike_core::auth::entities::users;
 use bike_core::auth::AdminUserContext;
 use bike_core::entities::{activities, activity_imports, segments};
-use bike_core::integration_events_service as integration_event_service;
 use bike_core::platform::data::pagination::{PaginatedResponse, PaginationParams};
 use chrono::Utc;
-use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -59,13 +47,6 @@ pub struct AdminActivityResponse {
     pub import_processing_stage: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"trace": null}))]
-pub struct AdminActivityImportTraceResponse {
-    #[schema(example = json!(null))]
-    pub trace: Option<activity_imports_controller::ActivityImportTraceResponse>,
-}
-
 impl AdminActivityResponse {
     fn from_list_row(activity: activities::AdminListRow, import: Option<&activity_imports::Model>) -> Self {
         Self {
@@ -87,21 +68,13 @@ impl AdminActivityResponse {
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
         .route("/activity-imports/history", get(activity_import_history::history))
-        .route(
-            "/activity-imports/:id/replay",
-            get(activity_import_history::replay_plan).post(activity_import_history::replay),
-        )
+        .route("/activity-imports/:id", get(activity_import_history::detail))
         .route("/activities", get(list_admin_activities))
         .route("/analytics/backfill", post(backfill_analytics))
         .route("/training/xc-backfill", post(backfill_user_xc_training))
         .route("/segments/regenerate", post(regenerate_user_segments))
         .route("/segments/regenerate-efforts", post(regenerate_segment_efforts))
         .route("/activity-imports/reprocess", post(reprocess_user_activity_imports))
-        .route("/activity-imports/:id/trace", get(get_admin_activity_import_trace))
-        .route(
-            "/activities/:id/import-trace",
-            get(get_admin_activity_import_trace_for_activity),
-        )
         .route("/activity-imports/reprocess-activity", post(reprocess_activity_import))
         .route(
             "/activity-imports/cleanup-duplicates",
@@ -166,120 +139,6 @@ pub async fn list_admin_activities(
     )))
 }
 
-#[utoipa::path(
-    get,
-    path = "/admin/activity-imports/{id}/trace",
-    operation_id = "admin_get_activity_import_trace",
-    params(
-        ("id" = i32, Path, description = "Activity import id", example = 17),
-    ),
-    responses(
-        (status = 200, description = "Activity import processing DAG and event trace for administrators", body = activity_imports_controller::ActivityImportTraceResponse, example = json!({"import": {"id": 17,"import_version": 1,"original_filename": "saturday-hills.fit","format": "fit","status": "processed","processing_stage": "complete","size_bytes": 184320,"created_at": "2026-09-26T14:20:00Z"},"graph": {"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored"}],"edges": [],"mermaid": "flowchart LR\n  raw_stored[\"Raw stored\"]"},"nodes": [{"id": "raw_stored","label": "Raw stored","stage": "raw_stored","status": "completed"}],"events": []})),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
-        (status = 404, description = "Activity import not found", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
-    ),
-    security(("bearer_auth" = [])),
-    tag = "admin",
-)]
-pub async fn get_admin_activity_import_trace(
-    _admin: AdminUserContext<AppStorage>,
-    State(state): State<Arc<AppStorage>>,
-    Path(import_id): Path<i32>,
-) -> Result<Json<activity_imports_controller::ActivityImportTraceResponse>, AppError> {
-    let import = crate::activity_import_history::admin_import_for_inspection(&state.db, import_id).await?;
-    let trace = build_admin_activity_import_trace(&state.db, import, None).await?;
-
-    Ok(Json(trace))
-}
-
-#[utoipa::path(
-    get,
-    path = "/admin/activities/{id}/import-trace",
-    operation_id = "admin_get_activity_import_trace_for_activity",
-    params(
-        ("id" = i32, Path, description = "Activity id", example = 42),
-    ),
-    responses(
-        (status = 200, description = "Activity import processing DAG and event trace for administrators when the activity has a linked import", body = AdminActivityImportTraceResponse, example = json!({"trace": null})),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
-        (status = 404, description = "Activity not found", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
-    ),
-    security(("bearer_auth" = [])),
-    tag = "admin",
-)]
-pub async fn get_admin_activity_import_trace_for_activity(
-    _admin: AdminUserContext<AppStorage>,
-    State(state): State<Arc<AppStorage>>,
-    Path(activity_id): Path<i32>,
-) -> Result<Json<AdminActivityImportTraceResponse>, AppError> {
-    let activity = activities::Model::find_by_id(&state.db, activity_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Activity not found"))?;
-    let Some(import_id) = activity.activity_import_id else {
-        return Ok(Json(AdminActivityImportTraceResponse { trace: None }));
-    };
-    let import = activity_imports::Entity::find_for_administration(&state.db, import_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Activity import not found"))?;
-    let trace = build_admin_activity_import_trace(&state.db, import, Some(activity)).await?;
-
-    Ok(Json(AdminActivityImportTraceResponse { trace: Some(trace) }))
-}
-
-async fn build_admin_activity_import_trace(
-    db: &DatabaseConnection,
-    import: activity_imports::Model,
-    activity: Option<activities::Model>,
-) -> Result<activity_imports_controller::ActivityImportTraceResponse, AppError> {
-    let activity = match activity {
-        Some(activity) => Some(activity),
-        None => load_activity_for_admin_import_trace(db, &import).await?,
-    };
-    let attempts = crate::activity_import_history::attempts(db, &import).await?;
-    let events = if attempts.is_empty() {
-        integration_event_service::list_recent_events(
-            db,
-            integration_event_service::IntegrationEventListOptions {
-                provider: Some(ACTIVITY_PROCESSING_PROVIDER.to_string()),
-                user_id: Some(import.user_id),
-                activity_id: None,
-                import_id: Some(import.id),
-                limit: 100,
-            },
-        )
-        .await?
-    } else {
-        Vec::new()
-    };
-    let trace_events = events
-        .into_iter()
-        .map(activity_imports_controller::ActivityImportTraceEventResponse::from_model)
-        .collect::<Vec<_>>();
-    let trace_nodes = attempts
-        .first()
-        .map(|attempt| attempt.nodes.clone())
-        .unwrap_or(activity_imports_controller::build_trace_nodes(&import, &trace_events)?);
-
-    Ok(activity_imports_controller::ActivityImportTraceResponse {
-        attempts,
-        import: activity_imports_controller::ActivityImportResponse::from_model(import, activity.as_ref()),
-        graph: activity_imports_controller::ActivityProcessingGraphResponse::from_graph(),
-        nodes: trace_nodes,
-        events: trace_events,
-    })
-}
-
-async fn load_activity_for_admin_import_trace(
-    db: &DatabaseConnection,
-    import: &activity_imports::Model,
-) -> Result<Option<activities::Model>, AppError> {
-    Ok(activities::Model::for_import_inspection(db, import).await?)
-}
-
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(example = json!({"user_count": 12,"segment_count": 35,"fitness_task_count": 12,"segment_task_count": 2,"total_tasks_enqueued": 14,"segment_chunk_size": 20}))]
 pub struct AnalyticsBackfillResponse {
@@ -298,9 +157,7 @@ pub struct AnalyticsBackfillResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-#[schema(example = json!({"archive_path": "/data/imports/activities.zip"}))]
 pub struct ArchiveImportRequest {
-    #[schema(example = "/data/imports/activities.zip")]
     pub archive_path: String,
 }
 
@@ -316,28 +173,6 @@ pub struct RegenerateUserSegmentsRequest {
 pub struct RegenerateSegmentEffortsRequest {
     #[schema(example = 7)]
     pub segment_id: i32,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(example = json!({"archive_path": "/data/imports/activities.zip","total_entries": 120,"supported_entry_count": 116,"imported_count": 110,"duplicate_count": 6,"skipped_unsupported_count": 4,"failed_count": 0,"error_samples": []}))]
-pub struct ArchiveImportResponse {
-    #[schema(example = "/data/imports/activities.zip")]
-    pub archive_path: String,
-    #[schema(example = 120)]
-    pub total_entries: i32,
-    #[schema(example = 116)]
-    pub supported_entry_count: i32,
-    #[schema(example = 110)]
-    pub imported_count: i32,
-    #[schema(example = 6)]
-    pub duplicate_count: i32,
-    #[schema(example = 4)]
-    pub skipped_unsupported_count: i32,
-    #[schema(example = 0)]
-    pub failed_count: i32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[schema(example = json!([]))]
-    pub error_samples: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -577,21 +412,7 @@ pub async fn regenerate_user_segments(
         .await?
         .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
 
-    acquire_user_activity_import_lock(
-        &state.db,
-        request.user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
-        ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
-    )
-    .await?;
-
     if let Err(message) = state.tasks.regenerate_user_segments(request.user_id).await {
-        release_user_activity_import_lock(
-            &state.db,
-            request.user_id,
-            ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
-        )
-        .await?;
         return Err(AppError::internal(format!(
             "Failed to queue segment regeneration: {message}"
         )));
@@ -674,14 +495,6 @@ pub async fn reprocess_user_activity_imports(
         .await?
         .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
 
-    acquire_user_activity_import_lock(
-        &state.db,
-        request.user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
-        ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
-    )
-    .await?;
-
     let queue_result = if request.archive_fits_only.unwrap_or(false) {
         state
             .tasks
@@ -691,12 +504,6 @@ pub async fn reprocess_user_activity_imports(
         state.tasks.reprocess_user_activity_imports(request.user_id).await
     };
     if let Err(message) = queue_result {
-        release_user_activity_import_lock(
-            &state.db,
-            request.user_id,
-            ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
-        )
-        .await?;
         return Err(AppError::internal(format!(
             "Failed to queue activity reprocessing: {message}"
         )));
@@ -769,14 +576,6 @@ pub async fn cleanup_user_duplicate_activities(
         .await?
         .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
 
-    acquire_user_activity_import_lock(
-        &state.db,
-        request.user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP,
-        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-    )
-    .await?;
-
     let result = cleanup_duplicate_activities_for_user(&state.db, &state.uploads_dir, &state.tasks, request.user_id)
         .await
         .map(|summary| {
@@ -802,18 +601,7 @@ pub async fn cleanup_user_duplicate_activities(
             )
         });
 
-    let release_result = release_user_activity_import_lock(
-        &state.db,
-        request.user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP,
-    )
-    .await;
-
-    match (result, release_result) {
-        (Err(error), _) => Err(error.into()),
-        (Ok(_), Err(error)) => Err(error),
-        (Ok(response), Ok(())) => Ok(response),
-    }
+    result.map_err(Into::into)
 }
 
 #[utoipa::path(
@@ -822,7 +610,7 @@ pub async fn cleanup_user_duplicate_activities(
     operation_id = "admin_import_activity_archive",
     request_body(content = ArchiveImportRequest, example = json!({"archive_path": "/data/imports/activities.zip"})),
     responses(
-        (status = 200, description = "Imported activities from an archive on the server", body = ArchiveImportResponse, example = json!({"archive_path": "/data/imports/activities.zip","total_entries": 120,"supported_entry_count": 116,"imported_count": 110,"duplicate_count": 6,"skipped_unsupported_count": 4,"failed_count": 0,"error_samples": []})),
+        (status = 202, description = "Archive processing started", body = crate::controllers::activity_imports::ActivityArchiveImportJobResponse),
         (status = 400, description = "Invalid archive request", body = ApiErrorResponse),
         (status = 409, description = "Another activity import is already running or queued", body = ApiErrorResponse),
         (status = 401, description = "Unauthorized"),
@@ -837,55 +625,27 @@ pub async fn import_activity_archive(
     admin: AdminUserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
     Json(request): Json<ArchiveImportRequest>,
-) -> Result<(StatusCode, Json<ArchiveImportResponse>), AppError> {
+) -> Result<
+    (
+        StatusCode,
+        Json<crate::controllers::activity_imports::ActivityArchiveImportJobResponse>,
+    ),
+    AppError,
+> {
     let archive_path = resolve_local_archive_import_path(&state.uploads_dir, &request.archive_path)?;
     let user_storage_key = admin.user.pid.to_string();
-    acquire_user_activity_import_lock(
-        &state.db,
-        admin.user.id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-    )
-    .await?;
-
-    let result = import_activity_archive_from_path(
+    let job = enqueue_activity_archive_import_job(
         &state.db,
         &state.tasks,
-        ImportActivityArchiveRequest {
-            archive_job_id: None,
-            uploads_dir: &state.uploads_dir,
-            user_storage_key: &user_storage_key,
-            user_id: admin.user.id,
-            activity_source: "archive_import",
-            display_source: archive_path.display().to_string(),
-            archive_path: &archive_path,
-        },
+        admin.user.id,
+        &user_storage_key,
+        archive_path.to_string_lossy().into_owned(),
     )
-    .await
-    .map(|summary| {
-        (
-            StatusCode::OK,
-            Json(ArchiveImportResponse {
-                archive_path: summary.source,
-                total_entries: summary.total_entries,
-                supported_entry_count: summary.supported_entry_count,
-                imported_count: summary.imported_count,
-                duplicate_count: summary.duplicate_count,
-                skipped_unsupported_count: summary.skipped_unsupported_count,
-                failed_count: summary.failed_count,
-                error_samples: summary.error_samples,
-            }),
-        )
-    });
-
-    let release_result =
-        release_user_activity_import_lock(&state.db, admin.user.id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT).await;
-
-    match (result, release_result) {
-        (Err(error), _) => Err(error.into()),
-        (Ok(_), Err(error)) => Err(error),
-        (Ok(response), Ok(())) => Ok(response),
-    }
+    .await?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(crate::controllers::activity_imports::ActivityArchiveImportJobResponse::from_model(job)),
+    ))
 }
 
 async fn load_user_ids_with_activities(state: &Arc<AppStorage>) -> Result<Vec<i32>, AppError> {
@@ -910,6 +670,55 @@ async fn enqueue_segment_backfill_tasks(state: &Arc<AppStorage>, segment_ids: &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn local_archive_acceptance_retains_the_job_and_starts_temporal() {
+        use crate::controllers::test_support as http;
+        use bike_core::test_support as fixtures;
+        use std::sync::{Arc, Mutex};
+        let files = tempfile::tempdir().unwrap();
+        let archive = files.path().join("rides.zip");
+        zip::ZipWriter::new(std::fs::File::create(&archive).unwrap())
+            .finish()
+            .unwrap();
+        let admin = bike_core::auth::entities::users::Model {
+            is_admin: Some(true),
+            ..fixtures::customer()
+        };
+        let job = bike_core::entities::activity_archive_import_jobs::Model {
+            archive_url: archive.to_string_lossy().into_owned(),
+            ..fixtures::archive_import_job()
+        };
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![admin]])
+            .append_query_results([vec![job.clone()]])
+            .into_connection();
+        let requests = Arc::new(Mutex::new(fixtures::temporal_client::Requests::default()));
+        let mut state = http::temporal_state(db.clone(), requests.clone()).await;
+        state.uploads_dir = files.path().to_string_lossy().into_owned();
+        let response = http::local_user_request(
+            state,
+            http::json_request(
+                "POST",
+                "/api/admin/activity-imports/archive",
+                serde_json::json!({"archive_path": "rides.zip"}),
+            ),
+            202,
+        )
+        .await;
+        assert_eq!(response["id"], job.id);
+        assert_eq!(response["status"], "queued");
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.starts.len(), 1);
+        assert_eq!(
+            requests.starts[0].workflow_type.as_ref().unwrap().name,
+            "activity_archive_import"
+        );
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(log.contains("INSERT INTO"));
+        assert!(log.contains("activity_archive_import_jobs"));
+        assert!(!log.contains("background_tasks"));
+    }
 
     #[test]
     fn activity_reprocessing_request_keeps_supplied_identity_or_creates_a_fresh_command() {

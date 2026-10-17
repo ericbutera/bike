@@ -25,11 +25,11 @@ The analysis cache stores:
 
 The cache is rebuilt when activity data changes. Import, reprocess, delete, and segment-regeneration paths must keep this derived state consistent with the source activity records.
 
-- Recalculation follows the shared [priority and debounce contract](background-work.md#eventual-consistency-debounce-and-priority).
-- Coalesce affected users/resources across uploads and provider sync; use incremental
-  dirty ranges. Track pending derived output separately from source ingestion.
-- Fitness/training reads show current cached results or visible refresh state;
-  they must not launch synchronous rebuilds that bypass coalescing.
+- Workflows call the existing fitness/training calculations explicitly under the
+  [background-work policy](background-work.md#eventual-consistency-debounce-and-priority).
+  Reuse incremental dirty ranges where useful; repeated rebuilds are acceptable.
+- Fitness/training reads show current cached results while background work runs;
+  no shared coordinator or separate derived-output accounting is required.
 
 ## XC Analytics
 

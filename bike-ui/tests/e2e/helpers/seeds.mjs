@@ -13,7 +13,6 @@ export const scenarios = [
   "zones",
   "eleven-efforts",
   "partial-race",
-  "task-cancel",
   "archive-states",
   "manual-processing",
   "heatmap",
@@ -140,24 +139,6 @@ function effort(id, activityId, duration, rank, index = 1) {
   });
 }
 
-function task(id, type, status, options = {}) {
-  const started = `2025-06-0${id + 2}T12:00:00Z`;
-  return insert("background_tasks", {
-    id,
-    task_type: type,
-    payload: { segment_id: 5 },
-    status,
-    attempts: 1,
-    max_attempts: 3,
-    scheduled_for: started,
-    started_at: started,
-    completed_at: started,
-    created_at: started,
-    updated_at: started,
-    ...options,
-  });
-}
-
 export function baselineData() {
   return {
     records: [
@@ -247,34 +228,6 @@ export function baselineData() {
         personal_best_duration_seconds: 100,
         created_at: firstFinish,
         updated_at: secondFinish,
-      }),
-      task(1, "regenerate_segment_efforts", "completed", {
-        result: "2 efforts",
-        completed_at: "2025-06-03T12:00:50Z",
-        updated_at: "2025-06-03T12:00:50Z",
-      }),
-      task(2, "regenerate_segment_efforts", "completed", {
-        result: "2 efforts",
-        completed_at: "2025-06-04T12:00:55Z",
-        updated_at: "2025-06-04T12:00:55Z",
-      }),
-      task(3, "regenerate_segment_efforts", "completed", {
-        result: "2 efforts",
-        completed_at: "2025-06-05T12:01:52Z",
-        updated_at: "2025-06-05T12:01:52Z",
-      }),
-      task(4, "rebuild_fitness_freshness", "failed", {
-        payload: { user_id: 1 },
-        error: "synthetic worker failure",
-        completed_at: "2025-06-06T12:00:01Z",
-        updated_at: "2025-06-06T12:00:01Z",
-      }),
-      task(5, "process_activity_import", "pending", {
-        payload: { import_id: 1, user_id: 1 },
-        attempts: 0,
-        scheduled_for: "2099-01-01T00:00:00Z",
-        started_at: null,
-        completed_at: null,
       }),
     ],
   };
@@ -415,15 +368,6 @@ const scenarioBuilders = {
   zones: zoneScenario,
   "eleven-efforts": elevenEffortScenario,
   "partial-race": partialRaceScenario,
-  "task-cancel": () => [
-    update("background_tasks", {
-      id: 5,
-      status: "processing",
-      attempts: 1,
-      started_at: "2025-06-07T12:01:00Z",
-      updated_at: "2025-06-07T12:01:00Z",
-    }),
-  ],
   "archive-states": archiveJobs,
   "manual-processing": manualUserScenario,
   "upload-result": uploadResultScenario,

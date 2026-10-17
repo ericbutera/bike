@@ -167,7 +167,7 @@ Older activities uploaded before route-point persistence or before a parser fix 
 - Segment API and duplicate detection: `bike-rs/api/src/controllers/segments.rs`
 - Route matching helpers: `bike-rs/api/src/segment_support.rs`
 - Segment analytics: `bike-rs/api/src/analytics.rs`
-- Worker regeneration task: `bike-rs/worker/src/tasks/processors/regenerate_segment_efforts.rs`
+- Regeneration workflow: `bike-rs/bike-temporal/src/workflows/regenerate_segment_efforts.rs`
 - Segment list UI: `bike-ui/components/SegmentsPanel.tsx`
 - Segment detail UI: `bike-ui/components/SegmentDetailPanel.tsx`
 - Segment builder UI: `bike-ui/components/SegmentBuilderWorkspace.tsx`

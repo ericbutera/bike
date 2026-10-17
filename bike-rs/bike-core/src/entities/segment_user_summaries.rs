@@ -2,7 +2,7 @@ use crate::analytics::SegmentUserSummaryAccumulator;
 use crate::entities::segment_user_summaries;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, QuerySelect, Set};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -28,6 +28,18 @@ pub enum Relation {}
 crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
+    /// Existing summaries include segments whose last effort was removed by a
+    /// prior matching attempt. Rebuilding this broader scope is safe on retry.
+    pub async fn segment_ids_for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<i32>, DbErr> {
+        Entity::find()
+            .select_only()
+            .column(Column::SegmentId)
+            .filter(Column::UserId.eq(user_id))
+            .into_tuple::<i32>()
+            .all(db)
+            .await
+    }
+
     pub async fn list_by_user_segment_ids<C>(db: &C, user_id: i32, segment_ids: &[i32]) -> Result<Vec<Model>, DbErr>
     where
         C: ConnectionTrait,

@@ -193,8 +193,15 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
             activation.is_replaying = true;
             restarted.apply_activation(activation);
         }
-        for expected in self.issued {
-            assert_eq!(restarted.pop_command(), expected, "Replay changed a command");
+        for (index, expected) in self.issued.into_iter().enumerate() {
+            // The SDK can emit/consume an initial patch marker during startup.
+            // Compare that recorded prefix before consuming queued commands.
+            let actual = restarted
+                .issued
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| restarted.pop_command());
+            assert_eq!(actual, expected, "Replay changed a command");
         }
         assert_eq!(
             *restarted.commands.0.borrow(),
@@ -216,6 +223,10 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
     pub fn activity(&mut self, name: &str, input: &impl Serialize, output: &impl Serialize) {
         let (seq, arguments) = self.next_activity(name);
         assert_input(&arguments, input);
+        self.complete_activity(seq, output);
+    }
+
+    pub fn complete_activity(&mut self, seq: u32, output: &impl Serialize) {
         self.resolve_activity(
             seq,
             activity_result::activity_resolution::Status::Completed(activity_result::Success {
@@ -399,6 +410,11 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
     }
     pub fn assert_no_commands(&self) {
         assert!(self.commands.0.borrow().is_empty(), "Unexpected activity or child");
+    }
+
+    pub fn assert_pending(&self) {
+        self.assert_no_commands();
+        assert!(self.completion.is_none(), "Workflow finished before its dependency");
     }
 
     pub fn next_command(&mut self) -> workflow_command::Variant {

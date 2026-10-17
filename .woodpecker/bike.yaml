@@ -48,19 +48,6 @@ services:
     commands:
       - sh scripts/ci-e2e-engine.sh
 
-  - name: postgres
-    # Generated from mise's postgres_image by mise run pins:sync.
-    image: postgres:17.11-trixie@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b
-    ports: [5432]
-    environment:
-      POSTGRES_USER: worker_test
-      POSTGRES_PASSWORD: worker_test
-      POSTGRES_DB: worker_test
-      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
-    backend_options:
-      kubernetes:
-        workspaceVolume: false
-
 steps:
   # Preparation shares tooling and image pins; it does not run product tests.
   - name: prepare
@@ -110,19 +97,6 @@ steps:
       - woodpecker-cache:/cache
     commands:
       - .artifacts/bin/mise run ci:rust
-
-  - name: test-worker-postgres
-    failure: fail
-    image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [prepare-tests]
-    environment:
-      <<: *mise_environment
-      BIKE_WORKER_TEST_DATABASE_URL: postgres://worker_test:worker_test@postgres:5432/worker_test
-      BIKE_WORKER_TEST_DATABASE_HOST: postgres
-      BIKE_WORKER_TEST_DATABASE_PORT: "5432"
-    volumes: *mise_cache
-    commands:
-      - .artifacts/bin/mise run ci:workers:postgres
 
   - name: test-runtime-tooling
     failure: fail
@@ -188,7 +162,6 @@ steps:
     failure: fail
     depends_on:
       - test-rust
-      - test-worker-postgres
       - test-strava-sdk
       - test-ui-unit
       - test-map-renderer
@@ -212,7 +185,7 @@ steps:
   - name: collect-rust-coverage
     failure: fail
     image: buildpack-deps:trixie@sha256:3e5da0e17f858c9fe67dedfd9414b95df2bc8c31015df5230224637d43ba7e8c
-    depends_on: [test-rust, test-worker-postgres, test-strava-sdk]
+    depends_on: [test-rust, test-strava-sdk]
     environment: *mise_environment
     volumes: *mise_cache
     commands:

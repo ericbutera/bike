@@ -26,7 +26,7 @@ run = "cargo build --release --bin api"
 
 [tasks."worker:dev"]
 description = "Start the bike worker"
-run = "cargo run --bin worker"
+run = "cargo run --bin temporal-worker"
 
 [tasks."tracing:dev"]
 description = "Start lightweight local tracing with Jaeger"
@@ -51,8 +51,8 @@ dir = "migration"
 run = "cargo run -- up"
 
 [tasks.test]
-description = "Run Rust unit tests with coverage, then integration tests and doctests"
-run = ["mise run coverage:unit", "mise run test:non-unit"]
+description = "Run every Rust workspace test using Cargo discovery"
+run = "cargo test --workspace --locked"
 
 [tasks."test:non-unit"]
 description = "Run existing Rust integration tests and doctests without repeating unit tests"
@@ -66,73 +66,13 @@ run = [
 description = "Collect Rust unit coverage and run integrations after shared CI preparation"
 run = ["mise run coverage:unit:collect", "mise run test:non-unit"]
 
-[tasks."test:workers"]
-description = "Run mocked native workflow, handoff, and worker metric regressions"
-depends = ["test:reprocess"]
-run = "cargo test -p bike-core --locked --lib background_jobs"
-
-[tasks."test:workers:mocks"]
-description = "Run PostgreSQL mock replacements for removed worker/import/history/metrics database units"
-run = [
-  "cargo test -p bike-core --locked --lib mutation_tests",
-  "cargo test -p bike-core --locked --lib import_read_tests",
-  "cargo test -p bike-core --locked --lib activity_analytics::tests",
-  "cargo test -p bike-core --locked --lib task_lifecycle_tests",
-  "cargo test -p api --locked --lib integration_events_tests",
-  "cargo test -p api --locked --lib metrics_scrape_tests",
-  "cargo test -p worker --locked --lib pipeline_tests",
-]
-
-[tasks."test:workers:postgres"]
-description = "Verify pipeline migration, concurrent claims, and retry history in disposable PostgreSQL"
+[tasks."test:strava:postgres"]
+description = "Verify Strava source writes and watermark repair in disposable PostgreSQL"
 env = { RUSTFLAGS = "-D warnings" }
 run = '''
-: "${BIKE_WORKER_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
-cargo test -p bike-core --test worker_history_postgres -- --ignored --nocapture
+: "${BIKE_STRAVA_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
+cargo test -p bike-core --locked --features test-fixtures --test strava_sources_postgres -- --ignored --nocapture
 '''
-
-[tasks."test:strava:unit"]
-description = "Test Strava workflows, domain handlers, and shared configuration with isolated mocks"
-env = { RUSTFLAGS = "-D warnings" }
-run = [
-  "cargo test -p bike-core --locked --lib strava_native_unit",
-  "cargo test -p bike-core --locked --lib strava::provider_payload::tests",
-  "cargo test -p bike-core --locked --lib activity_sport::tests",
-  "cargo test -p bike-core --locked --lib analytics::tests::non_cycling_summaries_do_not_change_cycling_load_or_fitness",
-  "cargo test -p api --locked --lib controllers::activities::tests::feed_and_detail_keep_source_description_and_gear",
-  "cargo test -p bike-core --locked --lib entities::strava_activity_states::tests",
-  "cargo test -p bike-core --locked --lib strava_oauth_unit",
-  "cargo test -p bike-core --locked --lib strava_webhook_unit",
-  "cargo test -p bike-core --locked --lib recovery_timeout_tests",
-  "cargo test -p bike-core --locked --lib bike_jobs_serialize_for_worker_payload_contract",
-  "cargo test -p strava-temporal --locked --lib",
-]
-
-[tasks."test:tasks:unit"]
-description = "Run native reprocess, storage, and Strava unit suites once"
-depends = ["test:reprocess", "test:storage", "test:strava:unit"]
-
-[tasks."test:tasks:workflows"]
-description = "Test named Bike workflows and native output handoffs with isolated mocks"
-run = "cargo test -p bike-temporal --locked --lib"
-
-[tasks."test:reprocess"]
-description = "Verify native reprocessing with retained-source fixtures and mocked submission"
-depends = ["test:tasks:workflows"]
-run = [
-  "cargo test -p bike-core --locked --lib activity_reprocessing",
-  "cargo test -p api --locked --lib activity_reprocessing",
-  "cargo test -p worker --locked --lib temporal_metrics",
-  "cargo test -p worker --locked --bin temporal-worker",
-]
-
-[tasks."test:storage"]
-description = "Test shared storage and retention once, with legacy Strava compatibility"
-run = [
-  "cargo test -p bike-core --locked --lib object_store",
-  "cargo test -p bike-core --locked --lib strava::objects",
-  "cargo test -p bike-core --locked --lib strava::transport",
-]
 
 [tasks.coverage]
 description = "Run Rust tests once and generate HTML, LCOV, and JSON coverage reports"
@@ -166,7 +106,7 @@ run = ["mise install jq", "mise exec jq -- bash ../scripts/coverage-rust-report.
 
 [tasks.fmt]
 description = "Format the Rust workspace"
-run = "cargo fmt --package bike-core --package api --package worker --package migration --package strava-temporal --package bike-temporal --package workflow-test-support"
+run = "cargo fmt"
 
 [tasks."test:heatmaps:postgres"]
 description = "Run heatmap regressions against a disposable PostgreSQL database"
@@ -177,9 +117,7 @@ cargo test -p bike-core --test heatmaps_postgres -- --ignored
 
 [tasks."fmt:check"]
 description = "Check Rust formatting without writing changes"
-run = [
-  "cargo fmt --package bike-core --package api --package worker --package migration --package strava-temporal --package bike-temporal --package workflow-test-support --check",
-]
+run = "cargo fmt --check"
 
 [tasks.lint]
 description = "Run Rust Clippy checks"
@@ -198,16 +136,11 @@ run = "cargo run -p api --bin openapi"
 description = "Generate the frontend TypeScript API contract from OpenAPI"
 run = "mise --cd ../bike-ui run generate:typescript"
 
-[tasks."test:maps"]
-description = "Check map image caching and native API-to-snapshot-worker contracts"
-env = { RUSTFLAGS = "-D warnings" }
-run = ["cargo test -p bike-core activity_maps --lib", "cargo test -p api --locked --lib controllers::activity_maps"]
-
 [tasks."test:ingestion:postgres"]
 description = "Verify ingestion migration and execution constraints in disposable PostgreSQL"
 run = '''
 : "${BIKE_INGESTION_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
-cargo test -p migration postgres_migration_enforces_active_execution_uniqueness_and_preserves_history -- --ignored
+cargo test -p migration --locked -- --ignored
 '''
 
 [tasks."imports:recover"]
@@ -231,5 +164,5 @@ if [ "${usage_cleanup:-false}" = "true" ]; then set -- "$@" --cleanup; fi
 if [ "${usage_withhold_unrecovered:-false}" = "true" ]; then set -- "$@" --withhold-unrecovered; fi
 if [ "${usage_refresh_recording:-false}" = "true" ]; then set -- "$@" --refresh-recording; fi
 if [ -n "${usage_register_manifest:-}" ]; then set -- "$@" --register-manifest "$usage_register_manifest"; fi
-cargo run -p bike-core --bin recover-generated-imports -- "$@"
+cargo run -p integrations --bin recover-generated-imports -- "$@"
 '''

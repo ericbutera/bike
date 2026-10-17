@@ -13,7 +13,6 @@ pub use bike_core::xc_goal_backfill::{
 impl From<XcGoalBackfillError> for AppError {
     fn from(error: XcGoalBackfillError) -> Self {
         match error {
-            XcGoalBackfillError::ActivityImportLock(error) => Self::from(error),
             XcGoalBackfillError::Database(error) => Self::from(error),
             XcGoalBackfillError::Queue(message) => {
                 Self::internal(format!("Failed to queue XC training backfill: {message}"))

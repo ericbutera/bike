@@ -58,6 +58,18 @@ bash "$gate" >"$fixture/pass.log" 2>&1
 COVERAGE_BASELINE_REVISION='' bash "$gate" >"$fixture/pass.log" 2>&1
 test "$(cat "$fixture/.artifacts/coverage/diff/base-revision.txt")" = "$COVERAGE_BASELINE_REVISION"
 
+# Rewritten history can remove the previous CI commit from a fresh checkout.
+git -C "$fixture" commit --quiet --allow-empty -m 'test: current coverage revision'
+COVERAGE_COMPARE_REF='' CI_PIPELINE_EVENT=push CI_PREV_PIPELINE_EVENT=push \
+  CI_COMMIT_BRANCH=main CI_PREV_COMMIT_BRANCH=main \
+  CI_PREV_COMMIT_SHA=ffffffffffffffffffffffffffffffffffffffff \
+  bash "$gate" >"$fixture/pass.log" 2>&1
+test "$(cat "$fixture/.artifacts/coverage/diff/base-revision.txt")" = "$COVERAGE_BASELINE_REVISION"
+if grep -Eq 'fatal:|warning:' "$fixture/pass.log"; then
+  printf 'Rewritten CI history produced Git diagnostics\n' >&2; exit 1
+fi
+git -C "$fixture" reset --soft "$COVERAGE_BASELINE_REVISION"
+
 for id in "${ids[@]}"; do
   jq -e '.total_num_lines == 5 and .total_percent_covered == 80' "$fixture/.artifacts/coverage/diff/$id.json" >/dev/null
   write_report "$id" 3

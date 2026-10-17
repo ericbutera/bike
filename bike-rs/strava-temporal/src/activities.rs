@@ -1,12 +1,9 @@
 //! Each named Temporal activity calls one provider or Bike domain operation.
-use bike_core::{
-    platform::temporal as policy,
-    strava::{
-        events::StravaEvent,
-        logging::{AttemptStatus, ExchangeContext, TemporalIds},
-        native::*,
-    },
-    workflow_error::WorkflowError,
+use bike_core::{platform::temporal as policy, workflow_error::WorkflowError};
+use integrations::strava::{
+    events::StravaEvent,
+    logging::{AttemptStatus, ExchangeContext, TemporalIds},
+    native::*,
 };
 use std::{future::Future, sync::Arc};
 use temporalio_common::error::ApplicationFailure;
@@ -227,32 +224,7 @@ async fn run<T: serde::Serialize>(
     future: impl Future<Output = Result<T, WorkflowError>>,
 ) -> Result<T, ActivityError> {
     let info = ctx.info();
-    use crate::workflows::*;
-    use bike_core::strava::events::StravaOperation;
-    use temporalio_workflow::common::WorkflowDefinition;
-    let expected_workflow = match event.operation {
-        StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => UpsertActivity::run.name(),
-        StravaOperation::Delete => DeleteActivity::run.name(),
-        StravaOperation::Sync => SyncActivities::run.name(),
-        StravaOperation::Backfill => BackfillActivities::run.name(),
-        StravaOperation::Disconnect => DisconnectStrava::run.name(),
-    };
-    if info.workflow_type.as_deref() != Some(expected_workflow) {
-        return Err(ApplicationFailure::non_retryable(std::io::Error::other(
-            "Strava event operation does not match its Temporal workflow",
-        ))
-        .into());
-    }
-    if !info
-        .workflow_id
-        .as_deref()
-        .is_some_and(|id| id.starts_with(&event.workflow_id()))
-    {
-        return Err(ApplicationFailure::non_retryable(std::io::Error::other(
-            "Strava event does not belong to this Temporal execution",
-        ))
-        .into());
-    }
+    validate_execution(&event, info.workflow_type.as_deref(), info.workflow_id.as_deref())?;
     let context = ExchangeContext {
         event,
         temporal: TemporalIds {
@@ -286,8 +258,57 @@ async fn run<T: serde::Serialize>(
         .await
 }
 
+fn validate_execution(
+    event: &StravaEvent,
+    workflow_type: Option<&str>,
+    workflow_id: Option<&str>,
+) -> Result<(), ActivityError> {
+    use crate::workflows::*;
+    use integrations::strava::events::StravaOperation;
+    use temporalio_workflow::common::WorkflowDefinition;
+    if workflow_type == Some(ReconcileActivity::run.name()) {
+        let source_operation = matches!(
+            event.operation,
+            StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert | StravaOperation::Delete
+        );
+        if !source_operation {
+            return Err(activity_error(WorkflowError::bad_request(
+                "Strava collection is not source reconciliation",
+            )));
+        }
+        let expected_id = event.source_workflow_id().map_err(activity_error)?;
+        return require_workflow_id(workflow_id == Some(expected_id.as_str()));
+    }
+    let expected_workflow = match event.operation {
+        StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => UpsertActivity::run.name(),
+        StravaOperation::Delete => DeleteActivity::run.name(),
+        StravaOperation::Sync => SyncActivities::run.name(),
+        StravaOperation::Backfill => BackfillActivities::run.name(),
+        StravaOperation::Disconnect => DisconnectStrava::run.name(),
+    };
+    if workflow_type != Some(expected_workflow) {
+        return Err(ApplicationFailure::non_retryable(std::io::Error::other(
+            "Strava event operation does not match its Temporal workflow",
+        ))
+        .into());
+    }
+    let expected_id = event.workflow_id();
+    let legacy_child = format!("{expected_id}:upsert");
+    require_workflow_id(workflow_id == Some(expected_id.as_str()) || workflow_id == Some(legacy_child.as_str()))
+}
+
+fn require_workflow_id(matches: bool) -> Result<(), ActivityError> {
+    if !matches {
+        return Err(ApplicationFailure::non_retryable(std::io::Error::other(
+            "Strava event does not belong to this Temporal execution",
+        ))
+        .into());
+    }
+    Ok(())
+}
+
 pub(crate) fn checked_output<T: serde::Serialize>(output: T) -> Result<T, WorkflowError> {
-    bike_core::strava::payload::validate_temporal(&output)?;
+    integrations::strava::payload::validate_temporal(&output)?;
     Ok(output)
 }
 
@@ -312,6 +333,22 @@ fn activity_error(error: WorkflowError) -> ActivityError {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn source_execution_requires_the_exact_owner_generation_and_remote_object() {
+        use temporalio_workflow::common::WorkflowDefinition;
+        let fixture = crate::tests::fixture::Fixture::new(integrations::strava::events::StravaOperation::Upsert);
+        let workflow_type = Some(crate::workflows::ReconcileActivity::run.name());
+        let workflow_id = fixture.event.source_workflow_id().unwrap();
+        // A stored mutation from old history can omit its snapshot and still
+        // complete in the new source child; execution ownership remains exact.
+        validate_execution(&fixture.event, workflow_type, Some(&workflow_id)).unwrap();
+        let mut wrong_owner = fixture.event.clone();
+        wrong_owner.bike_user_id += 1;
+        assert!(validate_execution(&wrong_owner, workflow_type, Some(&workflow_id)).is_err());
+        assert!(validate_execution(&fixture.event, workflow_type, Some(&format!("{workflow_id}-other"))).is_err());
+        assert!(validate_execution(&fixture.event, Some("SyncActivities"), Some(&workflow_id)).is_err());
+    }
 
     #[test]
     fn provider_rate_limits_retry_but_invalid_requests_are_terminal() {

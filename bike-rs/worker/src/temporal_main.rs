@@ -11,7 +11,7 @@ async fn main() -> Result<(), strava_temporal::client::Error> {
     let app = Config::init_from_env();
     let db = bike_core::db::connect_database(&app.database_url).await?;
     let client = connect(&config).await?;
-    strava_temporal::client::ensure_schedule(&client, &config).await?;
+    ensure_schedules(&client, &config).await?;
     bike_core::provider_metrics::init_provider_metrics();
     let sdk_address = std::env::var("TEMPORAL_METRICS_ADDRESS")
         .unwrap_or_else(|_| "0.0.0.0:9092".into())
@@ -48,6 +48,16 @@ async fn main() -> Result<(), strava_temporal::client::Error> {
         queue_stop_bike,
     );
     supervise(run, events, metrics, shutdown_signal(), shutdown).await
+}
+
+async fn ensure_schedules(client: &temporalio_client::Client, config: &TemporalConfig) -> Result<(), Error> {
+    strava_temporal::client::ensure_schedule(client, config).await?;
+    bike_temporal::runtime::ensure_schedule(client).await?;
+    tracing::info!(
+        namespace = config.namespace,
+        "Temporal schedules ready for Strava and Bike"
+    );
+    Ok(())
 }
 
 /// Either queue ending stops/drains its sibling before the process exits.
@@ -113,6 +123,32 @@ async fn shutdown_signal() -> Result<(), std::io::Error> {
 mod tests {
     use super::*;
     use std::future::pending;
+
+    #[tokio::test]
+    async fn startup_ensures_both_schedules_and_accepts_them_after_restart() {
+        use bike_core::test_support::temporal_client::{client, Requests};
+        use std::sync::{Arc, Mutex};
+        for schedule_exists in [false, true] {
+            let requests = Arc::new(Mutex::new(Requests {
+                schedule_exists,
+                ..Default::default()
+            }));
+            let client = client(requests.clone()).await;
+            let config = TemporalConfig {
+                address: "http://fixture.invalid:7233".into(),
+                namespace: "bike".into(),
+                task_queue: "bike-strava".into(),
+            };
+            ensure_schedules(&client, &config).await.unwrap();
+            let requests = requests.lock().unwrap();
+            let ids: Vec<_> = requests
+                .schedules
+                .iter()
+                .map(|request| request.schedule_id.as_str())
+                .collect();
+            assert_eq!(ids, ["bike-strava-sync", "bike-heatmap-reconciliation"]);
+        }
+    }
 
     #[tokio::test]
     async fn either_queue_completing_or_failing_drains_its_sibling() {

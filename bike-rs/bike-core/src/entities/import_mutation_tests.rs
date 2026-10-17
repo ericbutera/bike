@@ -108,7 +108,7 @@ async fn native_reprocess_completion_is_scoped_to_the_owned_import_and_checks_af
     let db = fixtures::postgres_mock()
         .append_exec_results([fixtures::written()])
         .into_connection();
-    activity_imports::Model::complete_native_reprocess(&db, &execution)
+    activity_imports::Model::complete_native_import(&db, &execution, fixtures::activity().id)
         .await
         .unwrap();
     let write = last_write(db);
@@ -119,7 +119,7 @@ async fn native_reprocess_completion_is_scoped_to_the_owned_import_and_checks_af
     let db = fixtures::postgres_mock()
         .append_exec_results([sea_orm::MockExecResult::default()])
         .into_connection();
-    let error = activity_imports::Model::complete_native_reprocess(&db, &execution)
+    let error = activity_imports::Model::complete_native_import(&db, &execution, fixtures::activity().id)
         .await
         .unwrap_err();
     assert_eq!(error.status, axum::http::StatusCode::CONFLICT);

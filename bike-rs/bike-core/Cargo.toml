@@ -11,16 +11,14 @@ path = "src/lib.rs"
 workspace = true
 
 [features]
-test-fixtures = ["sea-orm/mock"]
+test-fixtures = ["sea-orm/mock", "opentelemetry_sdk/testing"]
 
 [dependencies]
 async-trait = { workspace = true }
 temporalio-common = { workspace = true }
+temporalio-client = { workspace = true }
 object_store = { version = "0.14.2", default-features = false, features = ["fs"] }
-cron = "0.12"
-handlebars = "5.1"
 jsonwebtoken = "9.3"
-lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "tokio1-native-tls", "builder", "hostname"] }
 oauth2 = "4.4"
 openidconnect = { version = "4.0.1", default-features = false, features = ["reqwest", "rustls-tls"] }
 open-feature = "0.2.7"
@@ -48,10 +46,7 @@ roxmltree = "0.20"
 fitparser = "0.11"
 flate2 = "1.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-reqwest-middleware = { version = "0.4", features = ["json"] }
-http-body-util = "0.1"
 anyhow = "1"
-strava-sdk = { path = "../strava-sdk" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 hmac = "0.12"
 sha2 = "0.10"
@@ -61,7 +56,6 @@ base64 = "0.22.1"
 prost = "0.14.4"
 tonic = { version = "0.14.6", features = ["transport"] }
 tonic-prost = "0.14.6"
-petgraph = "0.8.3"
 png = "0.17"
 lru = "0.12"
 uuid = { workspace = true }
@@ -70,6 +64,7 @@ uuid = { workspace = true }
 tonic-prost-build = "0.14.6"
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 migration = { path = "../migration" }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tokio-stream = { version = "0.1", features = ["net"] }

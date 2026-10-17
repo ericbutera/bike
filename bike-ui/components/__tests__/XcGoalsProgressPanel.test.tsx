@@ -8,7 +8,6 @@ import XcGoalsProgressPanel, {
 } from "../XcGoalsProgressPanel";
 
 const mocks = vi.hoisted(() => ({
-  useActivityProcessingState: vi.fn(),
   useCurrentUser: vi.fn(),
   useUpdateUserPreferences: vi.fn(),
   useUserPreferences: vi.fn(),
@@ -24,7 +23,6 @@ vi.mock("../../lib/auth", () => ({
 }));
 
 vi.mock("../../lib/queries", () => ({
-  useActivityProcessingState: mocks.useActivityProcessingState,
   useUpdateUserPreferences: mocks.useUpdateUserPreferences,
   useUserPreferences: mocks.useUserPreferences,
   useXcGoalProgress: mocks.useXcGoalProgress,
@@ -75,12 +73,6 @@ describe("XcGoalsProgressPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mocks.useActivityProcessingState.mockReturnValue({
-      data: null,
-      isLoading: false,
-      isError: false,
-      error: null,
-    });
     mocks.useCurrentUser.mockReturnValue({
       user: { id: 1, email: "rider@example.com" },
       isLoading: false,

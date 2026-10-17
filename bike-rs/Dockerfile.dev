@@ -14,7 +14,7 @@ COPY --from=protobuf /opt/protoc/bin/protoc /usr/local/bin/protoc
 COPY --from=protobuf /opt/protoc/include /usr/local/include
 
 FROM development AS worker
-CMD ["watchexec", "--restart", "--shell=none", "--stop-signal", "SIGTERM", "--watch", "worker", "--watch", "bike-core", "--watch", "Cargo.toml", "--", "cargo", "run", "--locked", "--bin", "worker"]
+CMD ["watchexec", "--restart", "--shell=none", "--stop-signal", "SIGTERM", "--watch", "worker", "--watch", "bike-core", "--watch", "integrations", "--watch", "Cargo.toml", "--", "cargo", "run", "--locked", "--bin", "temporal-worker"]
 
 FROM development AS api
-CMD ["watchexec", "--restart", "--shell=none", "--stop-signal", "SIGTERM", "--watch", "api", "--watch", "bike-core", "--watch", "migration", "--watch", "Cargo.toml", "--", "cargo", "run", "--locked", "--bin", "api"]
+CMD ["watchexec", "--restart", "--shell=none", "--stop-signal", "SIGTERM", "--watch", "api", "--watch", "bike-core", "--watch", "integrations", "--watch", "migration", "--watch", "Cargo.toml", "--", "cargo", "run", "--locked", "--bin", "api"]

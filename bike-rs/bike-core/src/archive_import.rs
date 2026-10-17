@@ -1,16 +1,9 @@
-use crate::activity_import_lock::{
-    acquire_user_activity_import_lock, mark_user_activity_import_lock_stage, release_user_activity_import_lock,
-    ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-};
 use crate::activity_import_pipeline::{
-    process_stored_activity_import, store_activity_upload_import_with_artifacts, ActivityUploadDeduplication,
-    ActivityUploadPayload, PersistActivityUploadOutcome, StoreActivityUploadImportRequest,
+    store_activity_upload_import_with_artifacts, ActivityUploadPayload, StoreActivityUploadImportRequest,
 };
-use crate::activity_lifecycle::resume_incomplete_activity_imports_for_user;
 use crate::config::Config;
 use crate::entities::activity_archive_import_jobs;
 use crate::jobs::JobQueue as TaskQueue;
-use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
 use reqwest::{header, redirect::Policy, Client, Url};
 use sea_orm::DatabaseConnection;
@@ -25,8 +18,7 @@ use tokio::net::lookup_host;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use zip::ZipArchive;
-mod batch;
-pub use batch::{finish_queued_archive_batch, queue_archive_page};
+pub mod native;
 
 const MAX_ARCHIVE_REDIRECTS: usize = 5;
 // Bound nested ZIPs and decoded activities independently; descriptors never
@@ -83,26 +75,16 @@ pub async fn enqueue_activity_archive_import_job(
     user_storage_key: &str,
     archive_url: String,
 ) -> Result<activity_archive_import_jobs::Model, AppError> {
-    acquire_user_activity_import_lock(
-        db,
-        user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-        ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
-    )
-    .await?;
-
     let job = activity_archive_import_jobs::Model::queue(db, user_id, user_storage_key, archive_url).await;
 
     let job = match job {
         Ok(job) => job,
         Err(error) => {
-            release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT).await?;
             return Err(AppError::from(error));
         }
     };
 
     if let Err(message) = tasks.archive_activity_import(job.id).await {
-        release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT).await?;
         let failed_job = mark_activity_archive_import_job_failed(
             db,
             &job,
@@ -117,80 +99,6 @@ pub async fn enqueue_activity_archive_import_job(
     }
 
     Ok(job)
-}
-
-pub async fn process_activity_archive_import_job(
-    db: &DatabaseConnection,
-    uploads_dir: &str,
-    job_id: i32,
-) -> Result<(), AppError> {
-    let job = activity_archive_import_jobs::Entity::find_for_batch(db, job_id)
-        .await?
-        .ok_or_else(|| AppError::internal(format!("Archive import job {job_id} was not found")))?;
-
-    mark_user_activity_import_lock_stage(
-        db,
-        job.user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-        ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
-    )
-    .await?;
-
-    let running_job = mark_activity_archive_import_job_running(db, &job).await?;
-    let downloaded = match download_archive_from_url(uploads_dir, &running_job.archive_url).await {
-        Ok(downloaded) => downloaded,
-        Err(error) => {
-            mark_activity_archive_import_job_failed(db, &running_job, None, error.message.clone()).await?;
-            release_user_activity_import_lock(db, running_job.user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT)
-                .await?;
-            return Err(error);
-        }
-    };
-
-    let result = import_activity_archive_from_path(
-        db,
-        &TaskQueue::new(db.clone()),
-        ImportActivityArchiveRequest {
-            archive_job_id: Some(job_id),
-            uploads_dir,
-            user_storage_key: &running_job.user_storage_key,
-            user_id: running_job.user_id,
-            activity_source: "archive_url_import",
-            display_source: downloaded.final_url.clone(),
-            archive_path: &downloaded.archive_path,
-        },
-    )
-    .await;
-
-    let _ = tokio::fs::remove_file(&downloaded.archive_path).await;
-
-    match result {
-        Ok(summary) => {
-            mark_activity_archive_import_job_finished(db, &running_job, &summary).await?;
-            release_user_activity_import_lock(db, running_job.user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT)
-                .await?;
-            if summary.failed_count > 0 {
-                Err(AppError::internal(format!(
-                    "Archive finished with {} failed entries; inspect import history",
-                    summary.failed_count
-                )))
-            } else {
-                Ok(())
-            }
-        }
-        Err(error) => {
-            mark_activity_archive_import_job_failed(
-                db,
-                &running_job,
-                Some(downloaded.final_url),
-                error.message.clone(),
-            )
-            .await?;
-            release_user_activity_import_lock(db, running_job.user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT)
-                .await?;
-            Err(error)
-        }
-    }
 }
 
 pub fn normalize_archive_url(raw: &str) -> Result<String, AppError> {
@@ -288,224 +196,10 @@ struct ArchiveScanResult {
     supported_entries: Vec<IndexedArchiveActivityEntry>,
 }
 
-struct ActivityArchiveImportRun<'a> {
-    archive_job_id: Option<i32>,
-    db: &'a DatabaseConnection,
-    uploads_dir: &'a str,
-    user_storage_key: &'a str,
-    user_id: i32,
-    activity_source: &'a str,
-    training_profile: &'a TrainingProfile,
-}
-
-impl ActivityArchiveImportRun<'_> {
-    async fn import_entry(
-        &self,
-        archive_path: &Path,
-        indexed_entry: &IndexedArchiveActivityEntry,
-    ) -> Result<PersistActivityUploadOutcome, AppError> {
-        let bytes = read_archive_entry_bytes(archive_path, &indexed_entry.source)?;
-        let bytes = maybe_decode_archive_entry(&indexed_entry.activity_entry, bytes).map_err(AppError::bad_request)?;
-        let upload = ActivityUploadPayload {
-            original_filename: indexed_entry.activity_entry.original_filename.clone(),
-            format: indexed_entry.activity_entry.format.clone(),
-            mime_type: None,
-            source_correlation_id: None,
-            bytes,
-        };
-
-        let import = store_activity_upload_import_with_artifacts(
-            self.db,
-            StoreActivityUploadImportRequest {
-                uploads_dir: self.uploads_dir,
-                user_storage_key: self.user_storage_key,
-                user_id: self.user_id,
-                upload,
-                source: self.activity_source,
-                primary_artifact_kind: "original",
-                primary_source_quality: crate::activity_import_pipeline::original_source_quality_for_format(
-                    &indexed_entry.activity_entry.format,
-                ),
-                additional_artifacts: Vec::new(),
-            },
-        )
-        .await?;
-        if let Some(job_id) = self.archive_job_id {
-            crate::entities::activity_imports::Entity::attach_archive_job(self.db, self.user_id, import.id, job_id)
-                .await?;
-        }
-        process_stored_activity_import(
-            self.db,
-            self.uploads_dir,
-            self.user_id,
-            import,
-            ActivityUploadDeduplication::Enabled,
-            Some(self.training_profile),
-        )
-        .await
-    }
-}
-
-#[derive(Default)]
-struct ActivityArchiveImportProgress {
-    imported_count: i32,
-    duplicate_count: i32,
-    affected_segment_ids: Vec<i32>,
-    imported_import_ids: Vec<i32>,
-    fitness_dirty_from_day: Option<chrono::NaiveDate>,
-    error_samples: Vec<String>,
-}
-
-impl ActivityArchiveImportProgress {
-    fn record_imported(&mut self, persisted: crate::activity_import_pipeline::PersistedActivityImport) {
-        self.imported_count += 1;
-        self.imported_import_ids.push(persisted.import.id);
-        self.affected_segment_ids.extend(persisted.affected_segment_ids);
-        self.fitness_dirty_from_day = Some(match self.fitness_dirty_from_day {
-            Some(current) => current.min(persisted.fitness_dirty_from_day),
-            None => persisted.fitness_dirty_from_day,
-        });
-    }
-
-    fn record_duplicate(&mut self) {
-        self.duplicate_count += 1;
-    }
-
-    fn record_error(&mut self, entry_name: &str, message: impl Into<String>) {
-        self.error_samples.push(format!("{}: {}", entry_name, message.into()));
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArchiveScanMode {
     Generic,
     StravaExport,
-}
-
-pub async fn import_activity_archive_from_path(
-    db: &sea_orm::DatabaseConnection,
-    tasks: &TaskQueue,
-    request: ImportActivityArchiveRequest<'_>,
-) -> Result<ActivityArchiveImportResponse, AppError> {
-    let ImportActivityArchiveRequest {
-        archive_job_id,
-        uploads_dir,
-        user_storage_key,
-        user_id,
-        activity_source,
-        display_source,
-        archive_path,
-    } = request;
-    resume_incomplete_activity_imports_for_user(db, uploads_dir, tasks, user_id).await?;
-
-    let scan = scan_archive_entries(archive_path)?;
-    let training_profile = load_training_profile(db, user_id).await?;
-    let run = ActivityArchiveImportRun {
-        archive_job_id,
-        db,
-        uploads_dir,
-        user_storage_key,
-        user_id,
-        activity_source,
-        training_profile: &training_profile,
-    };
-
-    let progress = import_supported_archive_entries(&run, archive_path, &scan).await?;
-
-    if scan.supported_entry_count == 0 {
-        return Err(AppError::validation_field(
-            "archive_url",
-            "Archive did not contain any supported .fit, .tcx, or .gpx files",
-        ));
-    }
-
-    let ActivityArchiveImportProgress {
-        imported_count,
-        duplicate_count,
-        affected_segment_ids,
-        imported_import_ids,
-        fitness_dirty_from_day,
-        error_samples,
-    } = progress;
-    let failed_count = error_samples.len() as i32;
-    let error_samples = error_samples.into_iter().take(10).collect::<Vec<_>>();
-
-    if imported_count > 0 {
-        crate::activity_import_lifecycle::complete_activity_imports(
-            db,
-            tasks,
-            user_id,
-            &imported_import_ids,
-            affected_segment_ids,
-            fitness_dirty_from_day,
-        )
-        .await?;
-    }
-
-    Ok(ActivityArchiveImportResponse {
-        source: display_source,
-        total_entries: scan.total_entries,
-        supported_entry_count: scan.supported_entry_count,
-        imported_count,
-        duplicate_count,
-        skipped_unsupported_count: scan.skipped_unsupported_count,
-        failed_count,
-        error_samples,
-    })
-}
-
-async fn import_supported_archive_entries(
-    run: &ActivityArchiveImportRun<'_>,
-    archive_path: &Path,
-    scan: &ArchiveScanResult,
-) -> Result<ActivityArchiveImportProgress, AppError> {
-    let mut progress = ActivityArchiveImportProgress::default();
-    persist_archive_progress(run, scan, &progress).await?;
-    let supported_entries = sorted_supported_archive_entries(scan);
-
-    for indexed_entry in &supported_entries {
-        match run.import_entry(archive_path, indexed_entry).await {
-            Ok(PersistActivityUploadOutcome::Imported(persisted)) => {
-                progress.record_imported(persisted);
-            }
-            Ok(PersistActivityUploadOutcome::Duplicate(_)) => {
-                progress.record_duplicate();
-            }
-            Err(error) => {
-                progress.record_error(&indexed_entry.entry_name, error.message);
-            }
-        }
-        persist_archive_progress(run, scan, &progress).await?;
-    }
-
-    Ok(progress)
-}
-
-async fn persist_archive_progress(
-    run: &ActivityArchiveImportRun<'_>,
-    scan: &ArchiveScanResult,
-    progress: &ActivityArchiveImportProgress,
-) -> Result<(), AppError> {
-    let Some(job_id) = run.archive_job_id else {
-        return Ok(());
-    };
-    activity_archive_import_jobs::Entity::store_progress(
-        run.db,
-        run.user_id,
-        job_id,
-        &ActivityArchiveImportResponse {
-            source: run.activity_source.into(),
-            total_entries: scan.total_entries,
-            supported_entry_count: scan.supported_entry_count,
-            imported_count: progress.imported_count,
-            duplicate_count: progress.duplicate_count,
-            skipped_unsupported_count: scan.skipped_unsupported_count,
-            failed_count: progress.error_samples.len() as i32,
-            error_samples: progress.error_samples.iter().take(10).cloned().collect(),
-        },
-    )
-    .await?;
-    Ok(())
 }
 
 fn sorted_supported_archive_entries(scan: &ArchiveScanResult) -> Vec<IndexedArchiveActivityEntry> {

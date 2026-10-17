@@ -1,347 +1,287 @@
 use super::*;
-use crate::workflows::{ActivityArchiveImport, ReprocessArchiveFitActivityImports, ReprocessUserActivityImports};
-use bike_core::{bike_tasks::*, test_support as fixtures};
-use temporalio_common::protos::coresdk::workflow_commands::workflow_command;
+use bike_core::test_support as fixtures;
 
-pub(super) fn page<T>(request: &PageRequest, factory: fn(&PageRequest, u64) -> T) -> Vec<T> {
-    (request.offset..request.offset + request.expected_entries() as u64)
-        .map(|index| factory(request, index))
-        .collect()
-}
-
-pub(super) fn children<I: Serialize>(mock: &mut WorkflowMock, name: &str, inputs: &[I], result: &impl Serialize) {
-    for input in inputs {
-        let seq = mock.start_child(name, input);
-        // A started child must be awaited before the page may advance.
-        mock.assert_no_commands();
-        mock.complete_child(seq, result);
+fn page() -> UserPage {
+    UserPage {
+        user_id: fixtures::activity_task().user_id,
+        after_id: 0,
     }
 }
-
-fn reprocess_scope() -> ManifestScope {
-    ManifestScope::Reprocessing {
-        user_id: 7,
-        selection: ReprocessScope::UserImports,
+fn cycling(page: UserPage) -> ActivityPage {
+    ActivityPage {
+        page,
+        selection: ActivitySelection::Cycling,
+    }
+}
+fn imports(page: UserPage, archive_fits_only: bool) -> ActivityPage {
+    ActivityPage {
+        page,
+        selection: ActivitySelection::Imports { archive_fits_only },
+    }
+}
+fn background_activity(activity_id: i32) -> ActivityTask {
+    ActivityTask {
+        activity_id,
+        priority: Priority::Background,
+        ..fixtures::activity_task()
     }
 }
 
 #[test]
-fn reprocessing_prepares_one_snapshot_and_awaits_more_than_one_page_of_shared_children() {
-    let input = fixtures::batch_input();
-    let request = fixtures::page_request(reprocess_scope(), 18, 0);
-    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(input.clone());
-    mock.activity(
-        "prepare_reprocess_imports",
-        &ReprocessSelection {
-            command: input.command,
-            scope: ReprocessScope::UserImports,
+fn regenerate_activity_awaits_segment_results_before_achievements() {
+    let task = background_activity(42);
+    let mut mock = WorkflowMock::new::<RegenerateActivitySegments>(task.clone());
+    mock.activity("rebuild_activity_segments", &task, &vec![18_i32]);
+    let child = mock.start_child(
+        "rebuild_segment_analytics",
+        &SegmentChange {
+            segment_id: 18,
+            priority: Priority::Background,
         },
-        &request.manifest,
     );
-    let first = page(&request, fixtures::reprocess_entry);
-    mock.activity("reprocess_import_page", &request, &first);
-    children(
-        &mut mock,
-        "reprocess_activity_import",
-        &first,
-        &fixtures::import_result(),
-    );
-    let last = PageRequest { offset: 16, ..request };
-    let entries = page(&last, fixtures::reprocess_entry);
-    mock.activity("reprocess_import_page", &last, &entries);
-    children(
-        &mut mock,
-        "reprocess_activity_import",
-        &entries,
-        &fixtures::import_result(),
-    );
-    assert_eq!(
-        mock.result::<BatchResult>(),
-        BatchResult {
-            command_id: "fixture-batch".into(),
-            completed: 18
+    mock.assert_pending();
+    mock.complete_child(child, &());
+    mock.activity("rebuild_activity_achievements", &task, &());
+    mock.result::<()>();
+}
+
+#[test]
+fn segment_regeneration_calls_its_domain_operation() {
+    let mut mock = WorkflowMock::new::<RegenerateSegmentEfforts>(SegmentChange {
+        segment_id: 18,
+        priority: Priority::Background,
+    });
+    mock.activity("regenerate_segment_efforts", &18_i32, &());
+    mock.result::<()>();
+}
+
+#[test]
+fn user_segments_pages_continue_after_awaited_children() {
+    let mut input = page();
+    for batch in [0..16, 16..32] {
+        let tasks: Vec<_> = batch.map(|id| background_activity(id + 1)).collect();
+        let mut mock = WorkflowMock::new::<RegenerateUserSegments>(input.clone());
+        mock.activity("activity_page", &cycling(input.clone()), &tasks);
+        for task in &tasks {
+            let child = mock.start_child("regenerate_activity_segments", task);
+            mock.assert_pending();
+            mock.complete_child(child, &());
         }
-    );
+        input = mock.continued_input::<UserPage>();
+        assert_eq!(input.after_id, tasks.last().unwrap().activity_id);
+    }
+    let mut mock = WorkflowMock::new::<RegenerateUserSegments>(input.clone());
+    mock.activity("activity_page", &cycling(input), &Vec::<ActivityTask>::new());
+    mock.result::<()>();
 }
 
 #[test]
-fn archive_fit_reprocessing_uses_its_own_selection_and_the_same_reprocess_child() {
-    let input = fixtures::batch_input();
-    let scope = ManifestScope::Reprocessing {
-        user_id: 7,
-        selection: ReprocessScope::ArchiveFits,
+fn user_imports_load_owned_inputs_and_await_reprocessing() {
+    let task = background_activity(fixtures::reprocess_input().activity_id);
+    let mut input = fixtures::reprocess_input();
+    input.source.priority = task.priority;
+    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(page());
+    mock.activity("activity_page", &imports(page(), false), &vec![task.clone()]);
+    mock.activity("reprocess_input", &task, &input);
+    let child = mock.start_child("reprocess_activity_import", &input);
+    mock.assert_pending();
+    mock.complete_child(child, &fixtures::import_result());
+    mock.result::<()>();
+}
+
+#[test]
+fn archive_fit_reprocessing_keeps_its_scope() {
+    let mut mock = WorkflowMock::new::<ReprocessArchiveFitActivityImports>(page());
+    let task = background_activity(fixtures::reprocess_input().activity_id);
+    let mut input = fixtures::reprocess_input();
+    input.source.priority = task.priority;
+    mock.activity("activity_page", &imports(page(), true), &vec![task.clone()]);
+    mock.activity("reprocess_input", &task, &input);
+    let child = mock.start_child("reprocess_activity_import", &input);
+    mock.assert_pending();
+    mock.complete_child(child, &fixtures::import_result());
+    mock.result::<()>();
+}
+
+#[test]
+fn training_backfill_calculates_each_activity_then_marks_domain_status() {
+    let task = background_activity(42);
+    let mut mock = WorkflowMock::new::<BackfillUserXcTraining>(page());
+    mock.activity("activity_page", &cycling(page()), &vec![task.clone()]);
+    mock.activity("rebuild_activity_training", &task, &());
+    mock.activity("finish_training_backfill", &page().user_id, &());
+    mock.result::<()>();
+}
+
+fn archive_cursor() -> ArchiveCursor {
+    ArchiveCursor {
+        job_id: 7,
+        archive_path: "/uploads/archives/7.zip".into(),
+        offset: 0,
+    }
+}
+
+#[test]
+fn archive_replay_reuses_extracted_page_then_continues_with_a_small_cursor() {
+    let input = ArchiveInput {
+        job_id: 7,
+        cursor: None,
     };
-    let request = fixtures::page_request(scope, 1, 0);
-    let mut mock = WorkflowMock::new::<ReprocessArchiveFitActivityImports>(input.clone());
+    let cursor = archive_cursor();
+    let source = fixtures::import_command().source;
+    let mut mock = WorkflowMock::new::<ActivityArchiveImport>(input.clone());
+    mock.activity("prepare_archive", &7_i32, &cursor);
     mock.activity(
-        "prepare_reprocess_imports",
-        &ReprocessSelection {
-            command: input.command,
-            scope: ReprocessScope::ArchiveFits,
+        "archive_page",
+        &cursor,
+        &ArchivePage {
+            sources: vec![source.clone()],
+            next_offset: 16,
+            done: false,
         },
-        &request.manifest,
     );
-    let entries = page(&request, fixtures::reprocess_entry);
-    mock.activity("reprocess_import_page", &request, &entries);
-    children(
-        &mut mock,
-        "reprocess_activity_import",
-        &entries,
-        &fixtures::import_result(),
+    let mut mock = mock.restart::<ActivityArchiveImport>(input);
+    let child = mock.start_child("process_activity_import", &source);
+    mock.assert_pending();
+    mock.complete_child(child, &fixtures::import_result());
+    let next = mock.continued_input::<ArchiveInput>();
+    assert_eq!(next.cursor.as_ref().unwrap().offset, 16);
+    let mut mock = WorkflowMock::new::<ActivityArchiveImport>(next.clone());
+    mock.activity(
+        "archive_page",
+        &next.cursor.unwrap(),
+        &ArchivePage {
+            sources: vec![],
+            next_offset: 16,
+            done: true,
+        },
     );
-    assert_eq!(mock.result::<BatchResult>().completed, 1);
+    mock.activity("finish_archive", &7_i32, &());
+    mock.result::<()>();
 }
 
 #[test]
-fn worker_restart_while_a_child_runs_keeps_the_same_child_and_page_progress() {
-    let request = fixtures::page_request(reprocess_scope(), 2, 0);
-    let input = fixtures::prepared_batch(&request);
-    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(input.clone());
-    let entries = page(&request, fixtures::reprocess_entry);
-    mock.activity("reprocess_import_page", &request, &entries);
-    let first = mock.start_child("reprocess_activity_import", &entries[0]);
-    let mut mock = mock.restart::<ReprocessUserActivityImports>(input);
-    mock.complete_child(first, &fixtures::import_result());
-    children(
-        &mut mock,
-        "reprocess_activity_import",
-        &entries[1..],
-        &fixtures::import_result(),
+fn failed_archive_child_stops_before_advancing_or_marking_complete() {
+    let source = fixtures::import_command().source;
+    let mut mock = WorkflowMock::new::<ActivityArchiveImport>(ArchiveInput {
+        job_id: 7,
+        cursor: Some(archive_cursor()),
+    });
+    mock.activity(
+        "archive_page",
+        &archive_cursor(),
+        &ArchivePage {
+            sources: vec![source.clone()],
+            next_offset: 1,
+            done: true,
+        },
     );
-    assert_eq!(mock.result::<BatchResult>().completed, 2);
+    let child = mock.start_child("process_activity_import", &source);
+    mock.fail_child(child);
+    mock.assert_failure_message("Fixture child failed");
 }
 
 #[test]
-fn continuation_carries_only_settled_progress_and_reuses_the_retained_manifest() {
-    let request = fixtures::page_request(reprocess_scope(), 18, 0);
-    let input = fixtures::prepared_batch(&request);
-    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(input);
-    let entries = page(&request, fixtures::reprocess_entry);
-    mock.activity("reprocess_import_page", &request, &entries);
-    mock.suggest_continue_as_new();
-    children(
-        &mut mock,
-        "reprocess_activity_import",
-        &entries,
-        &fixtures::import_result(),
-    );
-    let continued: BatchInput = mock.continued_input();
-    assert_eq!(continued.progress.settled, 16);
-    assert_eq!(continued.progress.manifest.as_ref(), Some(&request.manifest));
-    let mut resumed = WorkflowMock::new::<ReprocessUserActivityImports>(continued);
-    let last = PageRequest { offset: 16, ..request };
-    let entries = page(&last, fixtures::reprocess_entry);
-    resumed.activity("reprocess_import_page", &last, &entries);
-    children(
-        &mut resumed,
-        "reprocess_activity_import",
-        &entries,
-        &fixtures::import_result(),
-    );
-    assert_eq!(resumed.result::<BatchResult>().completed, 18);
+fn reconciliation_awaits_heatmaps_and_handles_an_empty_page() {
+    let task = background_activity(42);
+    let mut mock = WorkflowMock::new::<ReconcileHeatmaps>(0);
+    mock.activity("pending_heatmaps", &0_i32, &vec![task.clone()]);
+    let child = mock.start_child("prepare_heatmap", &task);
+    mock.assert_pending();
+    mock.complete_child(child, &());
+    mock.result::<()>();
+    let mut mock = WorkflowMock::new::<ReconcileHeatmaps>(0);
+    mock.activity("pending_heatmaps", &0_i32, &Vec::<ActivityTask>::new());
+    mock.result::<()>();
 }
 
 #[test]
-fn failed_children_and_failed_child_starts_never_report_batch_success() {
-    let request = fixtures::page_request(reprocess_scope(), 1, 0);
-    for fail_start in [false, true] {
-        let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
-        let entries = page(&request, fixtures::reprocess_entry);
-        mock.activity("reprocess_import_page", &request, &entries);
-        if fail_start {
-            mock.fail_child_start("reprocess_activity_import", &entries[0]);
+fn both_reprocessing_batches_await_the_whole_page_before_continuing() {
+    let tasks: Vec<_> = (1..=16).map(background_activity).collect();
+    for archive_fits_only in [false, true] {
+        let mut mock = if archive_fits_only {
+            WorkflowMock::new::<ReprocessArchiveFitActivityImports>(page())
         } else {
-            let seq = mock.start_child("reprocess_activity_import", &entries[0]);
-            mock.fail_child(seq);
+            WorkflowMock::new::<ReprocessUserActivityImports>(page())
+        };
+        mock.activity("activity_page", &imports(page(), archive_fits_only), &tasks);
+        for task in &tasks {
+            let mut input = fixtures::reprocess_input();
+            input.activity_id = task.activity_id;
+            input.source.activity_import_id = 100 + task.activity_id;
+            input.source.priority = task.priority;
+            mock.activity("reprocess_input", task, &input);
+            let child = mock.start_child("reprocess_activity_import", &input);
+            mock.assert_pending();
+            mock.complete_child(
+                child,
+                &ActivityImportResult {
+                    activity_id: input.activity_id,
+                    activity_import_id: input.source.activity_import_id,
+                    priority: task.priority,
+                    ..fixtures::import_result()
+                },
+            );
         }
-        mock.assert_failed();
+        let next = mock.continued_input::<UserPage>();
+        assert_eq!(next, UserPage { after_id: 16, ..page() });
+        let mut mock = if archive_fits_only {
+            WorkflowMock::new::<ReprocessArchiveFitActivityImports>(next.clone())
+        } else {
+            WorkflowMock::new::<ReprocessUserActivityImports>(next.clone())
+        };
+        mock.activity(
+            "activity_page",
+            &imports(next, archive_fits_only),
+            &Vec::<ActivityTask>::new(),
+        );
+        mock.result::<()>();
     }
 }
 
 #[test]
-fn empty_manifest_finishes_without_fetching_pages_or_starting_children() {
-    let request = fixtures::page_request(reprocess_scope(), 0, 0);
-    let mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
-    assert_eq!(mock.result::<BatchResult>().completed, 0);
-}
-
-#[test]
-fn truncated_duplicate_and_foreign_pages_fail_before_any_child_starts() {
-    let request = fixtures::page_request(reprocess_scope(), 2, 0);
-    let entries = page(&request, fixtures::reprocess_entry);
-    let mut foreign = entries.clone();
-    foreign[1].source.user_id = 8;
-    let mut foreign_command = entries.clone();
-    foreign_command[1].source.command_id = "another-batch:entry-1".into();
-    for invalid in [
-        vec![entries[0].clone()],
-        vec![entries[0].clone(); 2],
-        foreign,
-        foreign_command,
-    ] {
-        let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
-        mock.activity("reprocess_import_page", &request, &invalid);
-        mock.assert_failed();
+fn training_backfill_continues_before_marking_completion() {
+    let tasks: Vec<_> = (1..=16).map(background_activity).collect();
+    let mut mock = WorkflowMock::new::<BackfillUserXcTraining>(page());
+    mock.activity("activity_page", &cycling(page()), &tasks);
+    for task in &tasks {
+        mock.activity("rebuild_activity_training", task, &());
     }
+    let next = mock.continued_input::<UserPage>();
+    assert_eq!(next.after_id, 16);
+    let mut mock = WorkflowMock::new::<BackfillUserXcTraining>(next.clone());
+    mock.activity("activity_page", &cycling(next), &Vec::<ActivityTask>::new());
+    mock.activity("finish_training_backfill", &page().user_id, &());
+    mock.result::<()>();
 }
 
 #[test]
-fn continued_input_cannot_substitute_a_different_manifest_selection() {
-    let request = fixtures::page_request(reprocess_scope(), 1, 0);
-    let mock = WorkflowMock::new::<ReprocessArchiveFitActivityImports>(fixtures::prepared_batch(&request));
-    mock.assert_failure_message("selection");
+fn heatmap_reconciliation_continues_after_its_last_completed_child() {
+    let tasks: Vec<_> = (1..=16).map(background_activity).collect();
+    let mut mock = WorkflowMock::new::<ReconcileHeatmaps>(0);
+    mock.activity("pending_heatmaps", &0_i32, &tasks);
+    for task in &tasks {
+        let child = mock.start_child("prepare_heatmap", task);
+        mock.assert_pending();
+        mock.complete_child(child, &());
+    }
+    assert_eq!(mock.continued_input::<i32>(), 16);
 }
 
 #[test]
-fn native_child_options_keep_stable_identity_priority_and_cancellation() {
-    let request = fixtures::page_request(reprocess_scope(), 1, 0);
-    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
-    let entries = page(&request, fixtures::reprocess_entry);
-    mock.activity("reprocess_import_page", &request, &entries);
-    let workflow_command::Variant::StartChildWorkflowExecution(child) = mock.next_command() else {
-        panic!("Expected native child workflow")
-    };
-    assert_eq!(child.workflow_type, "reprocess_activity_import");
-    assert!(child.retry_policy.is_none());
-    assert_eq!(
-        child.workflow_id,
-        "bike-task-reprocess_activity_import-user-7-fixture-batch:entry-0"
-    );
-    assert_eq!(child.task_queue, crate::TASK_QUEUE);
-    assert_eq!(child.priority.unwrap().priority_key, 5);
-    assert_eq!(
-        child.cancellation_type,
-        temporalio_common::protos::coresdk::child_workflow::ChildWorkflowCancellationType::WaitCancellationCompleted
-            as i32
-    );
-}
-
-#[test]
-fn archive_import_retains_one_manifest_and_reuses_the_process_import_workflow() {
-    let input = fixtures::archive_input();
-    let request = fixtures::page_request(
-        ManifestScope::Archive {
-            user_id: 7,
-            archive_job_id: 9,
-        },
-        2,
-        0,
-    );
-    let mut mock = WorkflowMock::new::<ActivityArchiveImport>(input.clone());
+fn a_failed_reprocessing_child_stops_the_batch_before_the_next_activity() {
+    let first = background_activity(42);
+    let mut input = fixtures::reprocess_input();
+    input.source.priority = first.priority;
+    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(page());
     mock.activity(
-        "prepare_archive_manifest",
-        &ArchiveCommand {
-            batch: input.batch.command,
-            archive_job_id: input.archive_job_id,
-            source: input.source,
-        },
-        &request.manifest,
+        "activity_page",
+        &imports(page(), false),
+        &vec![first.clone(), background_activity(43)],
     );
-    let entries = page(&request, fixtures::import_entry);
-    mock.activity("archive_import_page", &request, &entries);
-    children(
-        &mut mock,
-        "process_activity_import",
-        &entries,
-        &fixtures::import_result(),
-    );
-    assert_eq!(mock.result::<BatchResult>().completed, 2);
-}
-
-#[test]
-fn parent_cancellation_waits_for_the_child_and_remains_canceled() {
-    let request = fixtures::page_request(reprocess_scope(), 1, 0);
-    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
-    let entries = page(&request, fixtures::reprocess_entry);
-    mock.activity("reprocess_import_page", &request, &entries);
-    let seq = mock.start_child("reprocess_activity_import", &entries[0]);
-    mock.cancel_child(seq);
-    mock.assert_cancelled();
-}
-
-#[test]
-fn successful_child_completion_after_parent_cancellation_cannot_finish_the_batch() {
-    let request = fixtures::page_request(reprocess_scope(), 1, 0);
-    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
-    let entries = page(&request, fixtures::reprocess_entry);
-    mock.activity("reprocess_import_page", &request, &entries);
-    let seq = mock.start_child("reprocess_activity_import", &entries[0]);
-    mock.cancel();
-    assert!(matches!(
-        mock.next_command(),
-        workflow_command::Variant::CancelChildWorkflowExecution(_)
-    ));
-    mock.complete_child(seq, &fixtures::import_result());
-    mock.assert_cancelled();
-}
-
-#[test]
-fn archive_manifest_preparation_uses_native_streaming_timeouts_and_heartbeats() {
-    let mut mock = WorkflowMock::new::<ActivityArchiveImport>(fixtures::archive_input());
-    let workflow_command::Variant::ScheduleActivity(activity) = mock.next_command() else {
-        panic!("Expected manifest preparation Activity")
-    };
-    assert_eq!(activity.activity_type, "prepare_archive_manifest");
-    assert_eq!(
-        Duration::try_from(activity.start_to_close_timeout.unwrap()).unwrap(),
-        policy::MANIFEST_EXECUTION_TIMEOUT
-    );
-    assert_eq!(
-        Duration::try_from(activity.heartbeat_timeout.unwrap()).unwrap(),
-        policy::ACTIVITY_HEARTBEAT_TIMEOUT
-    );
-    assert_eq!(
-        activity.retry_policy.unwrap(),
-        policy::activity_retry_policy().into_raw()
-    );
-    assert!(activity.do_not_eagerly_execute);
-}
-
-#[test]
-fn archive_runs_bound_history_and_continue_without_repreparing_or_double_counting() {
-    let request = fixtures::page_request(
-        ManifestScope::Archive {
-            user_id: 7,
-            archive_job_id: 9,
-        },
-        273,
-        0,
-    );
-    let mut input = fixtures::archive_input();
-    input.batch = fixtures::prepared_batch(&request);
-    let source = input.source.clone();
-    let mut mock = WorkflowMock::new::<ActivityArchiveImport>(input.clone());
-    for offset in (0..256).step_by(PAGE_SIZE) {
-        let page_request = PageRequest {
-            offset,
-            ..request.clone()
-        };
-        let entries = page(&page_request, fixtures::import_entry);
-        mock.activity("archive_import_page", &page_request, &entries);
-        children(
-            &mut mock,
-            "process_activity_import",
-            &entries,
-            &fixtures::import_result(),
-        );
-    }
-    let continued: ArchiveInput = mock.continued_input();
-    assert_eq!(continued.source, source);
-    assert_eq!(continued.batch.progress.settled, 256);
-    let mut resumed = WorkflowMock::new::<ActivityArchiveImport>(continued);
-    for offset in (256..273).step_by(PAGE_SIZE) {
-        let page_request = PageRequest {
-            offset,
-            ..request.clone()
-        };
-        let entries = page(&page_request, fixtures::import_entry);
-        resumed.activity("archive_import_page", &page_request, &entries);
-        children(
-            &mut resumed,
-            "process_activity_import",
-            &entries,
-            &fixtures::import_result(),
-        );
-    }
-    assert_eq!(resumed.result::<BatchResult>().completed, 273);
+    mock.activity("reprocess_input", &first, &input);
+    let child = mock.start_child("reprocess_activity_import", &input);
+    mock.assert_pending();
+    mock.fail_child(child);
+    mock.assert_failure_message("Fixture child failed");
 }

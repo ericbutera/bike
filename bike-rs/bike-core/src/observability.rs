@@ -284,7 +284,7 @@ pub(crate) fn blocking_with_current_trace<T>(work: impl FnOnce() -> T + Send) ->
 fn is_application_trace_target(target: &str) -> bool {
     matches!(
         target.split("::").next(),
-        Some("api" | "worker" | "bike_core" | "temporal_worker" | "strava_temporal")
+        Some("api" | "worker" | "bike_core" | "integrations" | "temporal_worker" | "strava_temporal")
     )
 }
 
@@ -468,7 +468,7 @@ mod tests {
                 let _scan = scan.enter();
                 super::inject_current_trace_context().expect("Native scan must have trace context")
             };
-            let child = tracing::info_span!(target: "bike_core::strava::logging", "strava.activity");
+            let child = tracing::info_span!(target: "integrations::strava::logging", "strava.activity");
             super::set_span_parent_from_carrier(&child, Some(&carrier));
             let _child = child.enter();
             let child_carrier = super::inject_current_trace_context().unwrap();

@@ -1,10 +1,36 @@
 use super::*;
 use crate::entities::strava_connections;
-use crate::strava::client::{StravaAthleteSummary, StravaAuthorizationTokenResponse, StravaRefreshTokenResponse};
 use crate::workflow_error::WorkflowError as AppError;
 
+#[derive(Debug, serde::Deserialize)]
+pub struct StravaAuthorizationTokenResponse {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_at: i64,
+    pub scope: String,
+    pub athlete: StravaAthleteSummary,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct StravaRefreshTokenResponse {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_at: i64,
+    pub scope: Option<String>,
+    pub athlete: Option<StravaAthleteSummary>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct StravaAthleteSummary {
+    pub id: i64,
+    pub username: Option<String>,
+    pub firstname: Option<String>,
+    pub lastname: Option<String>,
+    pub profile_medium: Option<String>,
+}
+
 impl Model {
-    pub(crate) async fn connect_from_token(
+    pub async fn connect_from_token(
         db: &DatabaseConnection,
         user_id: i32,
         token_response: StravaAuthorizationTokenResponse,
@@ -47,7 +73,7 @@ impl Model {
         }
     }
 
-    pub(crate) async fn refresh_credentials(
+    pub async fn refresh_credentials(
         self,
         db: &DatabaseConnection,
         token_response: StravaRefreshTokenResponse,
@@ -84,8 +110,12 @@ impl ActiveModel {
 
     fn with_tokens(self, access_token: &str, refresh_token: &str, expires_at: DateTime<Utc>) -> Result<Self, AppError> {
         Ok(Self {
-            access_token: Set(crate::strava::credentials::seal(access_token.as_bytes())?),
-            refresh_token: Set(crate::strava::credentials::seal(refresh_token.as_bytes())?),
+            access_token: Set(crate::entities::strava_connections::credentials::seal(
+                access_token.as_bytes(),
+            )?),
+            refresh_token: Set(crate::entities::strava_connections::credentials::seal(
+                refresh_token.as_bytes(),
+            )?),
             expires_at: Set(expires_at),
             ..self
         })

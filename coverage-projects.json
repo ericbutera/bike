@@ -16,6 +16,14 @@
     "exclude": ["*/tests/*", "*_tests.rs"]
   },
   {
+    "id": "integrations",
+    "name": "Provider integrations",
+    "language": "Rust",
+    "source": "bike-rs/integrations",
+    "include": "bike-rs/integrations/**/*.rs",
+    "exclude": ["*/tests/*", "*_tests.rs"]
+  },
+  {
     "id": "strava-temporal",
     "name": "Strava Temporal worker",
     "language": "Rust",

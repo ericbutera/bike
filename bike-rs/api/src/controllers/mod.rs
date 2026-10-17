@@ -17,12 +17,13 @@ pub mod user_preferences;
 mod integration_events_tests;
 #[cfg(test)]
 mod model_boundary_tests;
+#[cfg(test)]
+#[path = "tests/fixture.rs"]
+mod test_support;
 
 use crate::storage::AppStorage;
 use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
 use bike_core::auth;
-use bike_core::auth::AdminUserContext;
-use bike_core::background_jobs;
 use bike_core::platform::feature_flags;
 use serde_json::json;
 use std::sync::Arc;
@@ -62,10 +63,6 @@ fn platform_routes() -> Router<Arc<AppStorage>> {
         .nest("/api/admin/integration-events", integration_events::admin_routes())
         .nest("/api/admin/feature-flags", feature_flags::admin_routes())
         .nest("/api/feature-flags", feature_flags::public_routes())
-        .nest(
-            "/api",
-            background_jobs::admin::api_routes::<AppStorage, AdminUserContext<AppStorage>>(),
-        )
         .nest("/api/admin/users", auth::admin_routes())
 }
 
@@ -100,14 +97,6 @@ fn activity_routes() -> Router<Arc<AppStorage>> {
         .route(
             "/api/activity-imports/archive-jobs",
             axum::routing::get(activity_imports::list_activity_archive_import_jobs),
-        )
-        .route(
-            "/api/activity-imports/processing-state",
-            axum::routing::get(activity_imports::get_activity_processing_state),
-        )
-        .route(
-            "/api/activity-imports/processing-graph",
-            axum::routing::get(activity_imports::get_activity_processing_graph),
         )
         .route(
             "/api/activity-imports/archive-jobs/:id",

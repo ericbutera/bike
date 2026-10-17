@@ -5,7 +5,7 @@ use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
 impl Model {
     pub async fn begin_disconnect(
         db: &impl ConnectionTrait,
-        event: &crate::strava::events::StravaEvent,
+        event: &crate::entities::strava_events::StravaEvent,
     ) -> Result<(), DbErr> {
         let connection = Self::lock_event(db, event).await?;
         let requested = connection.disconnect_requested_at.unwrap_or_else(Utc::now);
@@ -16,12 +16,12 @@ impl Model {
     }
     pub async fn complete_native_sync(
         db: &impl ConnectionTrait,
-        result: &crate::strava::native::CollectionResult,
+        result: &crate::entities::strava_events::CollectionResult,
     ) -> Result<(), DbErr> {
         let connection = Self::lock_event(db, &result.event).await?;
         let cursor = connection.last_synced_activity_started_at;
         let mut active: ActiveModel = connection.into();
-        if result.event.operation == crate::strava::events::StravaOperation::Sync {
+        if result.event.operation == crate::entities::strava_events::StravaOperation::Sync {
             active.last_synced_activity_started_at = Set(cursor.into_iter().chain(result.last_started_at).max());
         }
         active.last_sync_status = Set("succeeded".into());
@@ -36,7 +36,7 @@ impl Model {
 
     pub async fn remove_native(
         db: &impl ConnectionTrait,
-        event: &crate::strava::events::StravaEvent,
+        event: &crate::entities::strava_events::StravaEvent,
     ) -> Result<(), DbErr> {
         let Some(connection) = Self::load(db, event.connection_id).await? else {
             return Ok(());
@@ -57,7 +57,7 @@ impl Model {
 
     pub async fn for_event(
         db: &impl ConnectionTrait,
-        event: &crate::strava::events::StravaEvent,
+        event: &crate::entities::strava_events::StravaEvent,
     ) -> Result<Self, crate::workflow_error::WorkflowError> {
         let connection = Self::load(db, event.connection_id)
             .await?
@@ -68,7 +68,7 @@ impl Model {
 
     pub async fn lock_event(
         db: &impl ConnectionTrait,
-        event: &crate::strava::events::StravaEvent,
+        event: &crate::entities::strava_events::StravaEvent,
     ) -> Result<Self, DbErr> {
         use sea_orm::QuerySelect;
         let connection = Entity::find_by_id(event.connection_id)
@@ -156,4 +156,6 @@ impl Model {
     }
 }
 
+pub mod credentials;
 mod mutations;
+pub use mutations::{StravaAthleteSummary, StravaAuthorizationTokenResponse, StravaRefreshTokenResponse};

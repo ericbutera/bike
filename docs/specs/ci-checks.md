@@ -10,6 +10,9 @@
   lint patterns, workflow path filters, or image targets.
 - Native API integration tests remain in `bike-rs/api/tests`; browser regressions
   remain in `bike-ui/tests/e2e` and run through their owning tasks.
+- The disposable browser stack uses a native Temporal development server for
+  submission acknowledgment. It runs no ingestion worker; fixtures supply derived
+  results, and unit tests exercise workflow execution with mocked Activities/children.
 - The internal synthetics monitor is retired: scenario discovery, startup
   provisioning, special authentication, UI credential forwarding, dedicated
   tests, and monitor tasks are removed. The API exposes no synthetics routes.
@@ -22,12 +25,17 @@
 - Keep one native Rust compiler workspace at `/cache/bike/target/shared` for
   all branches. Woodpecker's `bike` workflow concurrency is one so different
   revisions cannot clean, replace, or report against the shared objects at once.
-  Unit and PostgreSQL steps within that workflow continue in parallel.
+  Unit and provider SDK checks within that workflow continue in parallel.
 - Successful Rust verification archives every Rust project listed in
   `coverage-projects.json`, including its HTML, LCOV, and JSON reports. Keep
   that manifest as the project inventory instead of duplicating crate names
   in the result cache. A clean checkout restoring PR results on main must
   retain every report through coverage transfer and publication.
+- Register provider integrations in that same inventory. Each Rust report must
+  contain only its owning crate's source files and pass its own changed-line gate.
+- A push whose previous CI commit is absent after a history rewrite compares
+  against its first parent without emitting Git errors. Rewrites retain the
+  coverage activation boundary and the required coverage threshold.
 - Cache regression fixtures must remove prior workspace reports before testing
   reuse; leftover cold-run output must not mask an incomplete cache archive.
 - Expire the shared compiler cache after seven idle days, reports after two
@@ -36,6 +44,14 @@
   their `.last-used` markers so read-only reuse counts as activity. Cleanup
   coordinates with the maintenance Lease and scheduler pause. Do not terminate
   builds or evict current cache data based on byte counts.
+- Backend and E2E/deploy workflows share `BIKE_GO_CACHE` on the existing cache
+  volume. Root mise resolves both Go build/module caches there and the deployment
+  child process inherits those paths. Do not let release tooling compile Pulumi
+  dependencies in each temporary checkout. Native workflow checks reject a
+  missing or different deploy cache. Preserve CI concurrency/resource settings.
+  Resolve inherited environment values with yq's
+  [standard merge-anchor mode](https://mikefarah.gitbook.io/yq/operators/traverse-read#note-yaml-fix-merge-anchor-to-spec-flag),
+  using `--yaml-fix-merge-anchor-to-spec` rather than its legacy override behavior.
 - The persistent BuildKit volume owns build layers and compiler/package cache
   mounts. Do not export a second build cache to the image registry. The registry
   stores immutable release images; unprotected Bike images expire after seven

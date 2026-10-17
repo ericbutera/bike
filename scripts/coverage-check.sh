@@ -21,6 +21,10 @@ comparison_ref() {
       ;;
     push|manual)
       local previous="${CI_PREV_COMMIT_SHA:-}"
+      if [[ "$previous" =~ ^[0-9a-f]{40}$ ]] &&
+          ! git rev-parse --verify --quiet "$previous^{commit}" >/dev/null; then
+        previous=''
+      fi
       if [[ "${CI_PREV_PIPELINE_EVENT:-}" == push &&
             "${CI_PREV_COMMIT_BRANCH:-}" == "${CI_COMMIT_BRANCH:-}" &&
             "$previous" =~ ^[0-9a-f]{40}$ ]] &&

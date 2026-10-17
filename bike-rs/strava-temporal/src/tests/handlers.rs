@@ -1,12 +1,10 @@
 use super::{fixture::Fixture, logging::Logs};
 use crate::{activities::StravaActivities, workflows::*};
-use bike_core::{
-    strava::{
-        events::{StravaEvent, StravaOperation},
-        native::*,
-        objects::{checksum, ObjectRef},
-    },
-    workflow_error::WorkflowError,
+use bike_core::workflow_error::WorkflowError;
+use integrations::strava::{
+    events::{StravaEvent, StravaOperation},
+    native::*,
+    objects::{checksum, ObjectRef},
 };
 use sea_orm::{DatabaseBackend, MockDatabase};
 use std::{
@@ -86,7 +84,7 @@ impl StravaProvider for Provider {
     async fn page(
         &self,
         _input: &PageInput,
-    ) -> Result<Vec<bike_core::strava::provider_payload::StravaActivitySummary>, WorkflowError> {
+    ) -> Result<Vec<integrations::strava::provider_payload::StravaActivitySummary>, WorkflowError> {
         self.calls.lock().unwrap().push("page");
         Ok(vec![
             serde_json::from_slice(include_bytes!("fixtures/activity.json")).unwrap()
@@ -112,18 +110,27 @@ fn environment_with_database(
         calls: Mutex::default(),
     });
     let operations = StravaOperations::with_dependencies(db.into_connection(), provider.clone(), storage);
-    let workflow = match event.operation {
-        StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => UpsertActivity::run.name(),
-        StravaOperation::Delete => DeleteActivity::run.name(),
-        StravaOperation::Sync => SyncActivities::run.name(),
-        StravaOperation::Backfill => BackfillActivities::run.name(),
-        StravaOperation::Disconnect => DisconnectStrava::run.name(),
+    let workflow = if event.source_version.is_some() {
+        ReconcileActivity::run.name()
+    } else {
+        match event.operation {
+            StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => UpsertActivity::run.name(),
+            StravaOperation::Delete => DeleteActivity::run.name(),
+            StravaOperation::Sync => SyncActivities::run.name(),
+            StravaOperation::Backfill => BackfillActivities::run.name(),
+            StravaOperation::Disconnect => DisconnectStrava::run.name(),
+        }
+    };
+    let workflow_id = if event.source_version.is_some() {
+        event.source_workflow_id().unwrap()
+    } else {
+        event.workflow_id()
     };
     let info = TestActivityInfoOptions::builder()
         .namespace("bike")
         .workflow_run_id(Some("child-native-run".into()))
         .workflow_type(Some(workflow.into()))
-        .workflow_id(Some(event.workflow_id()))
+        .workflow_id(Some(workflow_id))
         .deadline(None)
         .build();
     let environment = ActivityEnvironment::builder_with_default()
@@ -247,7 +254,7 @@ async fn large_provider_streams_are_normalized_in_storage_and_return_only_refere
     assert!(result.source.bytes > 2 * 1024 * 1024);
     assert!(result.parsed.as_ref().unwrap().bytes > 2 * 1024 * 1024);
     assert!(serde_json::to_vec(&result).unwrap().len() < 4096);
-    bike_core::strava::payload::validate_temporal(&result).unwrap();
+    integrations::strava::payload::validate_temporal(&result).unwrap();
 }
 
 #[tokio::test]

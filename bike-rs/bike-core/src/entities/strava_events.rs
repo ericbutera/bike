@@ -1,5 +1,7 @@
-use crate::strava::native::ActivityStatus;
-use crate::strava::{events::StravaEvent, native::ActivityChange};
+mod contracts;
+mod event;
+pub use contracts::*;
+pub use event::{webhook_operation, SourceVersion, StravaEvent, StravaOperation, StravaWebhookEvent};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -88,10 +90,7 @@ impl HandoffBacklog {
 }
 
 impl Model {
-    pub async fn collection_counts(
-        db: &impl ConnectionTrait,
-        event: &crate::strava::events::StravaEvent,
-    ) -> Result<(i32, i32), DbErr> {
+    pub async fn collection_counts(db: &impl ConnectionTrait, event: &StravaEvent) -> Result<(i32, i32), DbErr> {
         use sea_orm::{DatabaseBackend, FromQueryResult, Statement};
         #[derive(FromQueryResult)]
         struct Counts {
@@ -116,7 +115,7 @@ impl Model {
         ))?;
         Ok((counts.applied, counts.other))
     }
-    pub async fn accept(db: &DatabaseConnection, event: &crate::strava::events::StravaEvent) -> Result<Self, DbErr> {
+    pub async fn accept(db: &DatabaseConnection, event: &StravaEvent) -> Result<Self, DbErr> {
         let txn = db.begin().await?;
         let id = event.strava_event_id.to_string();
         let key = if event.webhook.is_some() {
@@ -204,8 +203,8 @@ impl Model {
 
     pub async fn stored_mutation(
         db: &impl ConnectionTrait,
-        event: &crate::strava::events::StravaEvent,
-    ) -> Result<Option<crate::strava::native::ActivityChange>, DbErr> {
+        event: &StravaEvent,
+    ) -> Result<Option<ActivityChange>, DbErr> {
         let row = Entity::find_by_id(event.strava_event_id.to_string())
             .one(db)
             .await?
@@ -215,7 +214,7 @@ impl Model {
                 "Strava event identity does not match stored acceptance".into(),
             ));
         }
-        let stored: crate::strava::events::StravaEvent =
+        let stored: StravaEvent =
             serde_json::from_value(row.event.clone()).map_err(|error| DbErr::Custom(error.to_string()))?;
         if !stored.has_same_request(event) {
             return Err(DbErr::Custom(
@@ -242,10 +241,7 @@ impl Model {
         self.athlete_id == event.strava_athlete_id && self.activity_id == event.strava_activity_id
     }
 
-    pub async fn record_mutation(
-        db: &impl ConnectionTrait,
-        change: &crate::strava::native::ActivityChange,
-    ) -> Result<(), DbErr> {
+    pub async fn record_mutation(db: &impl ConnectionTrait, change: &ActivityChange) -> Result<(), DbErr> {
         if let Some(id) = change.bike_activity_id {
             super::integration_events::Entity::associate_activity(db, &change.event, id).await?;
         }

@@ -7,7 +7,6 @@ fixture="$(mktemp -d "${TMPDIR:-/tmp}/bike-ci-rust-test.XXXXXX")"
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture/repo/scripts" "$fixture/bin" "$fixture/docker-bin"
 cp scripts/ci-rust.sh scripts/coverage-transfer.sh "$fixture/repo/scripts/"
-cp scripts/test-worker-postgres.sh "$fixture/repo/scripts/"
 cp scripts/ci-engine-stop.sh "$fixture/repo/scripts/"
 cp coverage-projects.json "$fixture/repo/"
 cat >"$fixture/bin/mise" <<'SH'
@@ -24,27 +23,19 @@ printf '%s\n' "$*" >>"$FIXTURE_COMMANDS"
 if [[ -n "${FIXTURE_FAIL:-}" && "$*" == "$FIXTURE_FAIL" ]]; then exit 42; fi
 case "$*" in
   *'cargo llvm-cov clean --workspace')
-    rm -f .artifacts/coverage/unit-measured .artifacts/coverage/postgres-measured
+    rm -f .artifacts/coverage/unit-measured
     ;;
-  'run rust:ci:unit'|'run rust:workers:postgres:collect')
-    if [[ "$*" == 'run rust:ci:unit' ]]; then suite=unit; other=postgres; else suite=postgres; other=unit; fi
+  'run rust:ci:unit')
+    suite=unit
     touch ".artifacts/coverage/$suite-started"
-    if [[ "${FIXTURE_REQUIRE_PARALLEL:-false}" == true ]]; then
-      for attempt in {1..100}; do
-        if [[ -f ".artifacts/coverage/$other-started" ]]; then break; fi
-        if [[ "$attempt" == 100 ]]; then exit 43; fi
-        sleep 0.05
-      done
-    fi
     printf '%s measurement\n' "$suite" >".artifacts/coverage/$suite-measured"
     ;;
   '--cd bike-rs run coverage:report')
     test -s .artifacts/coverage/unit-measured
-    test -s .artifacts/coverage/postgres-measured
     while IFS= read -r project; do
       mkdir -p ".artifacts/coverage/$project/html"
       for file in html/index.html lcov.info coverage-summary.json; do
-        cat .artifacts/coverage/unit-measured .artifacts/coverage/postgres-measured >".artifacts/coverage/$project/$file"
+        cat .artifacts/coverage/unit-measured >".artifacts/coverage/$project/$file"
       done
     done < <(jq -r '.[] | select(.language == "Rust") | .id' coverage-projects.json)
     ;;
@@ -97,16 +88,12 @@ transfer() {
   rm -rf -- .artifacts/coverage
 }
 parallel_suites() {
-  rm -f .artifacts/coverage/unit-started .artifacts/coverage/postgres-started
   export FIXTURE_REQUIRE_PARALLEL=true
   run_stage unit &
   local unit_pid=$!
-  run_stage postgres &
-  local postgres_pid=$!
   run_stage sdk &
   local sdk_pid=$!
   wait "$unit_pid"
-  wait "$postgres_pid"
   wait "$sdk_pid"
   unset FIXTURE_REQUIRE_PARALLEL
 }
@@ -120,13 +107,11 @@ run_stage prepare
 run_stage unit
 test -z "$(find "$BIKE_RUST_CHECK_CACHE" -name reports.sha256 -print -quit)"
 if bash scripts/ci-rust.sh report >"$fixture/incomplete.log" 2>&1; then exit 1; fi
-run_stage postgres
 test -z "$(find "$BIKE_RUST_CHECK_CACHE" -name reports.sha256 -print -quit)"
 if bash scripts/ci-rust.sh report >"$fixture/incomplete.log" 2>&1; then exit 1; fi
 run_stage sdk
 run_stage report
 grep -Fxq 'run rust:ci:unit' "$FIXTURE_COMMANDS"
-grep -Fxq 'run rust:workers:postgres:collect' "$FIXTURE_COMMANDS"
 grep -Fxq 'run strava:sdk:check' "$FIXTURE_COMMANDS"
 grep -Fxq -- '--cd bike-rs run coverage:report' "$FIXTURE_COMMANDS"
 test -n "$(find "$BIKE_RUST_CHECK_CACHE" -name reports.sha256 -print -quit)"
@@ -142,11 +127,9 @@ full_run
 assert_no_commands
 grep -q 'cache HIT' "$fixture/unit.log"
 grep -Fxq 'unit measurement' .artifacts/coverage/api/lcov.info
-grep -Fxq 'postgres measurement' .artifacts/coverage/api/lcov.info
 while IFS= read -r project; do
   for artifact in html/index.html lcov.info coverage-summary.json; do
     grep -Fxq 'unit measurement' ".artifacts/coverage/$project/$artifact"
-    grep -Fxq 'postgres measurement' ".artifacts/coverage/$project/$artifact"
   done
 done < <(jq -r '.[] | select(.language == "Rust") | .id' coverage-projects.json)
 
@@ -174,11 +157,6 @@ if bash scripts/ci-rust.sh unit >"$fixture/failed.log" 2>&1; then exit 1; fi
 test ! -f .artifacts/coverage/rust-unit-passed
 unset FIXTURE_FAIL
 run_stage unit
-export FIXTURE_FAIL='run rust:workers:postgres:collect'
-if bash scripts/ci-rust.sh postgres >"$fixture/failed.log" 2>&1; then exit 1; fi
-if bash scripts/ci-rust.sh report >"$fixture/incomplete.log" 2>&1; then exit 1; fi
-unset FIXTURE_FAIL
-run_stage postgres
 export FIXTURE_FAIL='run strava:sdk:check'
 if bash scripts/ci-rust.sh sdk >"$fixture/failed.log" 2>&1; then exit 1; fi
 if bash scripts/ci-rust.sh report >"$fixture/incomplete.log" 2>&1; then exit 1; fi
@@ -195,7 +173,6 @@ CI_PIPELINE_EVENT=manual
 : >"$FIXTURE_COMMANDS"
 full_run
 grep -Fxq 'run rust:ci:unit' "$FIXTURE_COMMANDS"
-grep -Fxq 'run rust:workers:postgres:collect' "$FIXTURE_COMMANDS"
 CI_PIPELINE_EVENT=pull_request
 
 # A restored snapshot survives result-cache eviction during parallel checks.
@@ -214,34 +191,8 @@ printf 'corrupt\n' >"$BIKE_RUST_CHECK_CACHE/$key/reports.tar.gz"
 : >"$FIXTURE_COMMANDS"
 full_run
 grep -Fxq 'run rust:ci:unit' "$FIXTURE_COMMANDS"
-grep -Fxq 'run rust:workers:postgres:collect' "$FIXTURE_COMMANDS"
 
 # Uncommitted inputs cannot borrow a committed revision's passing result.
 printf 'dirty\n' >>bike-rs/api/src/renamed.rs
 if bash scripts/ci-rust.sh unit >"$fixture/dirty.log" 2>&1; then exit 1; fi
 printf 'Rust CI reuse passed: UI-only/new PR executes zero backend commands; backend changes, failures, manual runs, corrupt caches, and dirty inputs are enforced.\n'
-
-# Native CI uses only its supplied service; it cannot create/remove Docker data.
-cat >"$fixture/bin/docker" <<'SH'
-#!/usr/bin/env bash
-exit 44
-SH
-cat >"$fixture/bin/timeout" <<'SH'
-#!/usr/bin/env bash
-[[ "${FIXTURE_PG_READY:-true}" == true ]]
-SH
-cat >"$fixture/bin/sleep" <<'SH'
-#!/usr/bin/env bash
-exit 0
-SH
-chmod +x "$fixture/bin/docker" "$fixture/bin/timeout" "$fixture/bin/sleep"
-export BIKE_POSTGRES_IMAGE=synthetic-postgres BIKE_WORKER_TEST_DATABASE_HOST=postgres BIKE_WORKER_TEST_DATABASE_PORT=5432
-export BIKE_WORKER_TEST_DATABASE_URL=postgres://worker_test:worker_test@postgres:5432/worker_test
-: >"$FIXTURE_COMMANDS"
-bash scripts/test-worker-postgres.sh
-grep -Fxq -- '--cd bike-rs run test:workers:postgres' "$FIXTURE_COMMANDS"
-: >"$FIXTURE_COMMANDS"
-export FIXTURE_PG_READY=false
-if bash scripts/test-worker-postgres.sh >"$fixture/not-ready.log" 2>&1; then exit 1; fi
-assert_no_commands
-printf 'Native database lifecycle passed: supplied service used without Docker, and readiness failure blocks tests.\n'

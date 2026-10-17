@@ -1,4 +1,5 @@
-use super::fixtures::{reprocess_input, SubmissionFixture};
+use super::client::SubmissionFixture;
+use bike_core::test_support::reprocess_input;
 use bike_core::{bike_tasks::*, test_support as fixtures};
 
 #[tokio::test]
@@ -50,7 +51,7 @@ async fn invalid_commands_and_context_fail_before_temporal_submission() {
             .is_err());
     }
     let invalid = ReprocessInput {
-        expected_revision: 0,
+        activity_id: 0,
         ..reprocess_input()
     };
     assert!(fixture
@@ -65,7 +66,7 @@ async fn invalid_commands_and_context_fail_before_temporal_submission() {
 async fn invalid_command_is_rejected_before_the_lazy_connection() {
     let service = crate::submission::TaskSubmissionService::from_env();
     let input = ReprocessInput {
-        expected_revision: 0,
+        activity_id: 0,
         ..reprocess_input()
     };
     let expected = input.clone().into_command().validate().unwrap_err().to_string();

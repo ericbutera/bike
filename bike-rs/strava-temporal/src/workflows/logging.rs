@@ -1,5 +1,5 @@
 //! Replay-safe workflow lifecycle logs and parent/child execution links.
-use bike_core::strava::{events::StravaEvent, native::ScanRequest};
+use integrations::strava::{events::StravaEvent, native::ScanRequest};
 use temporalio_sdk::{WorkflowContext, WorkflowResult};
 use temporalio_workflow::WorkflowTermination;
 use uuid::Uuid;

@@ -1,415 +1,260 @@
 # Background work and Strava integration
 
-- This is the owning specification for Bike worker migration, Temporal execution,
-  Strava integration, activity change history, storage, and recovery. It replaces
-  the separate task-workflow, durable-work, execution-policy, activity-history,
-  Strava, and worker-conversion specifications.
-- [The backlog](../TODO.md#worker-conversion) owns the task inventory, conversion
-  status, first-deliverable checklist, findings F1–F6, and outstanding work.
-  [The rollout record](../worker-rollout-2026-10-16.md) preserves dated unit and
-  production evidence. Neither historical evidence nor a passing mock closes a
-  production gate.
-- Strava is already native. PR #66 consolidates the first Bike reprocessing review
-  slice; #64 and #65 are superseded. Complete and vet `reprocess_activity_import`
-  before broader rollout. This document authorizes no deployment or merge.
+- This specification owns background processing, Strava integration, and retained
+  activity sources. [The TODO](../TODO.md#worker-conversion) owns outstanding work;
+  [the rollout record](../worker-rollout-2026-10-16.md) owns dated evidence.
+- **Design decision, 2026-10-17:** treat ingestion as repeatable, low-consequence
+  work. Read the activity file, process it, and call the downstream tasks.
+  A developer should be able to follow that sequence in one workflow.
+- This replaces the earlier execution-accounting, shared-output coordination,
+  cancellation-handshake, and exact batch-result requirements. The Bike task
+  code implements this sequence. The [2026-10-17 cutover](../worker-rollout-2026-10-16.md#2026-10-17-simple-worker-cutover)
+  records production verification.
 
 ## Ownership and runtime
 
-| Boundary                                | Strava            | Bike tasks                                              |
-| --------------------------------------- | ----------------- | ------------------------------------------------------- |
-| Workflow/Activity code and registration | `strava-temporal` | `bike-temporal`                                         |
-| Task queue                              | `bike-strava`     | `bike-tasks`                                            |
-| Workflow ID prefix                      | `strava-`         | `bike-task-`                                            |
-| Owned object keys                       | `strava/`         | `bike/tasks/`; retained imports use `activity-imports/` |
+| Boundary                       | Strava            | Bike tasks                                   |
+| ------------------------------ | ----------------- | -------------------------------------------- |
+| Workflow/Activity registration | `strava-temporal` | `bike-temporal`                              |
+| Task queue                     | `bike-strava`     | `bike-tasks`                                 |
+| Workflow ID prefix             | `strava-`         | `bike-`                                      |
+| Object keys                    | `strava/`         | `activity-imports/` and retained `archives/` |
 
-- Run both queue pollers in one existing `temporal-worker` binary/process, sharing
-  the SDK runtime, connection, database pool, uploads volume, and metrics endpoint.
-  Either poller ending or failing drains its sibling. Signals, handoff failure,
-  and metrics failure drain both. SDK metrics ownership ends on every exit.
-- Keep domain code and queue registration separate; neither workflow crate imports
-  the other's workflow/Activity types. Share neutral domain operations, storage,
-  fixtures, and SDK helpers. Do not add another Cargo binary or Compose service.
-- Temporal owns execution status, scheduling, retries, timers, cancellation,
-  children, and continuation. PostgreSQL owns business data and domain history.
-  Simple independent work may be one workflow and one Activity.
-- Controllers adapt HTTP input/output. Convert request/query DTOs to service-owned
-  commands/filters; application services do not accept controller request types.
-  Owning models perform queries, uniqueness checks, and atomic writes.
-- Strava owns callbacks, OAuth, quotas, fetching, normalization, provider captures,
-  sync/backfill, deletion, and reconnection. Bike owns domain computations and
-  shared fitness/segment/heatmap workflows. Provider Activities submit neutral
-  typed change requests, without passing `StravaEvent` into Bike computations.
-- Reuse natural keys, record versions, replacements/upserts, and transactions.
-  No SQL scheduling bridge, custom queue, generic admission/receipt/result ledger,
-  redundant attempt-stage lifecycle, contributor ledger, or per-request publication
-  barrier is required. Every retained record must have a distinct domain purpose.
-- Keep the SQL worker for unconverted tasks. Each converted mutation/output has
-  one execution owner; drain or fence its legacy producers before activation.
+- Keep both pollers in the existing `temporal-worker`, sharing the SDK connection,
+  database pool, object store, and metrics. Preserve coordinated process shutdown.
+- Run domain Activities on Tokio's blocking pool so parsing and segment matching
+  cannot starve Temporal polling, timers, or health requests. The Bike queue uses
+  two native Activity slots within the existing worker resource budget.
+- Give Bike Activities a 30-minute Start-To-Close timeout for whole-archive and
+  segment rematching work. Keep the provider RPC timeout independent.
+- Temporal owns running work, retries, child execution, and status. PostgreSQL
+  stores activities and other business data. Do not build a second execution
+  system in database rows, audit JSON, or storage descriptors.
+- Controllers accept requests and return a job reference. Workflow methods show
+  the processing steps. Activities call existing services/models; models own
+  queries, transactions, uniqueness, and replacement writes.
+- Strava owns provider intake, OAuth, fetching, normalization, and connection
+  checks. Its workflows call the same neutral domain computations as file imports.
+  Share domain operations and a small typed SDK helper without a generic DAG engine.
+- Temporal UI shows running/failed work and child steps. Bike retains source
+  metadata, downloads, and useful activity-change history. Link recorded namespace
+  and workflow IDs through `TEMPORAL_UI_URL`; never invent a job ID from an
+  activity ID. Without a recorded job, link the configured namespace list.
+- All Bike producers submit to Temporal. The SQL worker, queue, batch tracking,
+  stage executor, recovery loops, and task administration API are retired.
+
+## Processing flow
 
 ```mermaid
-flowchart LR
-    Intake[Bike API or Strava callback] --> Accept[Durable Temporal acceptance]
-    Accept --> Reply[Return job ID or webhook acknowledgment]
-    Accept --> Source[Owning workflow and domain Activity]
-    Source --> Commit[Source commit and refresh scope]
-    Commit --> Handoff[Accept neutral refresh requests]
-    Handoff --> Complete[Source job complete]
-    Handoff --> Outputs[Shared Bike output workflows]
-    Outputs --> Recent[New ride: prompt refresh]
-    Outputs --> Bulk[Archive and deletes: background refresh]
+flowchart TD
+    File[Retained activity file] --> Parse[Parse and save activity]
+    Parse --> Segments[Rebuild segments and segment results]
+    Segments --> Achievements[Rebuild achievements]
+    Parse --> Heatmap[Rebuild heatmap]
+    Parse --> Fitness[Rebuild fitness and training where needed]
 ```
+
+- The Bike task workflow calls these named operations explicitly, through
+  Activities or child workflows where a task has its own steps. Reuse the existing
+  registered task names; an achievement operation does not require a new queue,
+  registry, or scheduler.
+- Save the activity before starting derived work. Achievements that depend on
+  segment results run after that segment work. Independent children may overlap,
+  with bounded concurrency.
+- A request-owned parent normally awaits its children and returns or fails.
+  While work is in flight, it is simply running. The API already returned after
+  acceptance; it does not wait for computations.
+- Derived data may become visible at different times. If a later step fails,
+  preserve the source and successful effects, show the failed step in Temporal,
+  and retry. There is no atomic all-output publication requirement.
+- Reprocessing may parse the file again and rebuild already computed outputs.
+  That is an accepted cost. Prefer this to recovering an exact previous execution
+  result or coordinating every producer through shared output owners.
 
 ## Identity and causal context
 
-| Identity                      | Meaning and required behavior                                                                                                                         |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Source                        | Provider, remote owner, object type/ID, and owning Bike user. Exists before a Bike activity; enforce the owned mapping using existing source records. |
-| Connection generation         | Authorization lifecycle; reject delayed work from an older connection.                                                                                |
-| Bike activity ID              | Optional at intake; resolve/link during persistence and preserve across updates/reprocessing.                                                         |
-| Command/event key             | One immutable operation. Reuse on delivery/Activity retry; intentional new work gets a new key. Strava supplies no unique event ID.                   |
-| Workflow/job ID               | Accepted command or shared output resource. Command IDs include task/user/command; output IDs use user, segment, or activity.                         |
-| Correlation ID                | Diagnostic causal link, often the root command/event ID. Never an idempotency or authorization key.                                                   |
-| Request/trace/run/attempt IDs | Delivery/execution diagnostics that may change on retry. Keep initiating actor separate from affected owner.                                          |
-| Domain version                | Existing source/resource version checked when replacing data. Add a version only for a real stale-write race, not a revision ledger per output.       |
-
-- No import-attempt lifecycle or local activity ID is needed to acknowledge work.
-  A checksum identifies bytes; it does not identify an intentional reprocess.
-  Capture selected source/import/target identity, relevant parser version, and
-  expected activity revision before execution.
-- Root and child command IDs derive from task, affected user, and retry-stable
-  command ID. Use native `UseExisting` conflict and `RejectDuplicate` reuse
-  policies. A running duplicate returns its canonical run; a retained closed
-  execution returns its reference/status without automatically restarting failure.
-- Temporal keeps the original input on duplicate start; it neither compares nor
-  replaces payloads. Producers must not reuse a command key for changed work.
-  Domain uniqueness/idempotency remains necessary after history retention expires.
-- Capture `TaskCause` once: command/correlation identity, receive time, optional
-  request ID, initiating actor, affected user, and W3C trace context. Carry it
-  through starts, Activities, children, output handoffs, retries, replay, and
-  Continue-As-New. Resets/continuation may change run ID without changing the job.
-- Import submission currently carries context into its root and committed audit
-  event. Complete propagation for other commands, children, and derived fan-in
-  before their cutover. A shared refresh may combine causes; retain bounded
-  log/trace links without assigning it exclusively to the last caller.
+- Pass the owned import/file reference and activity ID when known. New imports
+  resolve the activity during save; reprocessing preserves its activity/import IDs.
+- Use a stable native workflow identity for a retry of the same submission.
+  Include the target in that identity so different activities cannot attach to
+  the same job. An intentional rerun can start a new execution.
+- Keep useful owner, actor, workflow/run, and trace IDs in existing inputs/logs.
+  No separate command registry, admission ledger, contributor list, or persisted
+  command snapshot is required.
+- A duplicate submission may return its existing native job. Do not require
+  reading and decoding the first history event just to acknowledge every start.
+  Authorization remains an ordinary owned-record check.
 
 ## Fast durable acceptance
 
-- Bike API: retain necessary input bytes/metadata, submit directly through a typed
-  application operation, await Temporal acknowledgment, and return HTTP 202 with
-  `JobReference { job_id, namespace, run_id, workflow_type }`. Do not parse, fetch,
-  mutate business records, or wait for a worker in that request path.
-- A failed or uncertain start may fail the user API call. Retry with the same
-  command and retained input. API startup connects lazily; worker downtime alone
-  does not prevent durable acceptance.
-- Strava callback: validate the supported event and use a bounded durable start.
-  Return HTTP 200 within **two seconds**, with the start timeout below the total
-  callback budget. Provider fetches and derived work belong in the worker.
-- On unavailable/uncertain acceptance, return non-2xx promptly. Strava makes up to
-  **three total deliveries**; direct submission cannot buffer a longer outage.
-  Sync/backfill can recover live activities but cannot guarantee missed deletions.
-- The deployed Strava inbox is an optional buffering adapter. While retained,
-  its durable write is the acknowledgment boundary and its relay retries Temporal
-  handoff. It is not a mandatory abstraction for Bike or a blocker for this slice.
-  Never acknowledge work held only in process memory.
-- [`TaskSubmissionService`](../../bike-rs/bike-temporal/src/submission.rs) owns the
-  native import/reprocess submission contract. Callers pass domain inputs and
-  context; SDK options, headers, and repeated logging construction stay inside it.
+- Bike retains the input file, starts the workflow, and returns HTTP 202 with
+  the native job reference after acknowledgment. Parsing and derived work run
+  in the worker. Worker downtime does not require synchronous execution in the API.
+- A failed or uncertain start returns an error; retain the file for retry.
+  Do not acknowledge work held only in API memory.
+- Uploading the same retained file again starts processing when it has no saved
+  activity yet. Completed imports return their existing activity as duplicates.
+- Preserve the existing Strava inbox and its bounded callback acceptance.
+  Its current 1.5-second deadline covers lookup, validation, and the durable event
+  transaction within the two-second callback budget. Timeouts return non-2xx;
+  canonical event deduplication handles another delivery.
+- The inbox is an existing provider adapter, not a model to reproduce for every
+  Bike task. Keep the registered callback aliases and native relay.
+- The Strava connection extractors authenticate once and load the owned
+  connection once. Sync, backfill, and disconnect require that connection;
+  connection GET allows absence while retaining authentication failures.
+- `integrations::strava` owns provider calls, OAuth, and request acceptance.
+  Core owns stored models, their event contracts, retained activity-file parsing,
+  and shared activity persistence; it does not depend on the integrations crate.
+- User-requested Strava work accepts the extracted user and connection, validates
+  them, and commits the durable event without reloading either record. Sync and
+  backfill return that connection snapshot. OAuth completion reuses its newly
+  saved connection. Later deletion or a failed read cannot undo acceptance.
+- Connection response formatting is a pure mapping of the available connection
+  snapshot. Reading current state belongs to the connection GET operation.
 
 ## Idempotent effects and activity history
 
-- Temporal Activities may retry after a committed effect loses its completion
-  reply. Protect effects with natural unique keys, replacement/upsert semantics,
-  or an operation key on an existing domain/version record. A separate operation
-  record is justified only when the model cannot represent the guarantee.
-- Recomputing authoritative projections is acceptable. Duplicate business records
-  and permanently lost changes are not. A retry must not create a fresh version
-  that permits older content to overwrite newer state.
-- Apply authoritative related changes atomically, using model-owned constraints
-  and conditional writes. Check expected source/resource versions in the same
-  transaction as publication; timed-out Activity attempts may still finish late.
-  Deletion, privacy changes, and newer generations reject obsolete publication;
-  a stale result must not recreate a deleted activity.
-- Fitness invalidation merges into the existing user-state row atomically:
-  retain the earliest dirty day and greatest source-change timestamp. Every
-  invalidation touches the publication fence, even when an older source timestamp
-  arrives. Preserve creation and previous-rebuild metadata. Incremental rebuilds
-  read the committed dirty day and clear it only if both observed source and
-  invalidation timestamps still match; competing writes leave work dirty.
-- A segment workflow owns its segment, while different segments can affect the
-  same activity achievement row. Serialize projection replacement on existing
-  activity rows in ID order, then read current committed ranks and replace the
-  affected outputs in one transaction. An empty result clears stale output in
-  that transaction; replacement failure preserves the prior committed output.
-- Commit segment ranks/summaries before acquiring activity projection locks.
-  Segment edits/deletion and Strava derivation take activity locks before changing
-  related segment data. Keep this lock order consistent; do not hold segment
-  locks while waiting for activity locks. These are domain transaction rules,
-  requiring no extra table, execution ledger, or SQL orchestration bridge.
-- Write activity projections in bounded bulk inserts inside that transaction.
-  Avoid one insert/returning query per activity while holding shared locks. Keep
-  replacement rollback atomic and preserve count/highlight mapping and defaults.
-- Versioned replacement can publish one complete selected version and then reclaim
-  older versions. Readers select the published version; outputs need not switch
-  versions together.
-- If an existing stored outcome supplies idempotency, recheck it under the lock
-  before unchanged/superseded branches. Preserve the original retry outcome.
-- A rematch `{A,B}` → `{B,C}` must eventually refresh A as well as B/C. Retain an
-  old version, a version-validated plan captured before mutation, a small committed
-  refresh scope, or rebuild a broader authoritative scope. Current replacement
-  rows alone cannot recover discarded membership; a full result ledger is optional.
-- `strava_activity_states` holds latest accepted state for the owned remote pair,
-  connection generation, and known Bike activity PK. It is a source fence, not
-  an execution queue/history archive. Retain the known PK on deletion tombstones.
-- `activity_event_history` is the shared append-only activity-change archive for
-  Strava, manual edits, and native imports/reprocessing. Append in the same domain
-  transaction as the mutation/provider state. Audit failure rolls back the write.
-- Archive before/after summaries and source/import metadata, not route/chart/zone
-  payloads. Preserve the Bike PK after deletion without a cascading activity FK.
-  Source-qualified event/command keys make repeated appends idempotent; activity ID
-  alone is not an event key. Legitimate later edits have distinct event identities.
-- Strava history retains event, remote owner/object, connection generation,
-  accepted state/status, and root/request/trace context. Native import history
-  retains command, actor/owner, request/correlation/trace, and native job/run.
-- Lock the current activity before capturing a manual or Strava before snapshot.
-  Unchanged Strava content may still advance accepted provider state and archive
-  equal activity summaries. Superseded events keep their original event outcome
-  without changing current state.
-- Reprocess history carries minimal `refresh_scope`: revision, earliest dirty
-  date, old/new segment union, and heatmap generation. Its audit key is
-  `reprocess:user-{user_id}:{command_id}`. Recheck under the activity lock before
-  stale-version rejection; a conflicting key/target rolls back the losing write.
-- Preserve legacy attempts/history required by unconverted consumers. Remove
-  native dependence on SQL stages as those consumers migrate. Finite retry
-  exhaustion remains visible for native/operator retry or existing reconciliation;
-  no new universal repair service is required.
+- Parse retained bytes and save through ordinary owned-model operations.
+  Use existing import/provider uniqueness, upserts, replacement writes, and
+  transactions so repeating work does not create duplicate activities or efforts.
+- Preserve ownership, user-edited fields, deletion, and privacy rules. Keep a
+  local version check or lock where an observed domain race needs it; there is
+  no universal execution-generation or exactly-once protocol.
+- Reprocessing a retained file preserves the saved title and Training/Race
+  selection. Initial imports use the file's title; re-reading it must not undo
+  a later edit in Bike.
+- Rebuild projections from current stored activities/efforts. Replacement either
+  commits or rolls back. Keep the existing transaction fix for overlapping segment
+  achievement updates and bounded bulk writes; simplicity does not require
+  reintroducing the observed duplicate-key bug.
+- When rematching removes a segment membership, refresh the removed segment too.
+  Use the old/new IDs during the normal operation; when a retry no longer knows
+  the old set, a broader rebuild is acceptable. Do not persist a result receipt
+  solely to recover the original minimal refresh set.
+- Activity-change history remains useful domain history. Preserve its existing
+  transactional consistency, but remove execution decisions based on an audit
+  entry's `refresh_scope`, exact original outcome, or one-audit-per-attempt count.
+  A workflow does not need an audit record to prove its progress.
+- Existing Strava source mappings, connection generations, and deletion state
+  serve provider ownership/data rules. They are not a generic task ledger.
+- No new execution, receipt, result, readiness, publication, or reconciliation
+  accounting tables are part of this migration.
 
 ## Cancellation, recovery, and completion
 
-- Accepted cancellation stops new request work and propagates to request-owned
-  children/Activities. Do not launch refresh handoffs after accepting it.
-- Allow cancellation while queued/preparing. Close that window before invoking
-  the mutating Activity and its small durable handoffs. A later racing request is
-  too late, not successful cancellation. The workflow decides; a stale UI button
-  cannot decide the boundary.
-- A native cancellation RPC acknowledges a request, not completed cancellation.
-  Report the workflow decision/status. Cooperative cancellation requests stop and
-  awaits settlement; it does not instantly interrupt an in-flight database call.
-  Use native cancellation policies and heartbeats for long Activities.
-- Keep parsing/writing in one Activity when simpler; close its cancellation window
-  before starting it. Split preparation only when useful.
-- Batches stop at safe boundaries between items. A request during apply/handoff
-  settles that item before acknowledging cancellation; start no later items.
-  Preserve earlier completed items rather than rolling them back.
-- Source completion waits for accepted handoffs, not aggregate computation.
-  Shared output workflows can serve several parents and have independent
-  lifetimes; canceling one import cannot cancel those shared computations.
-- Worker loss resumes through Temporal history and idempotent Activities. Failures
-  remain visible for retry. Existing reconciliation may repair stale projections
-  without being continued work for an accepted canceled request.
-- No general post-cancellation finalization, all-output transaction, or per-request
-  derived-readiness record is required.
+- Use native retries and cooperative cancellation. An already executing Activity
+  may finish and write data after cancellation is requested. Partial processing
+  is acceptable; do not promise rollback or instantaneous interruption.
+- Stop starting later work when cancellation is observed at normal step or batch
+  boundaries. Preserve the file and completed effects for a later rerun.
+- Remove custom commit-boundary/cancellation handshakes and special finalization
+  protocols. Native status describes what happened; no separate cancellation
+  accounting is required.
+- Worker restart resumes native execution. A repeated Activity may reparse or
+  recompute; ordinary domain writes make that safe. Exhausted failures remain
+  visible for retry from the retained source.
+- Completion means the workflow's own steps finished. It does not certify that
+  every shared projection across Bike is simultaneously current.
+- Strava's provider-specific cancellation behavior is described below. Its
+  native cancellation tokens do not change Bike task cancellation or add a
+  database handshake, result ledger, or shared-output coordinator.
 
-## Reprocessing review implementation
+## Reprocessing implementation
 
-- `POST /admin/activity-imports/reprocess-activity` accepts `activity_id` and an
-  optional UUID `command_id`. The UI creates and reuses the UUID across transport
-  retries; omission asks the server to create a fresh operation.
-- The controller maps HTTP input into required `ReprocessActivityCommand` and
-  maps internal `AcceptedReprocessing` to the response. Compatibility `task_id`
-  and `task_status` mean native job ID and acceptance status. Import history and
-  replay likewise map HTTP DTOs into `HistoryFilter` / `ReplayCommand`.
-- The API reads owned metadata only and submits directly. It takes no user-wide
-  SQL import lock and queues no SQL task. The admin is the actor; the activity's
-  owner is the affected user. Root correlation is the command UUID.
-- Eligible sources are owned, parsable, checksummed retained imports. Reject
-  checksumless legacy input until metadata repair. Current `strava_sync` imports
-  stay provider-owned and use sync/backfill instead.
-- The worker reads primary and supplemental artifacts through injected shared
-  `ObjectStore`, verifies checksum/size, and reuses parsing/recording classification.
-  Preserve existing `activity-imports/` keys and canonical lifetime.
-- The [domain adapter](../../bike-rs/bike-core/src/activity_reprocessing.rs) locks
-  and rechecks the activity/version and conditionally replaces parsed fields.
-  Preserve activity/import IDs and activity type. Segment matching, per-activity
-  analytics/training, import completion, and history share the source transaction.
-- Committed retries reconstruct the original refresh scope without source reads
-  or reparsing. Stale/deleted targets and changed command source reject new work;
-  old parsed writers also use a timestamp predicate.
-- Fitness, segment analytics, and heatmap handoffs are concrete for this slice.
-  Other workflow adapters remain conversion work. The provider Activity sequence
-  and retained Strava history are unchanged by this review slice.
-- Vet the working admin flow in the existing Docker stack before extending its
-  E2E suite. Single-endpoint wiring and mocked outputs are not producer-wide
-  cutover, deployed recovery evidence, or first-milestone completion.
+- `POST /admin/activity-imports/reprocess-activity` remains the entry point.
+  It checks the owned retained source, submits the native workflow, and returns
+  the job. Keep the existing UI command reuse for transport retries where useful.
+- Read primary/supplemental files through the shared `ObjectStore`, verify their
+  integrity, and reuse the parser and enrichment code.
+- Source processing reparses the retained file in
+  [source processing](../../bike-rs/bike-core/src/activity_reprocessing.rs) and
+  the audit-result coupling in
+  [the model operation](../../bike-rs/bike-core/src/entities/activities/reprocessing.rs)
+  with straightforward repeated parsing/saving.
+- The [workflow](../../bike-rs/bike-temporal/src/workflows/reprocess_activity_import.rs)
+  shows source save → segments → achievements → heatmap → fitness.
+  [Named derived steps](../../bike-rs/bike-temporal/src/workflows/steps/derived.rs)
+  use awaited child workflows and Activities without scheduling RPCs or signals.
+- Segment matching also refreshes the user's existing segment-summary scope.
+  This broader rebuild covers a removed membership after a repeated matching
+  attempt without retaining the earlier execution's result.
+- Domain calls write their domain outputs only. No pipeline-output ledger remains.
+- This changes the Bike workflow sequence and output inputs. Before deployment,
+  stop new Bike submissions and drain open Bike workflows using the old worker.
+  Start the new worker only after there are no open Bike task executions.
+  Retired coordinator histories cannot be reset/replayed with the new worker.
+  The native replay example applies to histories produced by this implementation.
+- Preserve canonical source keys, activity/import identity, and valid user data.
+  Native Strava sources stay on provider sync/backfill. Legacy files without a
+  recorded checksum remain readable; verify their stored size and parse the file.
 
 ## Bike workflow composition and bounded batches
 
-- Keep the twelve registered workflow names in the [task inventory](../TODO.md#task-inventory-and-conversion-order).
-  Renaming requires user approval and explanation. Task 0 is email retirement,
-  not a replacement workflow. Rust type names may follow Rust casing.
-- Review [workflow `run` methods](../../bike-rs/bike-temporal/src/workflows.rs)
-  first, then [named steps](../../bike-rs/bike-temporal/src/workflows/steps.rs),
-  [batch paging](../../bike-rs/bike-temporal/src/workflows/batches.rs),
-  [typed children](../../bike-rs/bike-temporal/src/workflows/children.rs), and
-  [domain adapters](../../bike-rs/bike-temporal/src/activities.rs).
-- `process_activity_import` and `reprocess_activity_import` share the explicit
-  `activity_import` Activity. Its typed target distinguishes new creation from
-  replacement at an expected revision. It parses/persists and returns committed
-  identity plus fitness, affected-segment, and optional heatmap requests; it
-  neither schedules outputs nor submits SQL tasks.
-- Workflows declare steps explicitly. Shared typed execution/handoff helpers
-  remove SDK plumbing without becoming a generic DAG or task coordinator.
-  `refresh_import_outputs` composes independently reusable output steps.
-- Reprocessing collections call #1 children; archive entries call #8; user and
-  global segment batches call #5 with `All` or a specific segment generation.
-  Matching and per-activity analytics commit together before aggregate handoff.
-- Prepare a retained immutable manifest per command: owner, selection, eligible
-  inputs, ordering, stable entry commands, and resource revisions. Pages carry
-  compact references/commands, not route or archive bytes.
-- Bind the manifest to parent and selection. An archive-FIT continuation cannot
-  substitute a general user-import manifest. Validate the whole page before
-  work: scope, parent-owned entry IDs, uniqueness, and exact expected page size.
-  Preparation enforces global entry uniqueness; truncated/oversized pages fail.
-- Read at most **16 entries/page**. This proof of concept awaits one child/Activity
-  at a time. Advance cursor/counts only after settled work; duplicate child start
-  is not proof of success. Child-start/execution failure fails the parent.
-- A global segment manifest includes previous effort holders, even across users
-  or when they no longer match. A user manifest includes only that user's selected
-  cycling activities.
-- Training backfill uses the same page loop with training Activities and optional
-  fitness handoffs. Record goal/backfill success only after every page settles;
-  errors/cancellation prevent that completion effect.
-- Continue-As-New after a settled page, at **16 pages / 256 entries** per run or
-  the SDK history suggestion. Carry manifest, settled cursor/counts, pending
-  requests/deadlines, and failure context; no live children cross the boundary.
-  Batch counts describe settled source work and accepted handoffs, not projection
-  publication. Shared helpers own child IDs, options, awaiting, and cancellation.
+- Keep the [task inventory](../TODO.md#converted-tasks).
+  Import and reprocess reuse source processing and downstream domain tasks.
+  Collection workflows loop over items and call the individual task.
+- Use ordinary paging or an archive-entry iterator and bounded child concurrency.
+  A compact extracted-file index is fine when needed to find files; preparing an
+  immutable command manifest for every user/batch is not required.
+- Await children for the current page. A child failure remains visible and fails
+  the parent; completed children are not rolled back.
+- Use native Continue-As-New for long loops, carrying the selection, retained
+  file reference, and next cursor. Repeating a page/entry is acceptable.
+  Do not add exact settled-count, per-entry outcome, or cross-run result ledgers.
+- Counts may help display progress but are not the recovery authority. Use source
+  files, domain records, and native execution history to inspect or rerun work.
+- User batches process 16 activities per page, awaiting each child before advancing
+  the ID cursor with Continue-As-New. Training backfills calculate each activity
+  in the same page loop. Archive workflows retain the ZIP in `archives/{job_id}.zip`,
+  extract at most 16 files, await their imports, and continue with the next offset.
+- A native schedule runs heatmap reconciliation every 15 seconds with overlap
+  skipped. It pages pending projections and calls the ordinary heatmap child.
+- Unit fixtures execute the parent and child workflow code for archive processing
+  and user reprocessing, including their segment, heatmap, and fitness children.
+  Assert that parents remain pending until children finish, child failures stop
+  later work, and full pages continue only after their work completes. Keep
+  retained-file parsing and PostgreSQL write checks in the owning domain suites.
 
 ## Eventual consistency, debounce, and priority
 
-- Fitness, analytics, segments, achievements, heatmaps, and downstream activity
-  projections may be stale and publish independently. Rebuild authoritative
-  current state; extra computation is acceptable, lost changes are not.
-- Newly finished rides should refresh fitness, segments, and achievements promptly.
-  Historical archives, backfills, maintenance, and rare deletes may take much
-  longer. Preserve background priority through archive entries; inserting an old
-  activity does not turn it into an urgent new ride.
-
-| Trigger                                                        | Native priority | Quiet window | Cap from first pending change |
-| -------------------------------------------------------------- | --------------- | ------------ | ----------------------------- |
-| Newly finished activity; interactive work at requested urgency | 1 (high)        | 2 seconds    | 10 seconds                    |
-| Archive, historical backfill, delete, routine repair           | 5 (low)         | 60 seconds   | 5 minutes                     |
-
-- These are configurable batching defaults, not publication SLAs. Tune observed
-  rider latency, redundant rebuild counts, and backlog aging after the flow works.
-- Key fitness by user, global analytics by segment, heatmap by activity. Producers
-  use native Signal-With-Start with `UseExisting`. In the pinned Rust SDK, small
-  typed scheduling Activities perform that client RPC and return after acceptance.
-- Output workflows own durable signals/timers and coalescing, independently of
-  parent lifetimes. Merge earliest dirty date, affected-ID unions, revisions, and
-  highest urgency. Identical pending requests do not extend the quiet deadline.
-  High-priority arrivals advance a pending low-priority flush; background arrivals
-  cannot postpone a high-priority flush.
-- Keep one publisher in flight per resource and one merged follow-up. Five quick
-  requests produce one rebuild; changes during it produce one follow-up. A late
-  signal below a published timestamp/revision watermark may describe a different
-  activity that was absent from the rebuild: rebuild current data rather than
-  silently discarding it. Superseded work carries dirty scope forward.
-- Continue-As-New only after active work settles, retaining pending state and
-  deadlines. Retried partial fanout may resubmit refresh requests safely.
-- Set each processing Activity's current priority/fairness; disable eager dispatch
-  so server matching applies. Native priority does not preempt running work.
-  Bound concurrency/work units and verify fairness across users and aged backlog.
-- Temporal 1.32.1 uses priority matching by default. Enable
-  `matching.enableFairness` for namespace `bike`, queue `bike-tasks`, as locally
-  configured, and verify deployment. Schedule-To-Start promotion is an option to
-  investigate after the proof of concept, not a second scheduler to build now.
-- Every producer sharing an output must join this boundary: imports, reprocessing,
-  Strava, edits/deletes, training, and reads. Remove per-child full-user rebuilds
-  and synchronous fitness-read bypasses. Source jobs/collections and sync offsets
-  finish after source children and accepted handoffs, while projections converge
-  later. Show stale/refreshing state using existing freshness fields.
+- Accept temporarily stale fitness, segments, achievements, and heatmaps during
+  processing. Read existing stored output; show native work status where useful.
+- Explicit child calls are the default. Mandatory Signal-With-Start output
+  coordinators, merge buffers, revision watermarks, and publication barriers are
+  removed from the target design.
+- Use existing native task priorities to keep archive/backfill work in the
+  background where useful. Running work need not be preempted.
+- Measure before introducing debounce or fairness tuning. A concrete performance
+  problem may justify a small change later; a general accumulator/coordinator
+  framework is not a prerequisite for processing a ride.
 
 ## Shared object storage and retention
 
-- Use one backend-independent `ObjectStore` service and logical
-  `ObjectRef { path, sha256, bytes }` values. Inject Apache's supported
-  [`object_store` backend](https://docs.rs/object_store/) at composition roots.
-  Local disk with durable `fsync` publication is the initial adapter.
-- The service owns namespace validation, immutable content-addressed writes,
-  checksum/size verification, named JSON descriptors/references, errors, and
-  retention eligibility. Concurrent creates retain the winning descriptor.
-  Tasks do not construct provider clients, join filesystem paths, open files,
-  scan directories, or implement independent expiry.
-- Keep `strava/`, `bike/tasks/`, and `activity-imports/` ownership separate.
-  `ObjectOwner::ActivityImports` preserves legacy canonical keys and exact bytes.
-  Reprocessing verifies primary and supplemental sources through the service.
-- Backend replacement preserves logical keys and serialized references. Copy and
-  verify objects before switching injection so old histories/retries still read
-  their sources. Provider encryption and response metadata remain Strava-owned.
-- Share storage/TTL unit fixtures using the in-memory backend, plus the focused
-  filesystem restart check. Provider/task tests cover domain behavior rather
-  than repeating storage-layout and TTL matrices.
-
-| Object class                                            | Initial configurable retention                             |
-| ------------------------------------------------------- | ---------------------------------------------------------- |
-| Uploaded input never accepted                           | 24 hours since last upload/retry                           |
-| Successful workflow scratch                             | At least 14 days after final execution in its chain closes |
-| Failed/canceled scratch and accepted Strava event audit | At least 90 days after final execution closes              |
-| Canonical activity/import source                        | Keep while referenced; no scratch TTL                      |
-
-- Temporal closed-history retention is seven days in the recorded deployment.
-  Open executions, continuation chains, retry/recovery pins, and pending handoffs
-  remain protected regardless of age. Continue-As-New is not final chain closure.
-- Persist lifetime, ownership, and expiry outside Temporal history. Keep each
-  shared reference independently: one successful caller cannot shorten another
-  failed/active request's retention. Retain input after failed submission.
-- Preserve ordering/generation/deletion watermarks after event-audit expiry.
-  Keep parents while retained children reference them. Canonical sources stay
-  for their referenced activity/import lifetime.
-- A native scheduled sweeper owns each prefix. Eligibility is only a candidate,
-  not deletion authorization. Inventory active/retained/resettable histories,
-  database imports/artifacts, retry pins, handoffs, and unexpired provider indexes
-  completely, including pagination; recheck the pin/reference generation under
-  deletion coordination. Missing inventory or writer coordination defers deletion.
-- Remove expired cache indexes before unused bodies. Backend lifecycle features
-  must not bypass references or race a new writer/pin. Dry-run candidates,
-  protected roots/reasons, allocated/reclaimed bytes, and failures before enabling
-  deletion. No production garbage collector is enabled by this specification.
-- Shared groundwork currently supplies serializable lifetimes and candidate
-  policy. Persistence/inventory/scheduled deletion remains open. After Bike task
-  conversions, complete Strava's remaining storage composition and retention
-  integration; keep protocol/captures/encryption/histories compatible. This later
-  cleanup does not defer F1–F4 or neutral shared-output correctness.
+- Reuse `ObjectStore` and compact `ObjectRef { path, sha256, bytes }` values.
+  Keep existing logical keys, namespace ownership, and integrity verification.
+  Source bytes belong in the retained store, not Temporal payloads.
+- Keep canonical activity/import files available for reprocessing, including
+  after failed or canceled work. Deleting native execution history must not
+  delete the activity's retained source.
+- Keep existing safe temporary-file cleanup. A new reference/pin inventory,
+  workflow-history scan, or accounting-based garbage collector is outside this
+  conversion. If uncertain whether a file is still needed, retain it.
+- Reclaim obsolete scratch separately, using a clear storage rule that does not
+  remove canonical files. Do not make storage redesign a dependency of ingestion.
 
 ## Large archive durability
 
-- Retain immutable archive bytes plus a paged manifest in shared durable storage;
-  preserve hashes and retry references after the original URL expires. Stream
-  download/extraction with bounded memory. Pin archives/manifests/staging while
-  needed; canonical extracted sources follow the reference policy above.
-- Use stable owner/request/archive/entry identities and exact settled
-  success/duplicate/failure counts. Await source children and accepted handoffs
-  before advancing the settled cursor; projections may finish later.
-- History records completed steps/children; Continue-As-New carries manifest,
-  next settled cursor, counts, pending dirty scope, and references. No required
-  cursor/source/result lives only in worker memory or temporary files.
-- Long download/extraction Activities use native heartbeats with compact
-  stage/entry/committed byte-or-chunk offsets. Validate archive identity and
-  resume only durable checkpoints. Set heartbeat/execution timeouts explicitly.
-- A crash can lose a throttled heartbeat and repeat a tail. Stable entry keys,
-  idempotent writes/counts, and stale-write fences make older checkpoints safe.
-  Heartbeats are intra-Activity progress; workflow history records completed work.
-- Compressed archives resume at manifest entries/staged chunks, not arbitrary
-  compressed offsets. Partial download ranges need source support and matching
-  validators; otherwise restart download safely.
-- Cancellation preserves committed progress and inputs for explicit resume with
-  stable entry identities/counts. Release pins only under reference-aware cleanup;
-  never report source success while children/handoffs failed.
-- Task 12 requires real multi-gigabyte/thousand-entry recovery evidence: loss
-  during download, extraction, after entry commit/before acknowledgment, between
-  batches, across continuation, after missed heartbeats, and during paused-import
-  TTL sweeps. Synthetic large manifests prove orchestration only. Measure memory,
-  offsets, counts, and rebuild reduction in the existing stack.
+- Retain the archive before processing. Stream extraction with bounded memory,
+  save each activity file, and call the ordinary import task.
+- Carry a compact entry/page cursor through native continuation. A useful native
+  heartbeat may report extraction progress, but restarting extraction or repeating
+  the current entry after interruption is acceptable.
+- Preserve bytes so an expired download URL is not required for a rerun.
+  Use normal import identity/upserts to avoid duplicate activities.
+- No exact success/duplicate/failure accounting or custom pause/resume protocol
+  is required. Verify bounded memory, multiple pages, a failed child, and restart
+  from retained input; extend tests when an observed failure warrants it.
 
 ## Strava protocol and workflows
 
@@ -419,7 +264,7 @@ flowchart LR
 - Activity `create` / `update` / `delete` start dedicated native workflows.
   Athlete `update` with `authorized=false` disconnects without remote revoke.
   Other combinations and unconnected athletes are acknowledged and ignored.
-  [Typed intake](../../bike-rs/bike-core/src/strava/events/intake.rs) and
+  [Typed intake](../../bike-rs/integrations/src/strava/events/intake.rs) and
   [client registration](../../bike-rs/strava-temporal/src/client.rs) own mapping;
   there is no generic Strava processor.
 - Retain all activity summaries, including manual entries and non-cycling sports,
@@ -436,22 +281,31 @@ flowchart LR
 | Workflow                        | Input                      | Source steps and result                                                    |
 | ------------------------------- | -------------------------- | -------------------------------------------------------------------------- |
 | CreateActivity / UpdateActivity | Strava event               | Await Upsert child; return Bike ID/status                                  |
-| UpsertActivity                  | Event + remote activity ID | Fetch activity → streams → normalize → persist → refresh; return ID/status |
-| DeleteActivity                  | Event + remote activity ID | Capture dependencies → delete → refresh; deleted/already absent            |
+| UpsertActivity / DeleteActivity | Event + remote activity ID | Await source-keyed ReconcileActivity; return ID/status                     |
+| ReconcileActivity              | Event + remote activity ID | Fetch → normalize → persist → refresh, or capture → delete → refresh       |
 | SyncActivities                  | Event + saved offset       | List pages → await upsert children → commit offset; counts/new offset      |
 | BackfillActivities              | Event + fixed range        | List range → await upsert children; counts without offset change           |
 | DisconnectStrava                | Event + revoke flag        | Delete children → optional revoke → remove connection                      |
 | ScheduledSync                   | Schedule context           | List connections → await sync children; per-connection results             |
 
-- These are the eight workflows (Create and Update are separate). Review
+- These are the nine workflows (Create and Update are separate). Review
   [their explicit implementations](../../bike-rs/strava-temporal/src/workflows.rs)
   and [typed Activities](../../bike-rs/strava-temporal/src/activities.rs).
   Call steps as `run(ctx, RevokeConnection, event).await?`; shared helpers adapt
   SDK failures/options and derive display names from registered markers.
-- The deployed path still performs eager per-child aggregate rebuilds. F6 replaces
-  those with neutral asynchronous Bike handoffs, preserving fetch/normalize/persist
-  ownership and retained-history compatibility. Until that conversion, the
-  workflow table's refresh step describes the existing publication path.
+- The workflow table describes the existing provider sequence. Keep its explicit
+  fetch/normalize/persist/refresh shape when reusing Bike domain tasks. Per-item
+  rebuilds are acceptable; shared-output coordination is not a conversion gate.
+- Provider single-event parents await request-owned children and preserve the
+  child's result: canceled preparation reports cancellation; a started mutation
+  reports its actual completion or failure. Collections settle the current child,
+  then stop before the next item or cursor update. Parent close requests child
+  cancellation and waits for the child to settle.
+- Native patch `strava-commit-boundary-v1` preserves retained histories. New
+  provider runs check cancellation before preparation and shield a started
+  mutation and its downstream steps with independent native cancellation tokens.
+  Disconnect shields its initial state write and final revoke/removal separately;
+  item boundaries remain cancellable. This does not promise atomic publication.
 - SQL import recovery, bulk replay, and historical source repair must exclude
   `strava_sync`, including interrupted native publication. Use native sync/backfill;
   do not call legacy processors or create SQL continuation/checkpoint tasks.
@@ -519,26 +373,48 @@ flowchart LR
 | ----------------------------------------------- | ------------------------------------------------------------ |
 | State `event_time`                              | Last accepted provider event, epoch seconds                  |
 | State `deleted_at`                              | Provider time of current deletion; cleared by a newer upsert |
-| State `updated_at` / compatibility `applied_at` | Bike write time; new writes keep them synchronized           |
+| State `updated_at` / compatibility `applied_at` | Synchronized local write version, advanced on every write    |
 | History `occurred_at`                           | Source event/manual change time                              |
 | History `recorded_at`                           | Bike archive time                                            |
 
 - Never compare local sync/backfill request/receive time with a provider watermark,
-  or use activity start time as event order. F3 currently mixes these clocks;
-  preserve provenance while correcting existing mixed-clock state.
+  or use activity start time as event order. Derive provider time only from the
+  retained webhook; zero means unknown. Sync/backfill preserves the watermark,
+  and a new connection generation resets it. Repair old mixed values from
+  committed provider mutations, never from receipt or sync time.
+- Upsert/Delete await a request-owned `ReconcileActivity` child keyed by owner,
+  connection generation, athlete, and remote activity. A busy source retries
+  after a native timer; distinct events each fetch and apply rather than attaching
+  to another request's result. Continue a waiting parent after 128 attempts or
+  Temporal's history suggestion, preserving its original event and job identity.
+- Capture the source row version before provider I/O. Under the existing
+  connection lock, return any committed retry result, then check that version.
+  If the source changed, refetch using a response key containing the new version.
+  Atomically advance the existing timestamp token on writes; no new table or
+  execution ledger is required. A generation change clears an absent Bike mapping.
+- The native `strava-source-reconciliation-v1` patch preserves retained inline
+  histories. Drain started provider runs before the data repair and worker
+  transition; keep callback acceptance available during deployment.
 - Reject clearly older events within the same owner/object/generation. Deletion
   wins an equal-time upsert; only a strictly newer upsert restores it. Ignore
   deauthorization older than the connection; delayed old generations cannot write.
-- Strava timestamps have second precision and one save can emit several events.
-  Distinct equal-second updates must reconcile. Use per-source Temporal
-  serialization/coalescing and conditional domain writes so an older fetched
-  snapshot cannot become the final state. Avoid a generic ordering protocol.
-- Lock and return an existing committed mutation/dependency outcome before
-  unchanged/superseded/absent branches (F1). Preserve removed dependencies (F2).
-  Deletion/provider status/freshness changes are atomic and retry-safe.
+- Distinct equal-second provider updates may require another fetch. Keep the
+  existing canonical deduplication and owned writes; do not introduce a universal
+  source-serialization workflow as a condition of converting file ingestion.
+- Preserve atomic deletion and provider state updates. Repeated processing or a
+  broader derived rebuild is acceptable; exact recovery of the first mutation
+  outcome is not a migration requirement.
 
 ## Temporal execution policy
 
+- Immutable retained-input integrity and JSON decoding failures use the existing
+  typed domain error (`422 Unprocessable Entity`); pure file parser failures are
+  also terminal client errors. Missing immutable input is terminal. Native
+  Activity error adaptation classifies these without matching message text.
+  Backend I/O/timeouts remain server errors and retryable. Repair or recover the
+  retained source before intentionally submitting new work; retries cannot fix
+  the same checksum, size, or malformed bytes. Primary and supplemental sources
+  obey the same rule before any mutation.
 - [Shared platform policy](../../bike-rs/bike-core/src/platform/temporal.rs) owns
   named timeout constants and native retry-policy factories. Bike and Strava
   workflow options use these factories; workflow steps do not build policies.
@@ -550,7 +426,6 @@ flowchart LR
 | -------------------- | --------------------- | ----------------- | ------------------------- | -------------- | ---------------- | ------- | ---------------- |
 | Bike domain effect   | 2 minutes per attempt | None by default   | `activity_retry_policy()` | 12             | 1 second         | 2×      | 1 minute         |
 | Strava domain effect | 2 minutes per attempt | 30 seconds        | `activity_retry_policy()` | 12             | 1 second         | 2×      | 1 minute         |
-| Manifest preparation | 1 hour per attempt    | 30 seconds        | `activity_retry_policy()` | 12             | 1 second         | 2×      | 1 minute         |
 
 - These are current finite attempt budgets, not a guarantee of eventual success
   after every outage. Adapters distinguish permanent invalid input from transient
@@ -565,8 +440,8 @@ flowchart LR
   continuation inside a populated page, failed customer starts, input budgets,
   and future output handoffs. Old histories retain their previous decisions;
   verify replay rather than modifying deployed Activity sequences blindly.
-- Verify emitted Activity options against the shared factories, including
-  manifest heartbeat options. Retry builders and named budgets stay out of steps.
+- Verify emitted Activity options against the shared factories. Retry builders
+  and named budgets stay out of steps.
 
 ## Payload and history budgets
 
@@ -588,12 +463,11 @@ flowchart LR
   and [Temporal service limits](https://docs.temporal.io/self-hosted-guide/defaults).
 - Sync and backfill list 100 activities per provider page. Continue as new after
   25 pages or the server's history suggestion. Check the suggestion after every
-  completed child, preserving the remaining page IDs in continuation input; never
-  re-list that partially completed page or count its completed children twice.
+  completed child, preserving the remaining page IDs in continuation input.
   Carry the original fixed window, next page, counts, latest start,
   event/correlation IDs, request ID, and trace carrier. Advance the sync cursor
-  only after the final source page and accepted refresh handoffs; projections may
-  publish later. Backfill never advances the sync cursor.
+  only after the workflow's children finish. Backfill never advances it.
+  Existing provider counts may remain; no extra result accounting is required.
 - Scheduled scans continue as new after each 20-connection page. Await every
   started customer, carry failures and correlation ID into the next run, and fail
   the final run with the cumulative count when any customer failed.
@@ -617,10 +491,10 @@ flowchart LR
 | `strava_scan_connections`                                                                                                            | ScanRequest → ScanPage (up to 20 customer sync events)                       |
 
 - Typed domain values live in
-  [`strava/native/types.rs`](../../bike-rs/bike-core/src/strava/native/types.rs).
-  The table describes the existing provider Activity sequence; F6 changes output
-  routing through compatible history evolution rather than changing that sequence
-  as part of the non-Strava reprocess review.
+  [the stored event contract](../../bike-rs/bike-core/src/entities/strava_events/contracts.rs).
+  The table describes the existing provider Activity sequence. Changes must
+  preserve retained-history compatibility; reuse domain operations without
+  introducing a second execution accounting system.
 
 ## Logs, job visibility, and alerts
 
@@ -662,150 +536,45 @@ flowchart LR
 
 ## Verification and acceptance scenarios
 
-- Use shared `bike-core::test_support` factories, in-memory provider/storage
-  fakes, PostgreSQL SeaORM mocks, checked-in recordings, controlled clocks/completion
-  order, and the pinned SDK harness. No SQLite unit databases, schema/trigger
-  substitutes, timestamp massaging, or compatibility logic for a second persistence
-  implementation. Use the existing PostgreSQL/Docker suites for database semantics;
-  do not add a separate DB/server/E2E framework. Do not contact real Strava or sleep
-  in ordinary units.
-- Execute production workflow decisions in the in-process SDK runner and handlers
-  in `ActivityEnvironment`, with fake completion/RPC transport. Check actual
-  commands, options, exact task names, child/handoff order, retries, continuation,
-  cancellation cutoff, and failure visibility; not only successful stub returns.
-- Reprocess checks cover owned metadata-only submission, same IDs, stale/deleted
-  targets, lost commit replies, under-lock races, audit rollback/key collision,
-  missing/corrupt primary and supplemental objects, namespace compatibility,
-  recording evidence preserving geometry, and committed retry without source I/O.
-- Batch checks cover >1 page, failed child starts/execution, restart during a child,
-  empty/invalid/truncated pages, selection substitution, global segments across
-  users, stable manifests/counts, and continuation. Synthetic manifests establish
-  bounded orchestration, not archive streaming/disk/crash guarantees.
-- Strava checks cover all eight happy paths, status/supersession, deletion retry/
-  rollback, source ownership/generations, summary-only sports, offsets, backfill,
-  OAuth browser binding/signed fields/consumption/expiry/denial/exchange failure,
-  durable dedupe, and mocked provider/storage failures.
-- Verify inherited trace/tracestate and parent/child run links with in-memory
-  tracing/log writers, DB ancestry on success/failure, terminal/continuation logs,
-  replay suppression, and byte-identical historical/pending commands after restart.
-- Preserve fixture drills for **5,100 activities / 51 pages / three runs** for sync
-  and backfill, server-suggested continuation, **60 scheduled customers / three
-  pages** with out-of-order/start/execution failures, >2 MiB retained provider body,
-  and 150,000-point streams while every boundary value stays below 256 KiB.
-- `mise run checks:docker test:tasks:unit` composes the native reprocess, storage,
-  and Strava suites once through mise dependencies. `test:reprocess` reuses
-  `test:tasks:workflows`; binary unit tests compile `temporal-worker`, so no second
-  compile-only check is required. CI owns full workspace suites and 80% changed-line
-  coverage per service. Required hooks and all warnings/errors remain blocking.
-- For read-only native Strava history replay, from `bike-rs` run
-  `mise exec -- cargo run --locked -p strava-temporal --example replay -- --file history.json`
-  or `--workflow workflow-id` with the owning Temporal environment. It registers/
-  executes no Activities. CLI camelCase export compatibility remains outstanding.
-
-### Unit acceptance scenarios
-
-- `mise run checks:docker test:workers:mocks` runs the restored PostgreSQL mock
-  regressions for import identity/state, retained-artifact copying, archive
-  progress/failure, preference backfill decisions, execution claims/rollback/
-  cancellation fences, history ownership/filters, scrape failures, and the
-  remaining SQL processor registry/adapters. Shared fixtures own valid defaults;
-  mocks inspect actual statements and bound values, without maintaining a schema.
-- These units replace database-backed unit setup. They do not prove PostgreSQL
-  isolation or database-generated defaults; the existing PostgreSQL/CI suites
-  own those properties. Graph/replay UI tests retire with their removed product
-  behavior. Native workflow, storage, source parsing, and reprocessing units stay
-  in the existing owning suites; none require SQLite.
-
-| ID / suggested test                              | Given / action                                                                                  | Required assertion                                                                                                                                                                                     |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| U01 `accepts_without_activity_id_or_worker`      | No Bike activity ID; fake Temporal accepts while worker is stopped.                             | Return job reference without parsing, fetches, rebuilds, or pre-start business mutation.                                                                                                               |
-| U02 `lost_start_reply_reuses_job`                | Accepted start loses its reply; retry same command, including a retained closed job.            | Same logical job/original input; no automatic restart of a closed failure.                                                                                                                             |
-| U03 `command_identity_is_not_correlation`        | Different commands share correlation; retry changes trace/run IDs.                              | Commands remain distinct; retries preserve business identity; owners never collide.                                                                                                                    |
-| U04 `changed_input_cannot_replace_command`       | Same key with different source/target.                                                          | Duplicate start retains canonical input; no claim that changed input replaced it.                                                                                                                      |
-| U05 `reprocess_preserves_domain_identity`        | Valid owned retained source and existing activity.                                              | Same activity/import IDs, correct parsed data, existing audit behavior, correct refresh scope and priority.                                                                                            |
-| U06 `invalid_source_has_no_effect`               | Foreign/missing/corrupt source or invalid/stale command.                                        | Explicit failure/supersession, no business mutation or refresh; permanent input errors are not transient retries.                                                                                      |
-| U07 `lost_commit_reply_is_safe`                  | Effect commits, reply is lost, retry runs again.                                                | One visible source/effect; valid refresh scope survives. Prove the chosen model's idempotency, without requiring a generic result table.                                                               |
-| U08 `idempotency_is_checked_atomically`          | First lookup misses; another attempt commits before the lock is acquired.                       | Constraint/locked lookup prevents duplicate effects; an existing stored result is not overwritten by retry classification.                                                                             |
-| U09 `rematch_retry_keeps_removed_segments`       | `{A,B}` becomes `{B,C}`; completion is lost.                                                    | Eventual refresh covers `{A,B,C}` using the chosen plan/version/scope, including A.                                                                                                                    |
-| U10 `late_result_cannot_become_final_state`      | Older work finishes after a newer update or deletion.                                           | Conditional writes or reconciliation preserve current source/output state; no source resurrection.                                                                                                     |
-| U11 `partial_handoff_retries_without_reimport`   | Some output requests accept; another fails.                                                     | Retry safely resubmits missing/duplicate refreshes; source effect is not duplicated; source job completes after acceptance.                                                                            |
-| U12 `accepted_cancel_stops_owned_work`           | Cancel during preparation or between batch items.                                               | No new source work/handoffs; owned children stop; completed earlier items remain; parent is canceled.                                                                                                  |
-| U13 `cancel_racing_apply_has_one_outcome`        | Cancel races with entry into apply/handoff.                                                     | Either cancellation wins before mutation, or it is too late/deferred to a safe batch boundary; never claim accepted cancellation while continuing request work.                                        |
-| U14 `failed_work_can_converge_on_retry`          | Source/handoff/output retries exhaust, then operator retry or existing reconciliation runs.     | Failure stays visible; eventual output is correct without duplicate source effects; no new recovery ledger is needed.                                                                                  |
-| U15 `mixed_producers_coalesce_refreshes`         | Upload, reprocess, and Strava burst for one user/shared segment.                                | Shared output owner reduces rebuild count, merges affected scope, and preserves the highest pending urgency.                                                                                           |
-| U16 `inflight_changes_get_a_followup`            | Changes arrive during rebuild/replay/continuation.                                              | One merged follow-up covers new state; duplicate signals do not postpone it indefinitely.                                                                                                              |
-| U17 `ingestion_does_not_wait_for_projections`    | Refresh requests accept while fitness/segments/heatmaps remain pending.                         | Import and source batch/sync can finish; offset can advance after successful source children; projections converge later without readiness receipts.                                                   |
-| U18 `webhook_dedupe_keeps_distinct_updates`      | Repeat canonical payload with different JSON order; distinct same-second updates/create/delete. | Exact duplicates share identity; distinct changes still reconcile.                                                                                                                                     |
-| U19 `sync_clock_is_not_provider_order`           | Bike clock ahead/behind during overlapping sync/webhook.                                        | Local request time cannot advance provider watermark or suppress valid source events.                                                                                                                  |
-| U20 `same_second_updates_converge`               | Updates/sync overlap and old fetched content completes last.                                    | Latest authorized provider state eventually wins through the chosen serialization/version strategy.                                                                                                    |
-| U21 `delete_and_reconnect_fence_stale_work`      | Delayed update after delete; reconnect with old work outstanding.                               | Deleted source is not recreated by stale work; previous connection cannot mutate; delayed derived cleanup eventually converges.                                                                        |
-| U22 `provider_handoff_is_neutral_and_compatible` | Strava change and retained old workflow history.                                                | Domain refresh inputs contain no provider types; new flow coalesces; old history replays compatibly.                                                                                                   |
-| U23 `context_survives_workflow_boundaries`       | Admin acts on another user; children/retries/continuation follow.                               | Actor/owner remain distinct and root context survives; shared refresh does not invent one exclusive caller.                                                                                            |
-| U24 `batch_resume_keeps_manifest_and_counts`     | Multiple pages, failures, replay, older heartbeat, continuation.                                | Stable entries/counts, no skips, visible failures, retained bytes; completion does not wait for all projections.                                                                                       |
-| U25 `intake_is_fast_and_failure_is_honest`       | Temporal accepts, times out, or loses a start reply during callback/user submission.            | Success only after durable acceptance; callback deadline stays below two seconds; failure returns promptly and retry reuses identity. Optional inbox variant must prove durable acceptance before 200. |
-| U26 `priority_matches_rider_expectations`        | Background archive/delete burst followed by a new ride.                                         | Fitness/segment/achievement refresh gets short wait/high priority; pending work promotes; background work still progresses; no publication SLA is asserted.                                            |
-| U27 `shared_activity_projection_is_atomic`       | Different segment refreshes affect one activity; replacement fails or clears all efforts.       | Ordered activity locks precede fresh reads and atomic replacement; failed writes roll back. Segment refresh commits ranks before taking activity locks; edits/deletes use the same lock order.         |
-
-### Persistence and runtime evidence
-
-- Scenarios are targets, not blanket claims that tests already pass. Link each
-  applicable U/P ID to test path, command, commit, result, and evidence scope in
-  the rollout record. Track untouched findings openly in the backlog.
-- Mocks do not prove database isolation, server durability, live provider HTTP,
-  migration behavior, or crash recovery. First vet the working admin slice;
-  subsequently use the existing Docker/CI stack for these proofs.
-
-  for presenting this implementation for review.
-
-| ID  | Required evidence when applicable                                                                                                                                                                                                                                                                                         |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P01 | PostgreSQL: duplicate/concurrent source writes, rollback, and commit-before-lost-reply satisfy the chosen natural-key/version/transaction contract.                                                                                                                                                                       |
-| P02 | PostgreSQL: replacement/deletion refreshes removed dependencies; delayed/repeated rebuilds eventually match current authoritative data without duplicate contributions.                                                                                                                                                   |
-| P03 | Native Temporal with fake Strava: fast callback acceptance/failure, equal-second and sync ordering, mixed-producer priority/coalescing, and replay when provider workflow history changes.                                                                                                                                |
-| P04 | Reprocess runtime: API acknowledges while worker is stopped; restart/kill after source commit or partial handoff and retry safely. Verify cancellation boundary, eventual rider-visible outputs, deployed image/migrations, and job status. Measure prompt new-activity refresh separately from relaxed bulk/delete work. |
+- Use existing shared fixtures, PostgreSQL SeaORM mocks, object-store fakes, and
+  the native SDK harness. Unit tests cover happy paths and concrete regressions.
+  No SQLite substitute, separate E2E framework, or real provider calls in units.
+- Test the actual readable workflow: parse/save before derived children, segments
+  before dependent achievements, and a failed child visible as failure.
+- Reprocess the same retained file twice: keep activity/import identity and
+  correct outputs. Test a transient Activity failure, corrupt input, deletion/
+  privacy checks, and rerun after partial completion. Repeated computation passes.
+- Exercise a multi-page batch, a failed child, and continuation/restart from
+  retained input. Do not require exact once-only counts or receipt reconstruction.
+- Keep Strava's protocol, OAuth, ownership, payload-limit, and paging regressions.
+  Their detailed fixtures remain in the existing suites; the superseded U/P
+  accounting matrix does not govern the simplified migration.
+- Use the owning Docker/mise unit tasks with fixture-backed workflow children,
+  object storage, and PostgreSQL mocks. Local checks must establish the converted
+  paths work without waiting for CI. Warnings, lint, and required hooks remain blocking.
+- Before deploying changed workflow sequences, verify retained native histories
+  still replay or drain the old runs. Use existing replay tools. For the actual
+  converted path, verify one real file's downstream results and a worker restart.
+  Mock success alone is not deployed evidence.
 
 ## Conversion and retirement gates
 
-- Follow the single [task inventory and status](../TODO.md#task-inventory-and-conversion-order):
-  `Pending` → `In progress` → `Ready to verify` → `Verified`; email becomes `Retired`.
-  Finish reprocessing first; stop for user review after each task before proceeding.
-- Converting queue dispatch alone is insufficient. Inventory every producer,
-  including SQL inserts, child/batch completion, startup recovery, reads, Strava,
-  and scheduled loops. Move each selected mutation/output boundary together;
-  drain or fence legacy execution rather than allowing competing owners.
-- Check per-task happy path, duplicate/conflicting/stale work, cancellation,
-  lost completion, handoff failure, trace context, priority/coalescing, and
-  applicable U/P scenarios. Keep exhausted failures visible and retryable.
-- For task verification, record CI/checks, deployed image identity, migrations,
-  readiness, owning queue/prefix, native job/history links, retry/cancel behavior,
-  real user/admin result, and interruption during an executing Activity. Observe
-  actual data/maps/UI, not only process readiness. Long Activities resume safe
-  heartbeat checkpoints; task 12 also satisfies its archive crash gate.
-- Record task, PR, commit/image/environment, workflow/run/source reference,
-  unit/engine/deployed evidence, applicable IDs, unresolved issues, and user
-  acceptance in the rollout record. Mark verified only after user acceptance.
-- At retirement, resolve pending/running/failed SQL work, batches, and import locks.
-  Remove SQL executable/deployment/Compose/build targets, queue/recovery/batch
-  machinery, scrapes/dashboards/management paths, and obsolete diagnostics.
-  Keep domain status/history, retained objects, and native metrics/history.
-- Preserve append-only migrations; schema retirement uses new migrations. Keep
-  one combined `temporal-worker` and separate queues. Verify Strava still works.
-  Rollback stops dispatch and drains/fences executions before ownership changes;
-  never run both executors for the same work.
+- The conversion includes every task in [the TODO](../TODO.md#converted-tasks),
+  their producers, and removal of SQL queue/batch/stage/recovery/UI/build code.
+- Preserve historical migrations. The new forward-only retirement drops execution
+  and lock tables while preserving activities, imports, source files, and activity
+  event history. Stop submissions and drain the old workers before applying it.
+- Keep the combined `temporal-worker`. Prepare and validate the conversion locally;
+  remote publication and deployment require the user's instruction.
+- Record the focused checks, CI, and actual user-visible results for a deployment
+  in the rollout record. Keep those evidence scopes distinct.
 
 ## References
 
-- [Temporal Activity idempotency](https://docs.temporal.io/activity-definition#idempotency),
-  [bank-charge example](https://temporal.io/blog/idempotency-and-durable-execution),
-  and [money-transfer example](https://learn.temporal.io/getting_started/go/first_program_in_go/):
-  durable orchestration still needs an idempotent called service/model.
-- [Workflow/run identity](https://docs.temporal.io/workflow-execution/workflowid-runid),
-  [message passing](https://docs.temporal.io/encyclopedia/workflow-message-passing),
-  [event accumulator](https://docs.temporal.io/design-patterns/event-accumulator),
-  [resettable timers](https://docs.temporal.io/design-patterns/updatable-timer),
-  [native priority/fairness](https://docs.temporal.io/develop/task-queue-priority-fairness),
-  [retry policies](https://docs.temporal.io/encyclopedia/retry-policies),
-  [cancellation](https://docs.temporal.io/encyclopedia/workflow/cancellation-and-termination),
-  and [Activity heartbeats](https://docs.temporal.io/encyclopedia/detecting-activity-failures#activity-heartbeat).
-- [Strava webhook contract](https://developers.strava.com/docs/webhooks/):
-  delivery budget, retries, payload fields, and multiple events per save.
+- [Temporal Activity idempotency](https://docs.temporal.io/activity-definition#idempotency)
+- [Workflow/run identity](https://docs.temporal.io/workflow-execution/workflowid-runid)
+- [Rust SDK history patching](https://github.com/temporalio/sdk-rust/blob/main/crates/sdk/README.md#patching)
+- [Retry policies](https://docs.temporal.io/encyclopedia/retry-policies)
+- [Cancellation](https://docs.temporal.io/encyclopedia/workflow/cancellation-and-termination)
+- [Activity heartbeats](https://docs.temporal.io/encyclopedia/detecting-activity-failures#activity-heartbeat)
+- [Strava webhook contract](https://developers.strava.com/docs/webhooks/)

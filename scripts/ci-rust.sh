@@ -6,8 +6,8 @@ cd "$(dirname "$0")/.."
 : "${CI_PIPELINE_NUMBER:?This task requires a CI pipeline identity}"
 # Keep CI artifacts small without changing LLVM coverage instrumentation.
 export CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=1 CARGO_PROFILE_TEST_DEBUG=1
-stage="${1:?Use prepare, unit, postgres, sdk, or report}"
-case "$stage" in prepare|unit|postgres|sdk|report) ;; *) exit 1 ;; esac
+stage="${1:?Use prepare, unit, sdk, or report}"
+case "$stage" in prepare|unit|sdk|report) ;; *) exit 1 ;; esac
 if [[ "$stage" == sdk ]]; then
   : "${BIKE_E2E_ENGINE_STATE_DIR:?CI must select the disposable SDK engine directory}"
   source scripts/ci-engine-stop.sh
@@ -85,7 +85,7 @@ save_verified() {
 }
 
 if [[ "$stage" == prepare ]]; then
-  rm -f -- "$receipt" "$reports/rust-unit-reused" "$reports/rust-unit-passed" "$reports/rust-postgres-passed" "$reports/rust-sdk-passed"
+  rm -f -- "$receipt" "$reports/rust-unit-reused" "$reports/rust-unit-passed" "$reports/rust-sdk-passed"
   # Restore once, before parallel stages write measurements or reports.
   if (flock --shared 9; restore_verified) 9>"$cache/$key.lock"; then
     touch "$reports/rust-unit-reused"
@@ -100,7 +100,7 @@ if [[ "$stage" == prepare ]]; then
 fi
 
 test "$(cat "$receipt")" = "$key"
-if [[ "$stage" == unit || "$stage" == postgres || "$stage" == sdk ]]; then
+if [[ "$stage" == unit || "$stage" == sdk ]]; then
   rm -f -- "$reports/rust-$stage-passed"
   if [[ -f "$reports/rust-unit-reused" ]]; then
     printf 'Rust verification cache HIT %s; %s checks restored at preparation\n' "$key" "$stage"
@@ -115,10 +115,6 @@ case "$stage" in
   unit)
     mise exec rust protoc -- mise run rust:ci:unit
     printf '%s\n' "$key" >"$reports/rust-unit-passed"
-    ;;
-  postgres)
-    mise run rust:workers:postgres:collect
-    printf '%s\n' "$key" >"$reports/rust-postgres-passed"
     ;;
   sdk)
     mise install aqua:docker/cli jq
@@ -139,7 +135,6 @@ case "$stage" in
   report)
     # A failed or interrupted parallel stage cannot publish passing evidence.
     test "$(cat "$reports/rust-unit-passed")" = "$key"
-    test "$(cat "$reports/rust-postgres-passed")" = "$key"
     test "$(cat "$reports/rust-sdk-passed")" = "$key"
     if [[ -f "$reports/rust-unit-reused" ]]; then exit 0; fi
     case "${CARGO_LLVM_COV_TARGET_DIR:?Shared coverage objects are required}" in

@@ -13,14 +13,23 @@ services:
       FRONTEND_URL: http://ui.e2e.test:3000
       API_URL: http://api.e2e.test:3000
       ALLOW_LOCAL_ARCHIVE_IMPORTS: 'true'
+    depends_on:
+      temporal:
+        condition: service_healthy
     networks:
       default:
         aliases: [api.e2e.test]
     volumes:
       - uploads:/app/uploads
-  worker:
-    # A future worker E2E is opt-in, outside the default browser gate.
-    profiles: [worker]
+  temporal:
+    image: ${BIKE_TEMPORAL_TOOLS_IMAGE:?Run Compose through mise}
+    entrypoint: [temporal]
+    command: [server, start-dev, --ip, 0.0.0.0, --namespace, bike]
+    healthcheck:
+      test: [CMD, temporal, --address, localhost:7233, operator, cluster, health]
+      interval: 2s
+      timeout: 3s
+      retries: 30
   ui:
     environment:
       API_URL: http://api.e2e.test:3000/api

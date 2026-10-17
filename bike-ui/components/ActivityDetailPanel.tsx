@@ -2,10 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import TemporalLink from "./ui/TemporalLink";
 import { formatActivityTimestamp } from "../lib/activityFormatting";
 import {
   useActivity,
-  useAdminActivityImportTrace,
   useDeleteActivity,
   useRegenerateActivity,
 } from "../lib/queries";
@@ -13,7 +13,6 @@ import { useUnitPreferences } from "../lib/unitPreferences";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import ActivityClimbsCard from "./activity-detail/ActivityClimbsCard";
 import { ActivityHeaderActions } from "./activity-detail/ActivityHeaderActions";
-import ActivityImportTracePanel from "./activity-detail/ActivityImportTracePanel";
 import ActivityModal from "./activity-detail/ActivityModal";
 import LapCard from "./activity-detail/LapCard";
 import ActivityMetricsSummary from "./activity-detail/ActivityMetricsSummary";
@@ -40,20 +39,16 @@ export default function ActivityDetailPanel({
   );
   const [selectedClimbId, setSelectedClimbId] = useState<string | null>(null);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
-  const [isImportTraceModalOpen, setIsImportTraceModalOpen] = useState(false);
   const router = useRouter();
   const { unitSystem } = useUnitPreferences();
   const { user } = useAuth();
   const activityQuery = useActivity(activityId);
   useDocumentTitle(activityQuery.data?.title ?? "Activity");
   const regenerateMutation = useRegenerateActivity();
+  const [reprocessingJob, setReprocessingJob] = useState<string | null>(null);
   const deleteMutation = useDeleteActivity();
   const activity = activityQuery.data;
   const isAdmin = Boolean(user?.is_admin);
-  const importTraceQuery = useAdminActivityImportTrace(activity?.id ?? null, {
-    enabled: isAdmin && !!activity,
-  });
-
   function focusSegmentMatch(segmentId: number) {
     setSelectedSegmentId(segmentId);
 
@@ -103,7 +98,8 @@ export default function ActivityDetailPanel({
     }
 
     try {
-      await regenerateMutation.regenerateAsync(activity.id);
+      const job = await regenerateMutation.regenerateAsync(activity.id);
+      setReprocessingJob(job.id);
     } catch {
       // The mutation exposes the API error state used below.
     }
@@ -148,6 +144,12 @@ export default function ActivityDetailPanel({
   return (
     <section className="space-y-8">
       <AppCard bodyClassName="gap-6">
+        {reprocessingJob ? (
+          <p role="status">
+            Activity reprocessing started.{" "}
+            <TemporalLink workflowId={reprocessingJob} />
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="mt-2 text-4xl font-semibold">{activity.title}</h1>
@@ -161,9 +163,8 @@ export default function ActivityDetailPanel({
             activity={activity}
             isRegenerating={regenerateMutation.isPending}
             isDeleting={deleteMutation.isPending}
-            canViewImportTrace={isAdmin && !!importTraceQuery.data}
+            isAdmin={isAdmin}
             onOpenEditDialog={() => setIsActivityModalOpen(true)}
-            onViewImportTrace={() => setIsImportTraceModalOpen(true)}
             onRegenerate={() => {
               void handleRegenerate();
             }}
@@ -179,15 +180,6 @@ export default function ActivityDetailPanel({
             initialTitle={activity.title}
             initialActivityType={activity.activity_type}
             onClose={() => setIsActivityModalOpen(false)}
-          />
-        ) : null}
-
-        {isImportTraceModalOpen ? (
-          <ActivityImportTraceModal
-            trace={importTraceQuery.data}
-            isLoading={importTraceQuery.isLoading}
-            error={importTraceQuery.error}
-            onClose={() => setIsImportTraceModalOpen(false)}
           />
         ) : null}
 
@@ -261,57 +253,5 @@ export default function ActivityDetailPanel({
         )}
       </AppCard>
     </section>
-  );
-}
-
-function ActivityImportTraceModal({
-  trace,
-  isLoading,
-  error,
-  onClose,
-}: {
-  trace: ReturnType<typeof useAdminActivityImportTrace>["data"];
-  isLoading: boolean;
-  error: Error | null;
-  onClose: () => void;
-}) {
-  return (
-    <dialog className="modal modal-open">
-      <div className="modal-box max-w-5xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold">Import trace</h2>
-            {trace ? (
-              <p className="mt-1 text-sm text-base-content/65">
-                Import #{trace.import.id}
-                {trace.import.import_version
-                  ? ` · version ${trace.import.import_version}`
-                  : ""}
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="mt-6">
-          <ActivityImportTracePanel
-            trace={trace}
-            isLoading={isLoading}
-            error={error}
-          />
-        </div>
-      </div>
-      <form method="dialog" className="modal-backdrop">
-        <button type="button" onClick={onClose}>
-          close
-        </button>
-      </form>
-    </dialog>
   );
 }

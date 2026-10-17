@@ -117,13 +117,11 @@ make it contribute. Outdoor-only choices belong to MAPS12.
   operation, including queries issued from blocking render threads.
 
 Imports and edits durably mark projections pending without waiting for
-preparation. While enabled, the worker reconciles up to **16 activity IDs every
-15 seconds** and prepares them sequentially. Backfill uses the same builder.
-A crashed preparation task resumes through shared heartbeat recovery, preserving
-its activity generations and attempt history. `WORKER_RECOVERY_TIMEOUT_SECONDS`
-configures both heartbeat and projection queue recovery; it defaults to 300 seconds.
-A live heartbeat prevents reclaiming that task; deduplication keeps one eligible
-task for the same projection generation.
+preparation. While enabled, a native Temporal schedule starts reconciliation every
+15 seconds, skipping overlap. It pages **16 activity IDs**, awaits preparation
+children, and continues by ID. Backfill uses the same builder. Native retries and
+history resume interrupted work; repeated computation is acceptable. Publication
+still checks the current activity generation and privacy state.
 
 | Stored record         | Purpose                                                  |
 | --------------------- | -------------------------------------------------------- |
@@ -229,7 +227,7 @@ and metric labels.
 | Coverage counting and PNG drawing | [raster.rs](../../bike-rs/bike-core/src/heatmaps/raster.rs)                        |
 | GPS cleanup and simplification    | [geometry.rs](../../bike-rs/bike-core/src/heatmaps/geometry.rs)                    |
 | Chunk queries                     | [data.rs](../../bike-rs/bike-core/src/heatmaps/data.rs)                            |
-| Background preparation            | [prepare_heatmap.rs](../../bike-rs/worker/src/tasks/processors/prepare_heatmap.rs) |
+| Background preparation            | [prepare_heatmap.rs](../../bike-rs/bike-temporal/src/workflows/prepare_heatmap.rs) |
 
 See [Bike maps](../maps.md) for the activity-preview renderer's separate flow.
 

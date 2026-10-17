@@ -113,33 +113,13 @@ run = "bash scripts/strava-sdk.sh"
 description = "Check Strava SDK bindings against the pinned vendor contract"
 run = "bash scripts/strava-sdk.sh check"
 
-[tasks."test:strava:unit"]
-description = "Run isolated Strava workflow unit tests with mocked dependencies"
-run = "mise --cd bike-rs run test:strava:unit"
-
-[tasks."test:tasks:unit"]
-description = "Verify native Bike coordination and shared object storage with isolated fixtures"
-run = "mise --cd bike-rs run test:tasks:unit"
-
-[tasks."test:tasks:workflows"]
-description = "Test named Bike workflows, shared import Activity, and output debounce"
-run = "mise --cd bike-rs run test:tasks:workflows"
-
-[tasks."test:reprocess"]
-description = "Verify native reprocess domain effects, submission, workflows, and worker build"
-run = "mise --cd bike-rs run test:reprocess"
-
-[tasks."test:workers:mocks"]
-description = "Run isolated mock replacements for worker/import/history/metrics database units"
-run = "mise --cd bike-rs run test:workers:mocks"
-
-[tasks."test:storage"]
-description = "Verify shared object storage, retention, and legacy Strava compatibility"
-run = "mise --cd bike-rs run test:storage"
+[tasks."test:rs"]
+description = "Run the complete Rust workspace test suite"
+run = "mise --cd bike-rs run test"
 
 [tasks."pins:sync"]
-description = "Regenerate package metadata and the native CI database image from mise pins"
-run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"postgres\").image) = strenv(BIKE_POSTGRES_IMAGE) | (.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/bike.yaml", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/e2e.yaml"]
+description = "Regenerate package metadata and CI images from mise pins"
+run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/bike.yaml", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/e2e.yaml"]
 
 [tasks."pins:check"]
 description = "Verify generated package-manager metadata agrees with mise"
@@ -409,29 +389,11 @@ description = "Run Rust, shared UI, service, and contract checks"
 run = ["mise run rust:check", "mise run ui:check", "mise run test", "mise run generate:protobuf:check", "mise run contracts:check"]
 
 [tasks.test]
-run = "mise --cd map-renderer run test"
+run = ["mise run test:rs", "mise --cd map-renderer run test"]
 
 [tasks."test:workers"]
-description = "Run focused worker pipeline and admin history regressions"
-run = ["mise --cd bike-rs run test:workers", "mise --cd bike-ui run test:workers"]
-
-[tasks."test:workers:postgres:docker"]
-description = "Exercise migrations, publication fences and worker statistics in disposable PostgreSQL"
-run = "bash scripts/test-worker-postgres.sh"
-
-[tasks."ci:workers:postgres"]
-description = "Run worker persistence regressions against the job-local disposable database"
-run = "bash scripts/ci-rust.sh postgres"
-
-[tasks."rust:workers:postgres"]
-description = "Run existing SQL worker persistence regressions"
-run = ["mise install rust protoc", "mise run test:workers:postgres:docker"]
-
-[tasks."rust:workers:postgres:collect"]
-description = "Check existing SQL worker persistence while SDK freshness runs separately"
-run = ["mise install rust protoc", "mise run test:workers:postgres:docker"]
-
-
+description = "Run Rust tests and worker administration UI tests"
+run = ["mise run test:rs", "mise --cd bike-ui run test:workers"]
 
 [tasks."generate:protobuf"]
 description = "Generate or check map protobuf bindings"

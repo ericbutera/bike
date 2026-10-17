@@ -1,8 +1,4 @@
 use crate::activity_achievements::ActivityAchievementHighlight;
-use crate::background_jobs::{
-    entities::pipeline_outputs,
-    execution::{measured, WorkCounts, WorkScope},
-};
 use crate::entities::{
     activities, activity_analytics, analytics_user_states, fitness_freshness_daily, segment_efforts, segment_summaries,
     segment_user_summaries, segments,
@@ -205,9 +201,6 @@ where
 {
     analytics_user_states::Model::mark_dirty(db, user_id, dirty_from_day, changed_at).await?;
 
-    let revision = fitness_revision(changed_at, Utc::now().date_naive());
-    pipeline_outputs::Model::advance(db, "fitness", user_id, &revision).await?;
-    pipeline_outputs::Model::require(db, "fitness", user_id, revision).await?;
     Ok(())
 }
 
@@ -251,11 +244,6 @@ where
     segment_ids.dedup();
 
     segments::Model::mark_activity_changes(db, &segment_ids, changed_at).await?;
-    for id in segment_ids {
-        let revision = changed_at.timestamp_micros().to_string();
-        pipeline_outputs::Model::advance(db, "segments", id, &revision).await?;
-        pipeline_outputs::Model::require(db, "segments", id, revision).await?;
-    }
     Ok(())
 }
 
@@ -265,54 +253,12 @@ pub async fn rebuild_fitness_freshness_cache(db: &DatabaseConnection, user_id: i
     let input = load_fitness_freshness_rebuild_input(db, user_id, end_date).await?;
     let span = tracing::Span::current();
     span.record("activity_count", input.activity_rows.len() as i64);
-    let revision = fitness_revision(
-        input
-            .state
-            .as_ref()
-            .map(|state| state.last_activity_change_at)
-            .unwrap_or_default(),
-        end_date,
-    );
-    pipeline_outputs::Model::require(db, "fitness", user_id, revision.clone()).await?;
-    let scope = WorkScope {
-        kind: "fitness",
-        work_key: format!("user:{user_id}"),
-        revision: revision.clone(),
-        mode: if input.dirty_from_day.is_some() {
-            "incremental"
-        } else {
-            "full"
-        },
-        reason: "dirty_or_daily",
-    };
-    measured(db, scope, async {
-        let rows = build_fitness_freshness_rows_for_rebuild(&input);
-        span.record("day_count", rows.len() as i64);
-        let inputs_read = input.activity_rows.len() as u64;
-        let units_computed = rows.len() as u64;
-        let rebuilt_at = Utc::now();
-        let txn = db.begin().await?;
-        let published = persist_fitness_freshness_rebuild(&txn, user_id, input, rows, rebuilt_at).await?;
-        if published {
-            pipeline_outputs::Model::publish(&txn, "fitness", user_id, &revision, rebuilt_at).await?;
-        }
-        txn.commit().await?;
-        Ok((
-            (),
-            WorkCounts {
-                inputs_read,
-                units_computed,
-                rows_written: if published { units_computed } else { 0 },
-                outputs_published: u64::from(published),
-                outcome: if published { "published" } else { "superseded" },
-            },
-        ))
-    })
-    .await
-}
-
-fn fitness_revision(changed_at: DateTime<Utc>, end_date: NaiveDate) -> String {
-    format!("{}:{end_date}", changed_at.timestamp_micros())
+    let rows = build_fitness_freshness_rows_for_rebuild(&input);
+    span.record("day_count", rows.len() as i64);
+    let txn = db.begin().await?;
+    persist_fitness_freshness_rebuild(&txn, user_id, input, rows, Utc::now()).await?;
+    txn.commit().await?;
+    Ok(())
 }
 
 struct FitnessFreshnessRebuildInput {
@@ -404,58 +350,22 @@ where
     let Some(segment) = segments::Model::find_by_id(db, id).await? else {
         return Ok(());
     };
-    let revision = segment.last_activity_change_at.timestamp_micros().to_string();
-    pipeline_outputs::Model::require(db, "segments", id, revision.clone()).await?;
-    measured(
-        db,
-        WorkScope {
-            kind: "segments",
-            work_key: format!("segment:{id}"),
-            revision: revision.clone(),
-            mode: "full",
-            reason: "source_changed",
-        },
-        async {
-            let input = load_segment_analytics_input(db, &[id]).await?;
-            let activity_ids = input.activity_ids.clone();
-            let read = 1 + input.efforts.len() as u64 + input.activity_started_at_by_id.len() as u64;
-            let computed = input.efforts.len() as u64;
-            let rebuild = build_segment_analytics(input);
-            let txn = db.begin().await?;
-            let current = segments::Model::lock_for_analytics(&txn, id).await?;
-            if current.is_none_or(|current| {
-                current.last_activity_change_at != segment.last_activity_change_at
-                    || current.updated_at != segment.updated_at
-            }) {
-                return Ok((
-                    (),
-                    WorkCounts {
-                        inputs_read: read + 1,
-                        units_computed: computed,
-                        outcome: "superseded",
-                        ..Default::default()
-                    },
-                ));
-            }
-            let written = persist_segment_analytics_rebuild(&txn, &[id], rebuild).await?;
-            pipeline_outputs::Model::publish(&txn, "segments", id, &revision, Utc::now()).await?;
-            txn.commit().await?;
-            // Different segments share activity summaries. Release segment/rank
-            // locks before acquiring activity locks and reading their current ranks.
-            rebuild_activity_analytics_cache(db, &activity_ids).await?;
-            Ok((
-                (),
-                WorkCounts {
-                    inputs_read: read + 1,
-                    units_computed: computed,
-                    rows_written: written,
-                    outputs_published: 1,
-                    outcome: "published",
-                },
-            ))
-        },
-    )
-    .await
+    let input = load_segment_analytics_input(db, &[id]).await?;
+    let activity_ids = input.activity_ids.clone();
+    let rebuild = build_segment_analytics(input);
+    let txn = db.begin().await?;
+    let current = segments::Model::lock_for_analytics(&txn, id).await?;
+    if current.is_none_or(|current| {
+        current.last_activity_change_at != segment.last_activity_change_at || current.updated_at != segment.updated_at
+    }) {
+        return Ok(());
+    }
+    persist_segment_analytics_rebuild(&txn, &[id], rebuild).await?;
+    txn.commit().await?;
+    // Different segments share activity summaries. Release segment/rank
+    // locks before acquiring activity locks and reading their current ranks.
+    rebuild_activity_analytics_cache(db, &activity_ids).await?;
+    Ok(())
 }
 
 struct SegmentAnalyticsInput {

@@ -116,7 +116,7 @@ on `activities::Entity`, and deleting the import stays on `activity_imports::Ent
 - The `test-fixtures` feature enables SeaORM's mock support for cross-crate fixture
   consumers. Only dev-dependencies enable it; production does not include a mock
   database. `postgres_mock`, `written`, and `count_row` share ordinary mock setup.
-- `test:workers:mocks` runs restored import/history/metrics/task model contracts.
+- The workspace test suite includes import/history/metrics/task model contracts.
   Assert the real statements/values and transaction outcomes; returning a model
   supplied by the mock alone does not verify that a mutation preserved fields.
 - Insert fixtures provide required business inputs and deterministic timestamps.
@@ -227,8 +227,8 @@ Paths are relative to `bike-rs`. Counts exclude owning entity implementations.
 | bike-core/src/segment_support.rs                          | 0 (complete) |
 | bike-core/src/services/reports.rs                         | 0 (complete) |
 | bike-core/src/services/training_goals.rs                  | 0 (complete) |
-| bike-core/src/strava/connection.rs                        | 0 (complete) |
-| bike-core/src/strava/native/persistence.rs                | 0 (complete) |
+| integrations/src/strava/connection.rs                     | 0 (complete) |
+| integrations/src/strava/native/persistence.rs             | 0 (complete) |
 | bike-core/src/training_profile.rs                         | 0 (complete) |
 | bike-core/src/xc_goal_backfill.rs                         | 0 (complete) |
 | worker/src/tasks/processors/process_activity_import.rs    | 0 (complete) |
@@ -301,7 +301,7 @@ Paths are relative to `bike-rs`. Counts exclude owning entity implementations.
 | ------------------------------------------- | -----------: |
 | api/src/controllers/user_preferences.rs     |            1 |
 | api/src/controllers/segments.rs             |            2 |
-| bike-core/src/strava/connection.rs          |            1 |
+| integrations/src/strava/connection.rs       |            1 |
 | bike-core/src/analytics.rs                  |            6 |
 | bike-core/src/activity_import_execution.rs  |            1 |
 | bike-core/src/archive_import.rs             |            4 |

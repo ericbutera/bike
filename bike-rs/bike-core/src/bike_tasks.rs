@@ -1,22 +1,13 @@
-//! Typed domain contracts shared by Bike task producers and native Activities.
-//! Scheduling, timers, and delivery state belong to Temporal.
+//! Inputs for named Bike workflows and Activities. Temporal owns execution state.
 use crate::{object_store::ObjectRef, workflow_error::WorkflowError};
-use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
-mod batch;
-mod segments;
 mod submission;
-mod training;
-pub use batch::*;
-pub use segments::*;
 pub use submission::*;
-pub use training::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReprocessInput {
     pub source: ImportSource,
     pub activity_id: i32,
-    pub expected_revision: u64,
 }
 
 impl ReprocessInput {
@@ -25,7 +16,6 @@ impl ReprocessInput {
             source: self.source,
             target: ImportTarget::ExistingActivity {
                 activity_id: self.activity_id,
-                expected_revision: self.expected_revision,
             },
         }
     }
@@ -37,7 +27,7 @@ pub enum Priority {
     Background,
 }
 
-/// Retained input and retry-stable command identity, independent of tracing.
+/// Retained input; retries read and process this file again.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImportSource {
     pub command_id: String,
@@ -45,7 +35,6 @@ pub struct ImportSource {
     pub activity_import_id: i32,
     pub object: ObjectRef,
     pub priority: Priority,
-    /// Captured once by the producer and retained in domain audit history.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cause: Option<TaskCause>,
 }
@@ -61,7 +50,7 @@ impl ImportSource {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImportTarget {
     NewActivity,
-    ExistingActivity { activity_id: i32, expected_revision: u64 },
+    ExistingActivity { activity_id: i32 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,23 +60,6 @@ pub struct ActivityImport {
 }
 
 impl ActivityImport {
-    pub fn validate_result(&self, result: &ActivityImportResult) -> Result<(), WorkflowError> {
-        if result.activity_import_id != self.source.activity_import_id {
-            return Err(WorkflowError::conflict(
-                "Result does not belong to the requested import",
-            ));
-        }
-        if let ImportTarget::ExistingActivity { activity_id, .. } = self.target {
-            if result.activity_id != activity_id {
-                return Err(WorkflowError::conflict("Reprocessing changed the activity identity"));
-            }
-        }
-        Ok(())
-    }
-    pub fn refresh_priority(&self) -> Priority {
-        self.source.priority
-    }
-
     pub fn validate(&self) -> Result<(), WorkflowError> {
         if self.source.command_id.trim().is_empty() {
             return Err(WorkflowError::bad_request("Import requires a command ID"));
@@ -98,71 +70,103 @@ impl ActivityImport {
         if let Some(cause) = &self.source.cause {
             cause.validate(self.source.user_id)?;
         }
-        if let ImportTarget::ExistingActivity { expected_revision, .. } = self.target {
-            validate_revision(expected_revision)?;
+        if let ImportTarget::ExistingActivity { activity_id } = self.target {
+            if activity_id <= 0 {
+                return Err(WorkflowError::bad_request("Reprocessing requires an activity ID"));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn validate_result(&self, result: &ActivityImportResult) -> Result<(), WorkflowError> {
+        if result.activity_import_id != self.source.activity_import_id || result.user_id != self.source.user_id {
+            return Err(WorkflowError::conflict(
+                "Result does not belong to the requested import",
+            ));
+        }
+        if let ImportTarget::ExistingActivity { activity_id } = self.target {
+            if result.activity_id != activity_id {
+                return Err(WorkflowError::conflict("Reprocessing changed the activity identity"));
+            }
         }
         Ok(())
     }
 }
 
-/// Source effects and refresh requests. Revisions help coalescing; each output
-/// rebuilds authoritative current data independently of source completion.
+/// Saved activity identity. Derived work reads current domain data.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActivityImportResult {
     pub activity_id: i32,
     pub activity_import_id: i32,
-    pub fitness: FitnessChange,
-    pub segments: Vec<SegmentChange>,
-    pub heatmap: Option<HeatmapChange>,
+    pub user_id: i32,
+    pub priority: Priority,
 }
 
 impl ActivityImportResult {
-    /// Refresh urgency is independent of the stored output revision and the
-    /// ingestion queue priority. Reprocessing may run at background priority.
-    pub fn with_priority(mut self, priority: Priority) -> Self {
-        self.fitness.priority = priority;
-        for segment in &mut self.segments {
-            segment.priority = priority;
+    pub fn activity(&self) -> ActivityTask {
+        ActivityTask {
+            user_id: self.user_id,
+            activity_id: self.activity_id,
+            priority: self.priority,
         }
-        if let Some(heatmap) = &mut self.heatmap {
-            heatmap.priority = priority;
-        }
-        self
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActivityTask {
+    pub user_id: i32,
+    pub activity_id: i32,
+    pub priority: Priority,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FitnessChange {
     pub user_id: i32,
-    pub revision: u64,
-    pub dirty_from: NaiveDate,
     pub priority: Priority,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentChange {
     pub segment_id: i32,
-    pub revision: u64,
     pub priority: Priority,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HeatmapChange {
+pub struct UserPage {
     pub user_id: i32,
-    pub activity_id: i32,
-    pub generation: u64,
-    pub priority: Priority,
+    #[serde(default)]
+    pub after_id: i32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Publication {
-    Published,
-    Superseded,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ActivitySelection {
+    Cycling,
+    Imports { archive_fits_only: bool },
 }
 
-pub fn validate_revision(revision: u64) -> Result<(), WorkflowError> {
-    if revision == 0 {
-        return Err(WorkflowError::bad_request("Expected a positive committed revision"));
-    }
-    Ok(())
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActivityPage {
+    pub page: UserPage,
+    pub selection: ActivitySelection,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchiveCursor {
+    pub job_id: i32,
+    pub archive_path: String,
+    pub offset: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchiveInput {
+    pub job_id: i32,
+    #[serde(default)]
+    pub cursor: Option<ArchiveCursor>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchivePage {
+    pub sources: Vec<ImportSource>,
+    pub next_offset: usize,
+    pub done: bool,
 }

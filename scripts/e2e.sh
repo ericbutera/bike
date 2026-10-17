@@ -127,6 +127,7 @@ docker create --name "$runner" --init --shm-size=1g \
   --env BIKE_E2E_PROJECT --env BIKE_JWT_SECRET \
   --env BIKE_API_IMAGE --env BIKE_UI_IMAGE \
   --env BIKE_RENDERER_IMAGE --env BIKE_E2E_IMAGE --env BIKE_POSTGRES_IMAGE \
+  --env BIKE_TEMPORAL_TOOLS_IMAGE \
   --env BIKE_UI_URL=http://ui.e2e.test:3000 \
   --env BIKE_API_URL=http://api.e2e.test:3000/api \
   --env BIKE_TEST_ADMIN_TASK_FIXTURE=true --env PLAYWRIGHT_AUTH_STATE=1 \
