@@ -24,49 +24,27 @@ fn ranked_input() -> MockDatabase {
 
 #[tokio::test]
 async fn shared_activity_projection_locks_before_reading_ranks_and_replaces_atomically() {
-    let db = ranked_input()
-        .append_exec_results([written()])
-        .into_connection();
-    rebuild_activity_analytics_cache(&db, &[99, 42, 99, 0])
-        .await
-        .unwrap();
+    let db = ranked_input().append_exec_results([written()]).into_connection();
+    rebuild_activity_analytics_cache(&db, &[99, 42, 99, 0]).await.unwrap();
     let log = db.into_transaction_log();
     let statements = log[0].statements();
     assert_eq!(statements.first().unwrap().sql, "BEGIN");
     let lock = &statements[1];
-    assert!(lock
-        .sql
-        .contains("ORDER BY \"activities\".\"id\" ASC FOR UPDATE"));
+    assert!(lock.sql.contains("ORDER BY \"activities\".\"id\" ASC FOR UPDATE"));
     assert_eq!(lock.values.as_ref().unwrap().0, vec![42.into(), 99.into()]);
     assert!(statements[2].sql.contains("FROM \"segment_efforts\""));
     let delete = statements
         .iter()
-        .position(|statement| {
-            statement
-                .sql
-                .starts_with("DELETE FROM \"activity_analytics\"")
-        })
+        .position(|statement| statement.sql.starts_with("DELETE FROM \"activity_analytics\""))
         .unwrap();
     let insert = statements
         .iter()
-        .position(|statement| {
-            statement
-                .sql
-                .starts_with("INSERT INTO \"activity_analytics\"")
-        })
+        .position(|statement| statement.sql.starts_with("INSERT INTO \"activity_analytics\""))
         .unwrap();
     assert!(delete > 2 && insert > delete);
     assert_eq!(
         &statements[insert].values.as_ref().unwrap().0[..7],
-        &[
-            42.into(),
-            7.into(),
-            1.into(),
-            1.into(),
-            1.into(),
-            0.into(),
-            0.into()
-        ],
+        &[42.into(), 7.into(), 1.into(), 1.into(), 1.into(), 0.into(), 0.into()],
     );
     assert_eq!(statements.last().unwrap().sql, "COMMIT");
 }
@@ -76,9 +54,7 @@ async fn projection_replacement_failure_rolls_back_instead_of_losing_the_previou
     let db = ranked_input()
         .append_exec_errors([DbErr::Custom("fixture replacement failure".into())])
         .into_connection();
-    let error = rebuild_activity_analytics_cache(&db, &[42])
-        .await
-        .unwrap_err();
+    let error = rebuild_activity_analytics_cache(&db, &[42]).await.unwrap_err();
     assert_eq!(error, DbErr::Custom("fixture replacement failure".into()));
     let log = db.into_transaction_log();
     assert_eq!(log[0].statements().last().unwrap().sql, "ROLLBACK");
@@ -97,9 +73,7 @@ async fn no_remaining_efforts_clear_the_previous_projection_in_the_same_transact
     assert_eq!(statements.first().unwrap().sql, "BEGIN");
     assert!(statements[1].sql.ends_with("FOR UPDATE"));
     assert!(statements[2].sql.contains("FROM \"segment_efforts\""));
-    assert!(statements[3]
-        .sql
-        .starts_with("DELETE FROM \"activity_analytics\""));
+    assert!(statements[3].sql.starts_with("DELETE FROM \"activity_analytics\""));
     assert_eq!(statements.last().unwrap().sql, "COMMIT");
 }
 
@@ -123,10 +97,7 @@ async fn segment_deletion_locks_affected_activities_before_deleting_efforts() {
         .append_query_results([Vec::<segment_efforts::Model>::new()])
         .append_exec_results((0..5).map(|_| written()))
         .into_connection();
-    fixtures::segment()
-        .delete_with_derived_state(&db)
-        .await
-        .unwrap();
+    fixtures::segment().delete_with_derived_state(&db).await.unwrap();
     let log = db.into_transaction_log();
     let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
     let lock = statements
@@ -202,16 +173,11 @@ async fn segment_refresh_commits_ranks_before_locking_shared_activity_projection
         .unwrap();
     let projection_lock = statements
         .iter()
-        .position(|statement| {
-            statement.sql.contains("FROM \"activities\"") && statement.sql.ends_with("FOR UPDATE")
-        })
+        .position(|statement| statement.sql.contains("FROM \"activities\"") && statement.sql.ends_with("FOR UPDATE"))
         .unwrap();
     assert!(commit < projection_lock);
     assert_eq!(
-        statements
-            .iter()
-            .filter(|statement| statement.sql == "COMMIT")
-            .count(),
+        statements.iter().filter(|statement| statement.sql == "COMMIT").count(),
         2
     );
 }

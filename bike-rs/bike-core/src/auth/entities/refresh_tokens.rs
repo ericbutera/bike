@@ -22,22 +22,11 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
-    pub async fn count_created_since(
-        db: &DatabaseConnection,
-        since: DateTime<Utc>,
-    ) -> Result<u64, DbErr> {
-        crate::platform::aggregator::Aggregator::created_since::<Entity>(
-            db,
-            Column::CreatedAt,
-            since,
-        )
-        .await
+    pub async fn count_created_since(db: &DatabaseConnection, since: DateTime<Utc>) -> Result<u64, DbErr> {
+        crate::platform::aggregator::Aggregator::created_since::<Entity>(db, Column::CreatedAt, since).await
     }
 
-    pub async fn find_by_token(
-        db: &DatabaseConnection,
-        token: &str,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn find_by_token(db: &DatabaseConnection, token: &str) -> Result<Option<Self>, DbErr> {
         Entity::find_by_id(token).one(db).await
     }
 
@@ -63,11 +52,7 @@ impl Model {
         Ok(())
     }
 
-    pub async fn create_record(
-        db: &DatabaseConnection,
-        user_pid: Uuid,
-        token: &str,
-    ) -> Result<(), AuthError> {
+    pub async fn create_record(db: &DatabaseConnection, user_pid: Uuid, token: &str) -> Result<(), AuthError> {
         let am = ActiveModel {
             token: Set(token.to_owned()),
             user_pid: Set(user_pid),
@@ -75,9 +60,9 @@ impl Model {
             ..Default::default()
         };
 
-        am.insert(db).await.map_err(|e| {
-            AuthError::internal_error(format!("Failed to create refresh token: {}", e))
-        })?;
+        am.insert(db)
+            .await
+            .map_err(|e| AuthError::internal_error(format!("Failed to create refresh token: {}", e)))?;
 
         Ok(())
     }

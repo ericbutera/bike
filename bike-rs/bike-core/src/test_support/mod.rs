@@ -9,21 +9,18 @@ mod storage;
 pub use storage::object_storage;
 mod tasks;
 pub use tasks::{
-    archive_input, batch_command, batch_input, batch_manifest, fitness_change, heatmap_change,
-    import_command, import_entry, import_execution, import_result, job_reference, page_request,
-    prepared_batch, reprocess_entry, segment_change, segment_efforts_input, segment_entry,
-    segment_result, task_cause, training_entry, training_result,
+    archive_input, batch_command, batch_input, batch_manifest, fitness_change, heatmap_change, import_command,
+    import_entry, import_execution, import_result, job_reference, page_request, prepared_batch, reprocess_entry,
+    segment_change, segment_efforts_input, segment_entry, segment_result, task_cause, training_entry, training_result,
 };
 mod analytics;
 mod defaults;
 pub use analytics::{
-    activity_analytics, activity_id_row, analytics_user_state, fitness_day, new_fitness_day,
-    new_segment_effort, segment_effort,
+    activity_analytics, activity_id_row, analytics_user_state, fitness_day, new_fitness_day, new_segment_effort,
+    segment_effort,
 };
 pub use defaults::user_preferences;
-pub use defaults::{
-    background_task, new_background_task, new_feature_flag, new_user_preferences, task_attempt,
-};
+pub use defaults::{background_task, new_background_task, new_feature_flag, new_user_preferences, task_attempt};
 mod heatmaps;
 pub use heatmaps::heatmap_projection;
 mod imports;
@@ -33,9 +30,8 @@ mod mocks;
 pub use mocks::{count_row, postgres_mock, written};
 mod reprocessing;
 pub use reprocessing::{
-    parsed_reprocess_activity, reprocess_activity, reprocess_artifact, reprocess_execution,
-    reprocess_import, reprocess_recording_artifact, training_analysis, REPROCESS_RECORDING_SOURCE,
-    REPROCESS_SOURCE,
+    parsed_reprocess_activity, reprocess_activity, reprocess_artifact, reprocess_execution, reprocess_import,
+    reprocess_recording_artifact, training_analysis, REPROCESS_RECORDING_SOURCE, REPROCESS_SOURCE,
 };
 mod persistence;
 pub use persistence::{insert, update};

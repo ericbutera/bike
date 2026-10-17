@@ -8,8 +8,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use bike_core::activity_achievements::ActivityAchievementHighlight;
 use bike_core::activity_details::{
-    deserialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap,
-    ActivityRoutePoint,
+    deserialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint,
 };
 use bike_core::activity_import_pipeline::{
     finalize_activity_import_batch, mark_activity_imports_processed, reprocess_activity_from_import,
@@ -20,18 +19,14 @@ use bike_core::activity_training_analysis::{
     load_activity_training_analysis_by_activity_id, ActivityTrainingAnalysisResponse,
 };
 use bike_core::activity_type::ActivityType;
-use bike_core::analytics::{
-    estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty,
-};
+use bike_core::analytics::{estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty};
 use bike_core::auth::UserContext;
 use bike_core::entities::{
     activities, activity_analytics, activity_import_artifacts, activity_imports, segment_efforts,
     segment_user_summaries, segments,
 };
 use bike_core::platform::data::pagination::{PaginatedResponse, PaginationParams};
-use bike_core::training_profile::{
-    deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary,
-};
+use bike_core::training_profile::{deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
@@ -209,14 +204,7 @@ impl ActivityResponse {
         let derived_data = summary_derived_data(model.derived_data_json.as_ref());
         let location = location_from_derived_json(model.derived_data_json.as_ref());
 
-        Self::from_model(
-            model,
-            derived_data,
-            location,
-            achievement_highlights,
-            Vec::new(),
-            false,
-        )
+        Self::from_model(model, derived_data, location, achievement_highlights, Vec::new(), false)
     }
 
     fn from_detail(model: activities::Model, segment_efforts: Vec<ActivitySegmentEffort>) -> Self {
@@ -278,9 +266,7 @@ impl ActivityResponse {
             calories: model.calories,
             relative_effort,
             estimated_ftp_watts: model.estimated_ftp_watts,
-            heart_rate_zones: deserialize_activity_heart_rate_zones(
-                model.heart_rate_zones_json.as_ref(),
-            ),
+            heart_rate_zones: deserialize_activity_heart_rate_zones(model.heart_rate_zones_json.as_ref()),
             laps: derived_data.laps,
             chart_points: derived_data.chart_points,
             route_points: derived_data.route_points,
@@ -293,9 +279,7 @@ impl ActivityResponse {
     }
 }
 
-fn summary_derived_data(
-    raw: Option<&bike_core::activity_details::StoredActivityDerivedData>,
-) -> ActivityDerivedData {
+fn summary_derived_data(raw: Option<&bike_core::activity_details::StoredActivityDerivedData>) -> ActivityDerivedData {
     let derived_data = deserialize_derived_activity_data(raw);
 
     ActivityDerivedData {
@@ -344,8 +328,7 @@ fn preview_route_points(route_points: &[ActivityRoutePoint]) -> Vec<ActivityRout
             break;
         }
 
-        let point_index =
-            sample_index * last_index / (MAX_ACTIVITY_STREAM_ROUTE_POINTS.saturating_sub(1));
+        let point_index = sample_index * last_index / (MAX_ACTIVITY_STREAM_ROUTE_POINTS.saturating_sub(1));
         selected_indexes.insert(point_index);
     }
 
@@ -397,10 +380,7 @@ fn overall_ranks_by_effort_id(efforts: &[segment_efforts::Model]) -> HashMap<i32
     rank_efforts_by_segment(efforts.to_vec())
 }
 
-fn personal_ranks_by_effort_id(
-    efforts: &[segment_efforts::Model],
-    user_id: i32,
-) -> HashMap<i32, i32> {
+fn personal_ranks_by_effort_id(efforts: &[segment_efforts::Model], user_id: i32) -> HashMap<i32, i32> {
     rank_efforts_by_segment(
         efforts
             .iter()
@@ -410,14 +390,10 @@ fn personal_ranks_by_effort_id(
     )
 }
 
-fn personal_best_duration_by_segment(
-    efforts: &[segment_efforts::Model],
-    user_id: i32,
-) -> HashMap<i32, i32> {
-    efforts
-        .iter()
-        .filter(|effort| effort.user_id == user_id)
-        .fold(HashMap::<i32, i32>::new(), |mut best_by_segment, effort| {
+fn personal_best_duration_by_segment(efforts: &[segment_efforts::Model], user_id: i32) -> HashMap<i32, i32> {
+    efforts.iter().filter(|effort| effort.user_id == user_id).fold(
+        HashMap::<i32, i32>::new(),
+        |mut best_by_segment, effort| {
             best_by_segment
                 .entry(effort.segment_id)
                 .and_modify(|best| {
@@ -428,7 +404,8 @@ fn personal_best_duration_by_segment(
                 .or_insert(effort.duration_seconds);
 
             best_by_segment
-        })
+        },
+    )
 }
 
 async fn load_activity_segment_efforts(
@@ -436,8 +413,7 @@ async fn load_activity_segment_efforts(
     user_id: i32,
     activity_id: i32,
 ) -> Result<Vec<ActivitySegmentEffort>, AppError> {
-    let mut efforts_by_activity =
-        load_activity_segment_efforts_by_activity_ids(db, user_id, &[activity_id]).await?;
+    let mut efforts_by_activity = load_activity_segment_efforts_by_activity_ids(db, user_id, &[activity_id]).await?;
 
     Ok(efforts_by_activity.remove(&activity_id).unwrap_or_default())
 }
@@ -477,11 +453,9 @@ async fn load_activity_segment_effort_input(
     user_id: i32,
     activity_ids: &[i32],
 ) -> Result<ActivitySegmentEffortInput, AppError> {
-    let efforts =
-        segment_efforts::Model::list_by_user_activity_ids(db, user_id, activity_ids).await?;
+    let efforts = segment_efforts::Model::list_by_user_activity_ids(db, user_id, activity_ids).await?;
     let segment_ids = unique_effort_segment_ids(&efforts);
-    let user_summary_by_segment =
-        load_segment_user_summaries_by_segment(db, user_id, &segment_ids).await?;
+    let user_summary_by_segment = load_segment_user_summaries_by_segment(db, user_id, &segment_ids).await?;
     let segments_by_id = load_segments_by_id(db, &segment_ids).await?;
 
     Ok(ActivitySegmentEffortInput {
@@ -492,10 +466,7 @@ async fn load_activity_segment_effort_input(
 }
 
 fn unique_effort_segment_ids(efforts: &[segment_efforts::Model]) -> Vec<i32> {
-    let mut segment_ids = efforts
-        .iter()
-        .map(|effort| effort.segment_id)
-        .collect::<Vec<_>>();
+    let mut segment_ids = efforts.iter().map(|effort| effort.segment_id).collect::<Vec<_>>();
     segment_ids.sort_unstable();
     segment_ids.dedup();
     segment_ids
@@ -541,10 +512,7 @@ async fn activity_segment_effort_rank_maps(
     Ok(ActivitySegmentEffortRankMaps {
         overall_ranks_by_effort_id: overall_ranks_by_effort_id(&all_segment_efforts),
         personal_ranks_by_effort_id: personal_ranks_by_effort_id(&all_segment_efforts, user_id),
-        personal_best_duration_by_segment: personal_best_duration_by_segment(
-            &all_segment_efforts,
-            user_id,
-        ),
+        personal_best_duration_by_segment: personal_best_duration_by_segment(&all_segment_efforts, user_id),
     })
 }
 
@@ -564,9 +532,7 @@ fn can_use_cached_activity_segment_ranks(input: &ActivitySegmentEffortInput) -> 
     })
 }
 
-fn cached_activity_segment_effort_rank_maps(
-    input: &ActivitySegmentEffortInput,
-) -> ActivitySegmentEffortRankMaps {
+fn cached_activity_segment_effort_rank_maps(input: &ActivitySegmentEffortInput) -> ActivitySegmentEffortRankMaps {
     ActivitySegmentEffortRankMaps {
         overall_ranks_by_effort_id: input
             .efforts
@@ -615,14 +581,8 @@ fn group_activity_segment_efforts(
                 duration_seconds: effort.duration_seconds,
                 start_route_point_index: effort.start_route_point_index,
                 end_route_point_index: effort.end_route_point_index,
-                overall_rank: rank_maps
-                    .overall_ranks_by_effort_id
-                    .get(&effort.id)
-                    .copied(),
-                personal_rank: rank_maps
-                    .personal_ranks_by_effort_id
-                    .get(&effort.id)
-                    .copied(),
+                overall_rank: rank_maps.overall_ranks_by_effort_id.get(&effort.id).copied(),
+                personal_rank: rank_maps.personal_ranks_by_effort_id.get(&effort.id).copied(),
                 personal_best_duration_seconds: rank_maps
                     .personal_best_duration_by_segment
                     .get(&effort.segment_id)
@@ -680,17 +640,11 @@ pub async fn list_activities(
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<PaginatedResponse<ActivityResponse>>, AppError> {
     let pagination = params.pagination();
-    let activities =
-        activities::Model::paginate_for_user(&state.db, user.id, &pagination, params.sport).await?;
+    let activities = activities::Model::paginate_for_user(&state.db, user.id, &pagination, params.sport).await?;
 
-    let activity_ids = activities
-        .data
-        .iter()
-        .map(|activity| activity.id)
-        .collect::<Vec<_>>();
+    let activity_ids = activities.data.iter().map(|activity| activity.id).collect::<Vec<_>>();
     let mut achievement_highlights_by_activity =
-        load_activity_achievement_highlights_by_activity_ids(&state.db, user.id, &activity_ids)
-            .await?;
+        load_activity_achievement_highlights_by_activity_ids(&state.db, user.id, &activity_ids).await?;
 
     Ok(Json(activities.map(|activity| {
         let achievement_highlights = achievement_highlights_by_activity
@@ -728,14 +682,11 @@ pub async fn get_activity(
         .await?
         .ok_or_else(|| AppError::not_found("Activity not found"))?;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, activity.id).await?;
-    let training_analysis =
-        load_activity_training_analysis_by_activity_id(&state.db, activity.id).await?;
+    let training_analysis = load_activity_training_analysis_by_activity_id(&state.db, activity.id).await?;
     let can_download_source_file = match activity.activity_import_id {
-        Some(import_id) => {
-            activity_import_artifacts::Entity::downloadable_original(&state.db, user.id, import_id)
-                .await?
-                .is_some()
-        }
+        Some(import_id) => activity_import_artifacts::Entity::downloadable_original(&state.db, user.id, import_id)
+            .await?
+            .is_some(),
         None => false,
     };
     let mut response = ActivityResponse::from_detail(activity, segment_efforts);
@@ -773,15 +724,11 @@ pub async fn download_activity_source_file(
     let activity_import_id = activity
         .activity_import_id
         .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
-    let source_artifact = activity_import_artifacts::Entity::downloadable_original(
-        &state.db,
-        user.id,
-        activity_import_id,
-    )
-    .await?
-    .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
-    let source_path =
-        resolve_activity_import_storage_path(&state.uploads_dir, &source_artifact.storage_path)?;
+    let source_artifact =
+        activity_import_artifacts::Entity::downloadable_original(&state.db, user.id, activity_import_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Activity source file not found"))?;
+    let source_path = resolve_activity_import_storage_path(&state.uploads_dir, &source_artifact.storage_path)?;
     let bytes = match tokio::fs::read(&source_path).await {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -801,10 +748,8 @@ pub async fn download_activity_source_file(
     );
     headers.insert(
         header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&content_disposition_header(
-            &source_artifact.original_filename,
-        ))
-        .map_err(|_| AppError::internal("Failed to build source file response"))?,
+        HeaderValue::from_str(&content_disposition_header(&source_artifact.original_filename))
+            .map_err(|_| AppError::internal("Failed to build source file response"))?,
     );
 
     Ok((headers, Body::from(bytes)).into_response())
@@ -842,8 +787,7 @@ pub async fn update_activity(
         .update_details(&state.db, request.title, request.activity_type)
         .await?;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
-    let training_analysis =
-        load_activity_training_analysis_by_activity_id(&state.db, updated.id).await?;
+    let training_analysis = load_activity_training_analysis_by_activity_id(&state.db, updated.id).await?;
     let mut response = ActivityResponse::from_detail(updated, segment_efforts);
     response.training_analysis = training_analysis;
 
@@ -879,16 +823,12 @@ pub async fn delete_activity(
 
     let fitness_dirty_from_day = activity.started_at.date_naive();
     let affected_segment_ids =
-        delete_activity_with_derived_state(&state.db, &state.uploads_dir, user.id, activity)
-            .await?;
+        delete_activity_with_derived_state(&state.db, &state.uploads_dir, user.id, activity).await?;
     let changed_at = Utc::now();
     mark_user_fitness_dirty(&state.db, user.id, fitness_dirty_from_day, changed_at).await?;
     mark_segment_activity_changes(&state.db, &affected_segment_ids, changed_at).await?;
     state.tasks.rebuild_fitness_freshness(user.id).await?;
-    state
-        .tasks
-        .rebuild_segment_analytics(affected_segment_ids)
-        .await?;
+    state.tasks.rebuild_segment_analytics(affected_segment_ids).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -922,19 +862,11 @@ pub async fn regenerate_activity(
     let activity_import_id = activity
         .activity_import_id
         .ok_or_else(|| AppError::bad_request("Only uploaded activities can be regenerated"))?;
-    let activity_import =
-        activity_imports::Entity::find_owned(&state.db, user.id, activity_import_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("Activity import not found"))?;
-    let reprocessed = reprocess_activity_from_import(
-        &state.db,
-        &state.uploads_dir,
-        user.id,
-        activity,
-        activity_import,
-        None,
-    )
-    .await?;
+    let activity_import = activity_imports::Entity::find_owned(&state.db, user.id, activity_import_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Activity import not found"))?;
+    let reprocessed =
+        reprocess_activity_from_import(&state.db, &state.uploads_dir, user.id, activity, activity_import, None).await?;
     finalize_activity_import_batch(
         &state.db,
         &state.tasks,
@@ -948,10 +880,7 @@ pub async fn regenerate_activity(
     let updated = reprocessed.activity;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
 
-    Ok(Json(ActivityResponse::from_detail(
-        updated,
-        segment_efforts,
-    )))
+    Ok(Json(ActivityResponse::from_detail(updated, segment_efforts)))
 }
 
 fn activity_source_content_type(format: &str) -> &'static str {
@@ -989,10 +918,7 @@ fn safe_content_disposition_filename(filename: &str) -> String {
     }
 }
 
-fn resolve_activity_import_storage_path(
-    uploads_dir: &str,
-    storage_path: &str,
-) -> Result<PathBuf, AppError> {
+fn resolve_activity_import_storage_path(uploads_dir: &str, storage_path: &str) -> Result<PathBuf, AppError> {
     let relative_path = FsPath::new(storage_path);
 
     if relative_path.is_absolute() {
@@ -1028,10 +954,8 @@ mod tests {
                 name: Some("Fixture bicycle".into()),
             }),
         };
-        model.derived_data_json =
-            Some(activity_response_derived_data_json().with_source_metadata(metadata.clone()));
-        let summary =
-            ActivityResponse::from_summary_with_achievement_highlights(model.clone(), vec![]);
+        model.derived_data_json = Some(activity_response_derived_data_json().with_source_metadata(metadata.clone()));
+        let summary = ActivityResponse::from_summary_with_achievement_highlights(model.clone(), vec![]);
         let detail = ActivityResponse::from_detail(model, vec![]);
         for response in [summary, detail] {
             assert_eq!(response.description, metadata.description);
@@ -1050,10 +974,7 @@ mod tests {
         assert_eq!(response.id, 42);
         assert_eq!(response.title, "Evening Ride");
         assert_eq!(response.sport, "ride");
-        assert_eq!(
-            response.original_filename.as_deref(),
-            Some("evening-ride.gpx")
-        );
+        assert_eq!(response.original_filename.as_deref(), Some("evening-ride.gpx"));
         assert_eq!(response.format.as_deref(), Some("gpx"));
         assert!(response.location.is_some());
         assert_eq!(response.max_heart_rate_bpm, Some(172));
@@ -1064,10 +985,7 @@ mod tests {
         assert_eq!(response.segment_efforts[0].start_route_point_index, 0);
         assert_eq!(response.segment_efforts[0].overall_rank, Some(1));
         assert_eq!(response.segment_efforts[0].personal_rank, Some(1));
-        assert_eq!(
-            response.segment_efforts[0].personal_best_duration_seconds,
-            Some(312)
-        );
+        assert_eq!(response.segment_efforts[0].personal_best_duration_seconds, Some(312));
         assert_eq!(response.training_analysis, None);
         assert!(response.can_regenerate);
     }
@@ -1183,9 +1101,7 @@ mod tests {
                 source: "manual_upload".to_string(),
                 original_filename: Some("evening-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
-                activity_type: bike_core::activity_type::ActivityType::Training
-                    .as_str()
-                    .to_string(),
+                activity_type: bike_core::activity_type::ActivityType::Training.as_str().to_string(),
                 started_at: now,
                 ended_at: Some(now),
                 distance_meters: Some(32100.0),
@@ -1222,10 +1138,7 @@ mod tests {
         });
 
         assert_eq!(
-            response
-                .training_analysis
-                .as_ref()
-                .map(|value| value.z2_time_seconds),
+            response.training_analysis.as_ref().map(|value| value.z2_time_seconds),
             Some(120)
         );
         assert_eq!(
@@ -1247,21 +1160,14 @@ mod tests {
             content_disposition_header("../ride\"bad.fit"),
             "attachment; filename=\".._ride_bad.fit\""
         );
-        assert_eq!(
-            activity_source_content_type("fit"),
-            "application/octet-stream"
-        );
-        assert_eq!(
-            activity_source_content_type("tcx"),
-            "application/vnd.garmin.tcx+xml"
-        );
+        assert_eq!(activity_source_content_type("fit"), "application/octet-stream");
+        assert_eq!(activity_source_content_type("tcx"), "application/vnd.garmin.tcx+xml");
     }
 
     #[test]
     fn source_file_path_resolution_rejects_unsafe_relative_paths() {
         assert_eq!(
-            resolve_activity_import_storage_path("/uploads", "activity-imports/u/ride.fit")
-                .unwrap(),
+            resolve_activity_import_storage_path("/uploads", "activity-imports/u/ride.fit").unwrap(),
             FsPath::new("/uploads").join("activity-imports/u/ride.fit")
         );
         assert!(resolve_activity_import_storage_path("/uploads", "../ride.fit").is_err());
@@ -1349,9 +1255,7 @@ mod tests {
                 source: "manual_upload".to_string(),
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
-                activity_type: bike_core::activity_type::ActivityType::Training
-                    .as_str()
-                    .to_string(),
+                activity_type: bike_core::activity_type::ActivityType::Training.as_str().to_string(),
                 started_at: now,
                 ended_at: Some(now),
                 distance_meters: Some(40200.0),
@@ -1430,9 +1334,7 @@ mod tests {
                 source: "manual_upload".to_string(),
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
-                activity_type: bike_core::activity_type::ActivityType::Training
-                    .as_str()
-                    .to_string(),
+                activity_type: bike_core::activity_type::ActivityType::Training.as_str().to_string(),
                 started_at: now,
                 ended_at: Some(now),
                 distance_meters: Some(40200.0),
@@ -1463,22 +1365,13 @@ mod tests {
             Vec::new(),
         );
 
+        assert_eq!(response.route_points.len(), MAX_ACTIVITY_STREAM_ROUTE_POINTS);
         assert_eq!(
-            response.route_points.len(),
-            MAX_ACTIVITY_STREAM_ROUTE_POINTS
-        );
-        assert_eq!(
-            response
-                .route_points
-                .first()
-                .map(|point| point.elapsed_seconds),
+            response.route_points.first().map(|point| point.elapsed_seconds),
             Some(0)
         );
         assert_eq!(
-            response
-                .route_points
-                .last()
-                .map(|point| point.elapsed_seconds),
+            response.route_points.last().map(|point| point.elapsed_seconds),
             Some(39)
         );
     }
@@ -1515,9 +1408,7 @@ mod tests {
                 source: "manual_upload".to_string(),
                 original_filename: Some("morning-ride.gpx".to_string()),
                 format: Some("gpx".to_string()),
-                activity_type: bike_core::activity_type::ActivityType::Training
-                    .as_str()
-                    .to_string(),
+                activity_type: bike_core::activity_type::ActivityType::Training.as_str().to_string(),
                 started_at: now,
                 ended_at: Some(now),
                 distance_meters: Some(40200.0),

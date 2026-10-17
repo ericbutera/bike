@@ -35,10 +35,7 @@ pub trait JwtConfig {
     fn jwt_secret(&self) -> String;
 }
 
-pub fn generate_access_token(
-    user: &users::Model,
-    secret: &str,
-) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn generate_access_token(user: &users::Model, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let exp = Utc::now()
         .checked_add_signed(Duration::minutes(ACCESS_TOKEN_TTL_MINUTES))
         .unwrap()
@@ -48,11 +45,7 @@ pub fn generate_access_token(
         exp,
         token_type: TokenType::User,
     };
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(secret.as_ref()),
-    )?;
+    let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_ref()))?;
     Ok(token)
 }
 
@@ -69,30 +62,19 @@ pub fn generate_api_client_access_token(
         exp,
         token_type: TokenType::ApiClient,
     };
-    encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(secret.as_ref()),
-    )
+    encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_ref()))
 }
 
 pub fn generate_refresh_token() -> (String, i64) {
-    let exp = Utc::now()
-        .checked_add_signed(Duration::days(7))
-        .unwrap()
-        .timestamp();
+    let exp = Utc::now().checked_add_signed(Duration::days(7)).unwrap().timestamp();
     let token = Uuid::new_v4().to_string();
     (token, exp)
 }
 
 pub fn verify_access_token(token: &str, secret: &str) -> Result<TokenData<Claims>, AuthError> {
     let validation = Validation::default();
-    let td = decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(secret.as_ref()),
-        &validation,
-    )
-    .map_err(|_| AuthError::unauthorized("Invalid token"))?;
+    let td = decode::<Claims>(token, &DecodingKey::from_secret(secret.as_ref()), &validation)
+        .map_err(|_| AuthError::unauthorized("Invalid token"))?;
 
     // Enforce expiry explicitly
     let now = Utc::now().timestamp();

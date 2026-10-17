@@ -4,15 +4,11 @@ use super::{
 };
 use crate::activities::TrainingActivities;
 use bike_core::bike_tasks::{
-    validate_revision, BatchInput, BatchResult, ManifestScope, TrainingActivityInput,
-    TrainingCompletion,
+    validate_revision, BatchInput, BatchResult, ManifestScope, TrainingActivityInput, TrainingCompletion,
 };
 use temporalio_sdk::{ApplicationFailure, WorkflowContext, WorkflowResult};
 
-pub(crate) async fn prepare<W>(
-    ctx: &WorkflowContext<W>,
-    batch: &mut BatchInput,
-) -> WorkflowResult<()> {
+pub(crate) async fn prepare<W>(ctx: &WorkflowContext<W>, batch: &mut BatchInput) -> WorkflowResult<()> {
     let command = batch.command.clone();
     let expected = ManifestScope::Training {
         user_id: command.user_id,
@@ -31,22 +27,10 @@ pub(crate) async fn rebuild_activity<W>(
     ctx: &WorkflowContext<W>,
     command: TrainingActivityInput,
 ) -> WorkflowResult<()> {
-    command
-        .command
-        .validate()
-        .map_err(ApplicationFailure::new)?;
+    command.command.validate().map_err(ApplicationFailure::new)?;
     validate_revision(command.expected_revision).map_err(ApplicationFailure::new)?;
-    let options = options::activity(
-        command.command.priority,
-        format!("user-{}", command.command.user_id),
-    );
-    let result = options::run(
-        ctx,
-        TrainingActivities::rebuild_activity_training,
-        command,
-        options,
-    )
-    .await?;
+    let options = options::activity(command.command.priority, format!("user-{}", command.command.user_id));
+    let result = options::run(ctx, TrainingActivities::rebuild_activity_training, command, options).await?;
     if let Some(change) = result.fitness {
         derived::fitness(ctx, &change).await?;
     }
@@ -62,15 +46,6 @@ pub(crate) async fn complete<W>(
         command: batch.command.clone(),
         result: result.clone(),
     };
-    let options = options::activity(
-        batch.command.priority,
-        format!("user-{}", batch.command.user_id),
-    );
-    options::run(
-        ctx,
-        TrainingActivities::complete_training_backfill,
-        completion,
-        options,
-    )
-    .await
+    let options = options::activity(batch.command.priority, format!("user-{}", batch.command.user_id));
+    options::run(ctx, TrainingActivities::complete_training_backfill, completion, options).await
 }

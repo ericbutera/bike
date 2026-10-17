@@ -37,18 +37,9 @@ async fn repeated_queries_keep_full_counts_and_one_statement_sample() {
     let operation = stage(&trace, "expensive_operation");
     assert_eq!(attribute(&operation, "bike.db.calls"), &100_i64.into());
     assert_eq!(attribute(&operation, "bike.db.spans_kept"), &1_i64.into());
-    assert_eq!(
-        attribute(&operation, "bike.db.spans_dropped"),
-        &99_i64.into()
-    );
+    assert_eq!(attribute(&operation, "bike.db.spans_dropped"), &99_i64.into());
     let spans = trace.spans();
-    assert_eq!(
-        spans
-            .iter()
-            .filter(|span| span.name.starts_with("sea_orm."))
-            .count(),
-        1
-    );
+    assert_eq!(spans.iter().filter(|span| span.name.starts_with("sea_orm.")).count(), 1);
     let request = spans.iter().find(|span| span.name == "request").unwrap();
     assert_eq!(attribute(request, "bike.db.calls"), &100_i64.into());
     assert_eq!(db.into_transaction_log().len(), 100);
@@ -88,10 +79,7 @@ fn slow_and_failed_queries_have_separate_bounded_samples_and_exact_totals() {
     let parent = spans.iter().find(|span| span.name == "operation").unwrap();
     assert_eq!(attribute(parent, "bike.db.calls"), &100_i64.into());
     assert_eq!(attribute(parent, "bike.db.duration_ms"), &20_000_f64.into());
-    assert_eq!(
-        attribute(parent, "bike.db.max_duration_ms"),
-        &200_f64.into()
-    );
+    assert_eq!(attribute(parent, "bike.db.max_duration_ms"), &200_f64.into());
     assert_eq!(attribute(parent, "bike.db.errors"), &50_i64.into());
     assert_eq!(attribute(parent, "bike.db.spans_dropped"), &96_i64.into());
     assert!(processor.pending.lock().unwrap().is_empty());
@@ -134,10 +122,7 @@ async fn real_database_failures_remain_visible_after_repeated_detail_is_dropped(
     assert_eq!(attribute(&operation, "bike.db.calls"), &5_i64.into());
     assert_eq!(attribute(&operation, "bike.db.errors"), &5_i64.into());
     assert_eq!(attribute(&operation, "bike.db.spans_kept"), &2_i64.into());
-    assert_eq!(
-        attribute(&operation, "bike.db.spans_dropped"),
-        &3_i64.into()
-    );
+    assert_eq!(attribute(&operation, "bike.db.spans_dropped"), &3_i64.into());
 }
 
 #[test]
@@ -145,26 +130,20 @@ fn remote_parents_do_not_leave_completed_operation_summaries_in_memory() {
     let (query, mut parent) = span_fixtures();
     parent.parent_span_is_remote = true;
     parent.parent_span_id = opentelemetry::trace::SpanId::from_bytes([1; 8]);
-    let processor =
-        DatabaseSpanProcessor::new(SimpleSpanProcessor::new(InMemorySpanExporter::default()));
+    let processor = DatabaseSpanProcessor::new(SimpleSpanProcessor::new(InMemorySpanExporter::default()));
     processor.on_end(query);
     processor.on_end(parent);
     assert!(processor.pending.lock().unwrap().is_empty());
-    processor
-        .shutdown_with_timeout(Duration::from_secs(1))
-        .unwrap();
+    processor.shutdown_with_timeout(Duration::from_secs(1)).unwrap();
 }
 
 #[test]
 fn shutdown_clears_summaries_for_operations_that_have_not_closed() {
     let (query, _) = span_fixtures();
-    let processor =
-        DatabaseSpanProcessor::new(SimpleSpanProcessor::new(InMemorySpanExporter::default()));
+    let processor = DatabaseSpanProcessor::new(SimpleSpanProcessor::new(InMemorySpanExporter::default()));
     processor.on_end(query);
     assert_eq!(processor.pending.lock().unwrap().len(), 1);
-    processor
-        .shutdown_with_timeout(Duration::from_secs(1))
-        .unwrap();
+    processor.shutdown_with_timeout(Duration::from_secs(1)).unwrap();
     assert!(processor.pending.lock().unwrap().is_empty());
 }
 
@@ -176,10 +155,7 @@ fn span_fixtures() -> (SpanData, SpanData) {
     let tracer = provider.tracer("query-fixture");
     let context = Context::new().with_span(tracer.start("operation"));
     let mut query = tracer.start_with_context("sea_orm.query_one", &context);
-    query.set_attribute(KeyValue::new(
-        "db.statement",
-        "SELECT id FROM users WHERE id = $1",
-    ));
+    query.set_attribute(KeyValue::new("db.statement", "SELECT id FROM users WHERE id = $1"));
     query.end();
     context.span().end();
     provider.force_flush().unwrap();

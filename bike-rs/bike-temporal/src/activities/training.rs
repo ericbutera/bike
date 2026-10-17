@@ -2,8 +2,7 @@ use super::activity_error;
 use async_trait::async_trait;
 use bike_core::{
     bike_tasks::{
-        BatchCommand, BatchManifest, PageRequest, TrainingActivityInput, TrainingActivityResult,
-        TrainingCompletion,
+        BatchCommand, BatchManifest, PageRequest, TrainingActivityInput, TrainingActivityResult, TrainingCompletion,
     },
     workflow_error::WorkflowError,
 };

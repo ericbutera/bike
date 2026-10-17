@@ -1,7 +1,5 @@
 use super::*;
-use crate::workflows::{
-    ActivityArchiveImport, ReprocessArchiveFitActivityImports, ReprocessUserActivityImports,
-};
+use crate::workflows::{ActivityArchiveImport, ReprocessArchiveFitActivityImports, ReprocessUserActivityImports};
 use bike_core::{bike_tasks::*, test_support as fixtures};
 use temporalio_common::protos::coresdk::workflow_commands::workflow_command;
 
@@ -11,12 +9,7 @@ pub(super) fn page<T>(request: &PageRequest, factory: fn(&PageRequest, u64) -> T
         .collect()
 }
 
-pub(super) fn children<I: Serialize>(
-    mock: &mut WorkflowMock,
-    name: &str,
-    inputs: &[I],
-    result: &impl Serialize,
-) {
+pub(super) fn children<I: Serialize>(mock: &mut WorkflowMock, name: &str, inputs: &[I], result: &impl Serialize) {
     for input in inputs {
         let seq = mock.start_child(name, input);
         // A started child must be awaited before the page may advance.
@@ -53,10 +46,7 @@ fn reprocessing_prepares_one_snapshot_and_awaits_more_than_one_page_of_shared_ch
         &first,
         &fixtures::import_result(),
     );
-    let last = PageRequest {
-        offset: 16,
-        ..request
-    };
+    let last = PageRequest { offset: 16, ..request };
     let entries = page(&last, fixtures::reprocess_entry);
     mock.activity("reprocess_import_page", &last, &entries);
     children(
@@ -137,15 +127,9 @@ fn continuation_carries_only_settled_progress_and_reuses_the_retained_manifest()
     );
     let continued: BatchInput = mock.continued_input();
     assert_eq!(continued.progress.settled, 16);
-    assert_eq!(
-        continued.progress.manifest.as_ref(),
-        Some(&request.manifest)
-    );
+    assert_eq!(continued.progress.manifest.as_ref(), Some(&request.manifest));
     let mut resumed = WorkflowMock::new::<ReprocessUserActivityImports>(continued);
-    let last = PageRequest {
-        offset: 16,
-        ..request
-    };
+    let last = PageRequest { offset: 16, ..request };
     let entries = page(&last, fixtures::reprocess_entry);
     resumed.activity("reprocess_import_page", &last, &entries);
     children(
@@ -161,8 +145,7 @@ fn continuation_carries_only_settled_progress_and_reuses_the_retained_manifest()
 fn failed_children_and_failed_child_starts_never_report_batch_success() {
     let request = fixtures::page_request(reprocess_scope(), 1, 0);
     for fail_start in [false, true] {
-        let mut mock =
-            WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
+        let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
         let entries = page(&request, fixtures::reprocess_entry);
         mock.activity("reprocess_import_page", &request, &entries);
         if fail_start {
@@ -178,8 +161,7 @@ fn failed_children_and_failed_child_starts_never_report_batch_success() {
 #[test]
 fn empty_manifest_finishes_without_fetching_pages_or_starting_children() {
     let request = fixtures::page_request(reprocess_scope(), 0, 0);
-    let mock =
-        WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
+    let mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
     assert_eq!(mock.result::<BatchResult>().completed, 0);
 }
 
@@ -197,8 +179,7 @@ fn truncated_duplicate_and_foreign_pages_fail_before_any_child_starts() {
         foreign,
         foreign_command,
     ] {
-        let mut mock =
-            WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
+        let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
         mock.activity("reprocess_import_page", &request, &invalid);
         mock.assert_failed();
     }
@@ -207,16 +188,14 @@ fn truncated_duplicate_and_foreign_pages_fail_before_any_child_starts() {
 #[test]
 fn continued_input_cannot_substitute_a_different_manifest_selection() {
     let request = fixtures::page_request(reprocess_scope(), 1, 0);
-    let mock =
-        WorkflowMock::new::<ReprocessArchiveFitActivityImports>(fixtures::prepared_batch(&request));
+    let mock = WorkflowMock::new::<ReprocessArchiveFitActivityImports>(fixtures::prepared_batch(&request));
     mock.assert_failure_message("selection");
 }
 
 #[test]
 fn native_child_options_keep_stable_identity_priority_and_cancellation() {
     let request = fixtures::page_request(reprocess_scope(), 1, 0);
-    let mut mock =
-        WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
+    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
     let entries = page(&request, fixtures::reprocess_entry);
     mock.activity("reprocess_import_page", &request, &entries);
     let workflow_command::Variant::StartChildWorkflowExecution(child) = mock.next_command() else {
@@ -272,8 +251,7 @@ fn archive_import_retains_one_manifest_and_reuses_the_process_import_workflow() 
 #[test]
 fn parent_cancellation_waits_for_the_child_and_remains_canceled() {
     let request = fixtures::page_request(reprocess_scope(), 1, 0);
-    let mut mock =
-        WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
+    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
     let entries = page(&request, fixtures::reprocess_entry);
     mock.activity("reprocess_import_page", &request, &entries);
     let seq = mock.start_child("reprocess_activity_import", &entries[0]);
@@ -284,8 +262,7 @@ fn parent_cancellation_waits_for_the_child_and_remains_canceled() {
 #[test]
 fn successful_child_completion_after_parent_cancellation_cannot_finish_the_batch() {
     let request = fixtures::page_request(reprocess_scope(), 1, 0);
-    let mut mock =
-        WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
+    let mut mock = WorkflowMock::new::<ReprocessUserActivityImports>(fixtures::prepared_batch(&request));
     let entries = page(&request, fixtures::reprocess_entry);
     mock.activity("reprocess_import_page", &request, &entries);
     let seq = mock.start_child("reprocess_activity_import", &entries[0]);

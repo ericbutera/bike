@@ -41,16 +41,8 @@ pub enum Relation {}
 crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
-    pub async fn count_created_since(
-        db: &DatabaseConnection,
-        since: DateTime<Utc>,
-    ) -> Result<u64, DbErr> {
-        crate::platform::aggregator::Aggregator::created_since::<Entity>(
-            db,
-            Column::CreatedAt,
-            since,
-        )
-        .await
+    pub async fn count_created_since(db: &DatabaseConnection, since: DateTime<Utc>) -> Result<u64, DbErr> {
+        crate::platform::aggregator::Aggregator::created_since::<Entity>(db, Column::CreatedAt, since).await
     }
 
     pub fn ensure_enabled(&self) -> Result<(), AuthError> {
@@ -107,16 +99,9 @@ impl Model {
         active.update(db).await
     }
 
-    pub async fn set_disabled(
-        self,
-        db: &DatabaseConnection,
-        actor_id: i32,
-        disabled: bool,
-    ) -> Result<Self, AuthError> {
+    pub async fn set_disabled(self, db: &DatabaseConnection, actor_id: i32, disabled: bool) -> Result<Self, AuthError> {
         if actor_id == self.id && disabled {
-            return Err(AuthError::forbidden(
-                "administrators cannot disable their own account",
-            ));
+            return Err(AuthError::forbidden("administrators cannot disable their own account"));
         }
         let mut active = self.into_active_model();
         active.disabled = Set(disabled);
@@ -127,14 +112,8 @@ impl Model {
         Entity::find().filter(Column::Pid.eq(*pid)).one(db).await
     }
 
-    pub async fn find_by_email(
-        db: &DatabaseConnection,
-        email: &str,
-    ) -> Result<Option<Self>, DbErr> {
-        Entity::find()
-            .filter(Column::Email.eq(email.to_string()))
-            .one(db)
-            .await
+    pub async fn find_by_email(db: &DatabaseConnection, email: &str) -> Result<Option<Self>, DbErr> {
+        Entity::find().filter(Column::Email.eq(email.to_string())).one(db).await
     }
 }
 
@@ -144,10 +123,7 @@ pub struct RiderNameRow {
     pub name: String,
 }
 impl Model {
-    pub async fn rider_names(
-        db: &impl ConnectionTrait,
-        user_ids: &[i32],
-    ) -> Result<Vec<RiderNameRow>, DbErr> {
+    pub async fn rider_names(db: &impl ConnectionTrait, user_ids: &[i32]) -> Result<Vec<RiderNameRow>, DbErr> {
         use sea_orm::QuerySelect;
         Entity::find()
             .select_only()
@@ -160,10 +136,7 @@ impl Model {
 }
 
 impl Model {
-    pub async fn find_optional(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn find_optional(db: &impl ConnectionTrait, user_id: i32) -> Result<Option<Self>, DbErr> {
         Entity::find_by_id(user_id).one(db).await
     }
 }

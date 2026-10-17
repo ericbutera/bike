@@ -43,19 +43,11 @@ pub async fn submit(
     };
     let job = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        state
-            .task_submission
-            .reprocess_activity_import(input, cause),
+        state.task_submission.reprocess_activity_import(input, cause),
     )
     .await
-    .map_err(|_| {
-        AppError::internal("Temporal acceptance timed out; retry with the same command_id")
-    })?
-    .map_err(|error| {
-        AppError::internal(format!(
-            "Temporal did not acknowledge reprocessing: {error}"
-        ))
-    })?;
+    .map_err(|_| AppError::internal("Temporal acceptance timed out; retry with the same command_id"))?
+    .map_err(|error| AppError::internal(format!("Temporal did not acknowledge reprocessing: {error}")))?;
     Ok(AcceptedReprocessing {
         activity_id: command.activity_id,
         activity_import_id: import_id,

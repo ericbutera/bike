@@ -18,9 +18,7 @@ pub struct ActivityParserArtifact<'a> {
 }
 
 #[tracing::instrument(name = "activity.parse", skip_all, fields(bike.operation = "activity.parse", format = artifact.format, artifact_kind = artifact.artifact_kind, byte_count = artifact.bytes.len() as i64))]
-pub fn parse_activity_artifact(
-    artifact: ActivityParserArtifact<'_>,
-) -> Result<ParsedActivityData, AppError> {
+pub fn parse_activity_artifact(artifact: ActivityParserArtifact<'_>) -> Result<ParsedActivityData, AppError> {
     if artifact.artifact_kind == "generated_export" || artifact.source_quality == "generated_tcx" {
         return Err(retired_source_error());
     }
@@ -34,21 +32,14 @@ pub fn parse_activity_artifact(
     parse_activity_data(artifact.original_filename, artifact.format, artifact.bytes)
 }
 
-pub fn parse_activity_data(
-    filename: &str,
-    format: &str,
-    bytes: &[u8],
-) -> Result<ParsedActivityData, AppError> {
+pub fn parse_activity_data(filename: &str, format: &str, bytes: &[u8]) -> Result<ParsedActivityData, AppError> {
     if format.eq_ignore_ascii_case("tcx") && is_retired_generated_tcx(bytes) {
         return Err(retired_source_error());
     }
     let draft = summarize_activity_upload(filename, format, bytes)?;
     let derived_data = derive_activity_detail_data(filename, format, bytes)?;
 
-    Ok(ParsedActivityData {
-        draft,
-        derived_data,
-    })
+    Ok(ParsedActivityData { draft, derived_data })
 }
 
 /// Recognize Bike's exact retired cycling export, including its nonstandard
@@ -58,9 +49,7 @@ pub fn is_retired_generated_tcx(bytes: &[u8]) -> bool {
 }
 
 fn retired_source_error() -> AppError {
-    AppError::bad_request(
-        "Bike-generated activity exports are retired; recover an authentic source",
-    )
+    AppError::bad_request("Bike-generated activity exports are retired; recover an authentic source")
 }
 
 #[cfg(test)]
@@ -69,10 +58,7 @@ mod tests {
 
     #[test]
     fn generated_labels_reject_even_parseable_bytes() {
-        for (kind, quality) in [
-            ("generated_export", "fit_original"),
-            ("original", "generated_tcx"),
-        ] {
+        for (kind, quality) in [("generated_export", "fit_original"), ("original", "generated_tcx")] {
             assert!(parse_activity_artifact(ActivityParserArtifact {
                 original_filename: "synthetic.fit",
                 format: "fit",

@@ -74,10 +74,7 @@ mod tests {
         assert_eq!(metrics.pending.get(), 123);
         assert_eq!(metrics.oldest.get(), oldest.timestamp());
         assert_eq!(metrics.sampled_at.get(), now.timestamp());
-        metrics
-            .sample(&db, now + chrono::Duration::seconds(30))
-            .await
-            .unwrap();
+        metrics.sample(&db, now + chrono::Duration::seconds(30)).await.unwrap();
         assert_eq!(metrics.pending.get(), 0);
         assert_eq!(metrics.oldest.get(), 0);
         assert_eq!(registry.gather().len(), 3);
@@ -99,10 +96,7 @@ mod tests {
             .append_query_errors([DbErr::Custom("fixture database unavailable".into())])
             .into_connection();
         metrics.sample(&db, now).await.unwrap();
-        assert!(metrics
-            .sample(&db, now + chrono::Duration::seconds(30))
-            .await
-            .is_err());
+        assert!(metrics.sample(&db, now + chrono::Duration::seconds(30)).await.is_err());
         assert_eq!(metrics.pending.get(), 2);
         assert_eq!(metrics.sampled_at.get(), now.timestamp());
     }

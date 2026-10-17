@@ -301,12 +301,7 @@ mod tests {
             );
         }
 
-        for retained_path in [
-            "/auth/current",
-            "/auth/refresh",
-            "/auth/logout",
-            "/oauth/providers",
-        ] {
+        for retained_path in ["/auth/current", "/auth/refresh", "/auth/logout", "/oauth/providers"] {
             assert!(
                 paths.contains_key(retained_path),
                 "SSO session route is missing: {retained_path}"

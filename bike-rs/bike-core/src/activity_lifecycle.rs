@@ -10,17 +10,11 @@ use crate::activity_import_pipeline::PersistActivityUploadOutcome;
 use crate::activity_import_pipeline::ReprocessedActivityImport;
 use crate::activity_import_pipeline::ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT;
 use crate::activity_import_pipeline::ACTIVITY_IMPORT_STATUS_FAILED;
-use crate::analytics::{
-    mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty,
-};
+use crate::analytics::{mark_segment_activity_changes, mark_user_activity_change, mark_user_fitness_dirty};
 use crate::dedupe::{activity_duplicate_candidate_key, activity_models_match_for_dedupe};
-use crate::entities::{
-    activities, activity_analytics, activity_imports, activity_training_analyses, segment_efforts,
-};
+use crate::entities::{activities, activity_analytics, activity_imports, activity_training_analyses, segment_efforts};
 use crate::jobs::JobQueue as TaskQueue;
-use crate::segment_support::{
-    clear_segment_efforts_for_activity, replace_segment_efforts_for_activity,
-};
+use crate::segment_support::{clear_segment_efforts_for_activity, replace_segment_efforts_for_activity};
 use crate::training_profile::{load_training_profile, TrainingProfile};
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{NaiveDate, Utc};
@@ -81,8 +75,7 @@ impl ActivityReprocessProgress {
         self.succeeded_count += 1;
         self.activity_ids.push(reprocessed.activity.id);
         self.import_ids.push(import_id);
-        self.affected_segment_ids
-            .extend(reprocessed.affected_segment_ids);
+        self.affected_segment_ids.extend(reprocessed.affected_segment_ids);
         self.fitness_dirty_from_day = Some(match self.fitness_dirty_from_day {
             Some(current) => current.min(reprocessed.fitness_dirty_from_day),
             None => reprocessed.fitness_dirty_from_day,
@@ -107,11 +100,7 @@ struct ResumeImportProgress {
 }
 
 impl ResumeImportProgress {
-    fn record_success(
-        &mut self,
-        import: activity_imports::Model,
-        reprocessed: ReprocessedActivityImport,
-    ) {
+    fn record_success(&mut self, import: activity_imports::Model, reprocessed: ReprocessedActivityImport) {
         self.reprocessed.record_success(import.id, reprocessed);
     }
 
@@ -135,11 +124,7 @@ struct SingleActivityReprocessContext<'a> {
 }
 
 impl<'a> SingleActivityReprocessContext<'a> {
-    fn new(
-        db: &'a DatabaseConnection,
-        activity_import: activity_imports::Model,
-        activity_id: i32,
-    ) -> Self {
+    fn new(db: &'a DatabaseConnection, activity_import: activity_imports::Model, activity_id: i32) -> Self {
         Self {
             db,
             activity_import,
@@ -220,8 +205,7 @@ pub async fn delete_activity_records(
             activities::Entity::count_by_import_for_user(db, activity_import_id, user_id).await?;
 
         if remaining_references == 0 {
-            let linked_import =
-                activity_imports::Entity::find_owned(db, user_id, activity_import_id).await?;
+            let linked_import = activity_imports::Entity::find_owned(db, user_id, activity_import_id).await?;
 
             if let Some(linked_import) = linked_import {
                 source = Some(linked_import.storage_path);
@@ -254,15 +238,12 @@ pub async fn cleanup_duplicate_activities_for_user(
         });
     }
 
-    let activities_by_id = activities::Model::list_owned_by_ids(
-        db,
-        user_id,
-        cleanup_plan.duplicate_activity_ids.iter().copied(),
-    )
-    .await?
-    .into_iter()
-    .map(|activity| (activity.id, activity))
-    .collect::<HashMap<_, _>>();
+    let activities_by_id =
+        activities::Model::list_owned_by_ids(db, user_id, cleanup_plan.duplicate_activity_ids.iter().copied())
+            .await?
+            .into_iter()
+            .map(|activity| (activity.id, activity))
+            .collect::<HashMap<_, _>>();
     let mut affected_segment_ids = Vec::new();
     let mut fitness_dirty_from_day: Option<chrono::NaiveDate> = None;
 
@@ -280,8 +261,7 @@ pub async fn cleanup_duplicate_activities_for_user(
             Some(current) => current.min(activity.started_at.date_naive()),
             None => activity.started_at.date_naive(),
         });
-        affected_segment_ids
-            .extend(delete_activity_with_derived_state(db, uploads_dir, user_id, activity).await?);
+        affected_segment_ids.extend(delete_activity_with_derived_state(db, uploads_dir, user_id, activity).await?);
     }
 
     let changed_at = Utc::now();
@@ -292,9 +272,7 @@ pub async fn cleanup_duplicate_activities_for_user(
     }
     mark_segment_activity_changes(db, &affected_segment_ids, changed_at).await?;
     tasks.rebuild_fitness_freshness(user_id).await?;
-    tasks
-        .rebuild_segment_analytics(affected_segment_ids)
-        .await?;
+    tasks.rebuild_segment_analytics(affected_segment_ids).await?;
 
     Ok(DuplicateActivityCleanupSummary {
         duplicate_group_count: cleanup_plan.duplicate_group_count,
@@ -303,10 +281,7 @@ pub async fn cleanup_duplicate_activities_for_user(
     })
 }
 
-pub async fn load_segment_ids_for_activity<C>(
-    db: &C,
-    activity_id: i32,
-) -> Result<Vec<i32>, AppError>
+pub async fn load_segment_ids_for_activity<C>(db: &C, activity_id: i32) -> Result<Vec<i32>, AppError>
 where
     C: ConnectionTrait,
 {
@@ -317,17 +292,14 @@ where
     Ok(segment_ids)
 }
 
-fn plan_duplicate_activity_cleanup(
-    activities: Vec<activities::Model>,
-) -> DuplicateActivityCleanupPlan {
+fn plan_duplicate_activity_cleanup(activities: Vec<activities::Model>) -> DuplicateActivityCleanupPlan {
     let mut activities_by_key = HashMap::<String, Vec<DuplicateActivityCandidate>>::new();
 
     for activity in activities {
-        let route_point_count = crate::activity_details::deserialize_derived_activity_data(
-            activity.derived_data_json.as_ref(),
-        )
-        .route_points
-        .len();
+        let route_point_count =
+            crate::activity_details::deserialize_derived_activity_data(activity.derived_data_json.as_ref())
+                .route_points
+                .len();
         let key = activity_duplicate_candidate_key(activity.started_at, &activity.sport);
 
         activities_by_key
@@ -357,9 +329,10 @@ fn plan_duplicate_activity_cleanup(
         let mut keepers = Vec::<(DuplicateActivityCandidate, bool)>::new();
 
         for candidate in candidates {
-            if let Some((_, has_duplicates)) = keepers.iter_mut().find(|(keeper, _)| {
-                activity_models_match_for_dedupe(&keeper.activity, &candidate.activity)
-            }) {
+            if let Some((_, has_duplicates)) = keepers
+                .iter_mut()
+                .find(|(keeper, _)| activity_models_match_for_dedupe(&keeper.activity, &candidate.activity))
+            {
                 *has_duplicates = true;
                 duplicate_activity_ids.push(candidate.activity.id);
             } else {
@@ -399,11 +372,10 @@ fn compare_duplicate_activity_candidates(
 
 fn activity_cleanup_format_rank(activity: &activities::Model) -> i32 {
     let format = activity.format.as_deref().or_else(|| {
-        activity.original_filename.as_deref().and_then(|filename| {
-            Path::new(filename)
-                .extension()
-                .and_then(|value| value.to_str())
-        })
+        activity
+            .original_filename
+            .as_deref()
+            .and_then(|filename| Path::new(filename).extension().and_then(|value| value.to_str()))
     });
 
     match format {
@@ -414,19 +386,13 @@ fn activity_cleanup_format_rank(activity: &activities::Model) -> i32 {
     }
 }
 
-pub async fn regenerate_segments_for_user(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<Vec<i32>, AppError> {
+pub async fn regenerate_segments_for_user(db: &DatabaseConnection, user_id: i32) -> Result<Vec<i32>, AppError> {
     crate::segment_regeneration::regenerate_segments_for_user(db, user_id)
         .await
         .map_err(|error| AppError::internal(error.message))
 }
 
-pub async fn process_user_segment_regeneration(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<(), AppError> {
+pub async fn process_user_segment_regeneration(db: &DatabaseConnection, user_id: i32) -> Result<(), AppError> {
     crate::segment_regeneration::process_user_segment_regeneration(db, user_id)
         .await
         .map_err(|error| AppError::internal(error.message))
@@ -474,8 +440,7 @@ pub async fn resume_incomplete_activity_imports_for_user(
         "resuming incomplete activity imports"
     );
 
-    let activities_by_import_id =
-        load_activities_for_incomplete_imports(db, user_id, &imports).await?;
+    let activities_by_import_id = load_activities_for_incomplete_imports(db, user_id, &imports).await?;
     let training_profile = load_training_profile(db, user_id).await?;
     let mut progress = ResumeImportProgress::default();
 
@@ -518,8 +483,7 @@ async fn load_activities_for_incomplete_imports(
         .iter()
         .filter_map(|import| import.activity_id)
         .collect::<Vec<_>>();
-    let mut activities_by_import_id =
-        load_activities_by_activity_import_id(db, user_id, &activity_import_ids).await?;
+    let mut activities_by_import_id = load_activities_by_activity_import_id(db, user_id, &activity_import_ids).await?;
 
     if !activity_ids.is_empty() {
         for activity in load_activities_by_id(db, user_id, &activity_ids).await? {
@@ -541,11 +505,7 @@ async fn load_activities_by_activity_import_id(
         activities::Model::linked_by_import_ids(db, user_id, activity_import_ids)
             .await?
             .into_iter()
-            .filter_map(|activity| {
-                activity
-                    .activity_import_id
-                    .map(|import_id| (import_id, activity))
-            })
+            .filter_map(|activity| activity.activity_import_id.map(|import_id| (import_id, activity)))
             .collect(),
     )
 }
@@ -577,13 +537,7 @@ async fn resume_activity_import(
         return Ok(());
     }
     let Some(activity) = activities_by_import_id.get(&import.id).cloned() else {
-        match crate::activity_import_pipeline::plan_activity_import_replay(
-            db,
-            uploads_dir,
-            &import,
-            "raw_stored",
-        )
-        .await
+        match crate::activity_import_pipeline::plan_activity_import_replay(db, uploads_dir, &import, "raw_stored").await
         {
             Ok(_) => {}
             Err(error) if matches!(error.status.as_u16(), 400 | 404) => return Ok(()),
@@ -675,12 +629,8 @@ pub async fn process_single_activity_import_reprocessing(
 
     let result = run_single_activity_import_reprocessing(db, uploads_dir, tasks, activity).await;
 
-    let release_result = release_user_activity_import_lock(
-        db,
-        user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING,
-    )
-    .await;
+    let release_result =
+        release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING).await;
 
     match (result, release_result) {
         (Err(error), _) => Err(error),
@@ -701,14 +651,8 @@ async fn run_single_activity_import_reprocessing(
     let training_profile = load_training_profile(db, user_id).await?;
     let mut context = SingleActivityReprocessContext::new(db, activity_import, activity.id);
 
-    let reprocessed = reprocess_single_activity_from_import(
-        &mut context,
-        uploads_dir,
-        user_id,
-        activity,
-        &training_profile,
-    )
-    .await?;
+    let reprocessed =
+        reprocess_single_activity_from_import(&mut context, uploads_dir, user_id, activity, &training_profile).await?;
     context.set_activity_id(reprocessed.activity.id);
     let mut affected_segment_ids = reprocessed.affected_segment_ids;
     affected_segment_ids.sort_unstable();
@@ -736,20 +680,15 @@ async fn load_activity_for_reprocessing(
         .await?
         .ok_or_else(|| AppError::not_found(format!("Activity {activity_id} was not found")))?;
     if activity.source == "strava_sync" {
-        return Err(AppError::bad_request(
-            "Use Strava sync or backfill for Strava imports",
-        ));
+        return Err(AppError::bad_request("Use Strava sync or backfill for Strava imports"));
     }
     Ok(activity)
 }
 
 fn activity_import_id_for_reprocessing(activity: &activities::Model) -> Result<i32, AppError> {
-    activity.activity_import_id.ok_or_else(|| {
-        AppError::bad_request(format!(
-            "Activity {} is not linked to a stored import",
-            activity.id
-        ))
-    })
+    activity
+        .activity_import_id
+        .ok_or_else(|| AppError::bad_request(format!("Activity {} is not linked to a stored import", activity.id)))
 }
 
 async fn load_activity_import_for_reprocessing(
@@ -758,11 +697,7 @@ async fn load_activity_import_for_reprocessing(
 ) -> Result<activity_imports::Model, AppError> {
     activity_imports::Entity::find_for_administration(db, activity_import_id)
         .await?
-        .ok_or_else(|| {
-            AppError::not_found(format!(
-                "Activity import {activity_import_id} was not found"
-            ))
-        })
+        .ok_or_else(|| AppError::not_found(format!("Activity import {activity_import_id} was not found")))
 }
 
 async fn reprocess_single_activity_from_import(
@@ -924,13 +859,7 @@ mod tests {
             make_route_point(3600, 40.1400, -120.1400),
         ];
 
-        let first_activity = make_activity(
-            20,
-            created_at,
-            Some("fit"),
-            Some("first.fit"),
-            northern_route,
-        );
+        let first_activity = make_activity(20, created_at, Some("fit"), Some("first.fit"), northern_route);
         let second_activity = make_activity(
             21,
             created_at + Duration::minutes(2),

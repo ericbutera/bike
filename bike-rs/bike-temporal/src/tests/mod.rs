@@ -66,13 +66,7 @@ fn fire(mock: &mut WorkflowMock, seq: u32, second: u64) {
         UNIX_EPOCH + Duration::from_secs(second),
     );
 }
-fn scheduled(
-    mock: &mut WorkflowMock,
-    name: &str,
-    expected: &impl Serialize,
-    priority: i32,
-    fairness: &str,
-) -> u32 {
+fn scheduled(mock: &mut WorkflowMock, name: &str, expected: &impl Serialize, priority: i32, fairness: &str) -> u32 {
     let workflow_command::Variant::ScheduleActivity(activity) = mock.next_command() else {
         panic!("Expected native Activity")
     };
@@ -97,30 +91,24 @@ fn scheduled(
     activity.seq
 }
 fn complete(mock: &mut WorkflowMock, seq: u32, publication: Publication) {
-    mock.activate(Variant::ResolveActivity(
-        workflow_activation::ResolveActivity {
-            seq,
-            result: Some(activity_result::ActivityResolution {
-                status: Some(activity_result::activity_resolution::Status::Completed(
-                    activity_result::Success {
-                        result: Some(payload(&publication)),
-                    },
-                )),
-            }),
-            ..Default::default()
-        },
-    ));
+    mock.activate(Variant::ResolveActivity(workflow_activation::ResolveActivity {
+        seq,
+        result: Some(activity_result::ActivityResolution {
+            status: Some(activity_result::activity_resolution::Status::Completed(
+                activity_result::Success {
+                    result: Some(payload(&publication)),
+                },
+            )),
+        }),
+        ..Default::default()
+    }));
 }
 
 #[test]
 fn five_quick_requests_for_the_same_user_rebuild_once_at_the_latest_revision() {
     let mut mock = WorkflowMock::new::<RebuildFitnessFreshness>(input());
     for revision in 1..=5 {
-        signal(
-            &mut mock,
-            &change(revision, Priority::Background),
-            revision - 1,
-        );
+        signal(&mut mock, &change(revision, Priority::Background), revision - 1);
         if revision > 1 {
             canceled_timer(&mut mock, revision as u32 - 1);
         }
@@ -173,11 +161,7 @@ fn native_replay_preserves_active_work_and_one_merged_follow_up() {
         "user-7",
     );
     for revision in 2..=6 {
-        signal(
-            &mut mock,
-            &change(revision, Priority::Background),
-            revision + 1,
-        );
+        signal(&mut mock, &change(revision, Priority::Background), revision + 1);
     }
     mock.assert_no_commands();
     let mut mock = mock.restart::<RebuildFitnessFreshness>(input());
@@ -203,10 +187,7 @@ fn continue_as_new_preserves_pending_requests_and_timer_deadlines() {
     mock.suggest_continue_as_new();
     fire(&mut mock, wait, 60);
     let continued: RebuildInput<FitnessChange> = mock.continued_input();
-    let mut resumed = WorkflowMock::at_time::<RebuildFitnessFreshness>(
-        continued,
-        UNIX_EPOCH + Duration::from_secs(60),
-    );
+    let mut resumed = WorkflowMock::at_time::<RebuildFitnessFreshness>(continued, UNIX_EPOCH + Duration::from_secs(60));
     scheduled(
         &mut resumed,
         "rebuild_fitness_freshness",
@@ -219,10 +200,8 @@ fn continue_as_new_preserves_pending_requests_and_timer_deadlines() {
 #[test]
 fn segment_requests_from_multiple_parents_share_one_segment_output() {
     let original = segment_change();
-    let mut mock = WorkflowMock::new::<RebuildSegmentAnalytics>(RebuildInput::new(
-        original.clone(),
-        DebouncePolicy::default(),
-    ));
+    let mut mock =
+        WorkflowMock::new::<RebuildSegmentAnalytics>(RebuildInput::new(original.clone(), DebouncePolicy::default()));
     let mut wait = None;
     for revision in 1..=5 {
         signal(
@@ -243,13 +222,7 @@ fn segment_requests_from_multiple_parents_share_one_segment_output() {
         revision: 5,
         ..original
     };
-    let seq = scheduled(
-        &mut mock,
-        "rebuild_segment_analytics",
-        &expected,
-        5,
-        "segment-18",
-    );
+    let seq = scheduled(&mut mock, "rebuild_segment_analytics", &expected, 5, "segment-18");
     complete(&mut mock, seq, Publication::Published);
     mock.assert_no_commands();
 }
@@ -257,10 +230,7 @@ fn segment_requests_from_multiple_parents_share_one_segment_output() {
 #[test]
 fn heatmap_workflow_prepares_the_latest_generation() {
     let original = heatmap_change();
-    let mut mock = WorkflowMock::new::<PrepareHeatmap>(RebuildInput::new(
-        original.clone(),
-        DebouncePolicy::default(),
-    ));
+    let mut mock = WorkflowMock::new::<PrepareHeatmap>(RebuildInput::new(original.clone(), DebouncePolicy::default()));
     let request = bike_core::bike_tasks::HeatmapChange {
         generation: 3,
         priority: Priority::NewActivity,
@@ -366,13 +336,7 @@ fn duplicate_pending_request_does_not_extend_the_existing_deadline() {
     canceled_timer(&mut mock, first);
     let remaining = timer(&mut mock, 40);
     fire(&mut mock, remaining, 60);
-    scheduled(
-        &mut mock,
-        "rebuild_fitness_freshness",
-        &request,
-        5,
-        "user-7",
-    );
+    scheduled(&mut mock, "rebuild_fitness_freshness", &request, 5, "user-7");
 }
 
 #[test]
@@ -394,13 +358,7 @@ fn out_of_order_fitness_requests_keep_the_earliest_dirty_date() {
         dirty_from: earlier.dirty_from,
         ..latest
     };
-    scheduled(
-        &mut mock,
-        "rebuild_fitness_freshness",
-        &expected,
-        1,
-        "user-7",
-    );
+    scheduled(&mut mock, "rebuild_fitness_freshness", &expected, 1, "user-7");
 }
 
 #[test]
@@ -436,8 +394,7 @@ fn invalid_windows_and_cross_resource_signals_fail_before_scheduling_work() {
         background_quiet: chrono::TimeDelta::zero(),
         ..DebouncePolicy::default()
     };
-    let mut mock =
-        WorkflowMock::new::<RebuildFitnessFreshness>(RebuildInput::new(fitness_change(), invalid));
+    let mut mock = WorkflowMock::new::<RebuildFitnessFreshness>(RebuildInput::new(fitness_change(), invalid));
     signal(&mut mock, &fitness_change(), 0);
     mock.assert_failure_message("0 < quiet <= cap");
     let mut mock = WorkflowMock::new::<RebuildFitnessFreshness>(input());

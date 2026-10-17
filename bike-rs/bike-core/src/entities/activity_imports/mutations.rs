@@ -30,12 +30,7 @@ impl Model {
         .await
     }
 
-    pub async fn mark_failed(
-        self,
-        db: &impl ConnectionTrait,
-        stage: &str,
-        error_message: &str,
-    ) -> Result<Self, DbErr> {
+    pub async fn mark_failed(self, db: &impl ConnectionTrait, stage: &str, error_message: &str) -> Result<Self, DbErr> {
         let attempts = self.processing_attempts.saturating_add(1);
         ActiveModel {
             processing_error: Set(Some(error_message.into())),
@@ -47,13 +42,8 @@ impl Model {
         .await
     }
 
-    pub async fn mark_duplicate(
-        &self,
-        db: &impl ConnectionTrait,
-        duplicate_activity_id: i32,
-    ) -> Result<Self, DbErr> {
-        let completed =
-            ActiveModel::from(self.clone()).with_completion(ACTIVITY_IMPORT_STATUS_DUPLICATE);
+    pub async fn mark_duplicate(&self, db: &impl ConnectionTrait, duplicate_activity_id: i32) -> Result<Self, DbErr> {
+        let completed = ActiveModel::from(self.clone()).with_completion(ACTIVITY_IMPORT_STATUS_DUPLICATE);
         ActiveModel {
             activity_id: Set(Some(duplicate_activity_id)),
             last_processing_event_at: Set(Some(Utc::now())),

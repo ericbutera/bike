@@ -16,20 +16,11 @@ fn cipher() -> Result<Aes256Gcm, WorkflowError> {
             .map_err(|_| WorkflowError::internal("Invalid Strava credential encryption key"))?,
         None if Config::get().environment != "production" => {
             use sha2::Digest;
-            sha2::Sha256::digest(format!(
-                "bike:strava:credentials:{}",
-                Config::get().jwt_secret
-            ))
-            .to_vec()
+            sha2::Sha256::digest(format!("bike:strava:credentials:{}", Config::get().jwt_secret)).to_vec()
         }
-        None => {
-            return Err(WorkflowError::internal(
-                "STRAVA_TOKEN_ENCRYPTION_KEY is required",
-            ))
-        }
+        None => return Err(WorkflowError::internal("STRAVA_TOKEN_ENCRYPTION_KEY is required")),
     };
-    Aes256Gcm::new_from_slice(&key)
-        .map_err(|_| WorkflowError::internal("Strava credential key must contain 32 bytes"))
+    Aes256Gcm::new_from_slice(&key).map_err(|_| WorkflowError::internal("Strava credential key must contain 32 bytes"))
 }
 
 pub fn seal(bytes: &[u8]) -> Result<String, WorkflowError> {
@@ -61,6 +52,5 @@ pub fn open(value: &str) -> Result<String, WorkflowError> {
     let decrypted = cipher()?
         .decrypt(&nonce.into(), &bytes[12..])
         .map_err(|_| WorkflowError::internal("Failed to decrypt Strava credentials"))?;
-    String::from_utf8(decrypted)
-        .map_err(|_| WorkflowError::internal("Invalid Strava credential encoding"))
+    String::from_utf8(decrypted).map_err(|_| WorkflowError::internal("Invalid Strava credential encoding"))
 }

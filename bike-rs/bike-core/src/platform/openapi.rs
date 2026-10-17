@@ -6,25 +6,18 @@ pub mod paths {
     pub use crate::platform::feature_flags::controller::public_flags;
 
     // expose utoipa marker types for the paths
-    pub use crate::platform::feature_flags::admin_controller::{
-        __path_list_flags, __path_update_flag,
-    };
+    pub use crate::platform::feature_flags::admin_controller::{__path_list_flags, __path_update_flag};
     pub use crate::platform::feature_flags::controller::__path_public_flags;
 }
 
 pub mod schemas {
     pub use crate::platform::data::pagination::PaginatedResponse;
-    pub use crate::platform::feature_flags::admin_controller::{
-        FeatureFlagResponse, UpdateFlagRequest,
-    };
+    pub use crate::platform::feature_flags::admin_controller::{FeatureFlagResponse, UpdateFlagRequest};
     pub use crate::platform::feature_flags::controller::PublicFlagResponse;
 }
 
 pub mod tags {
-    pub const TAGS: &[(&str, &str)] = &[
-        ("flags", "Feature flags"),
-        ("admin", "Admin-only endpoints"),
-    ];
+    pub const TAGS: &[(&str, &str)] = &[("flags", "Feature flags"), ("admin", "Admin-only endpoints")];
 }
 
 /// Shared OpenAPI modifier used by services to add security scheme

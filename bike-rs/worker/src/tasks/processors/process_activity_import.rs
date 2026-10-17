@@ -48,30 +48,21 @@ impl TaskProcessor for ProcessActivityImport {
         let data = payload.get("data").unwrap_or(&payload);
         let task: ProcessActivityImportTask = serde_json::from_value(data.clone())?;
         let import = load_import_for_task(&self.db, &task).await?;
-        let active =
-            activity_import_attempts::Entity::active(&self.db, task.user_id, task.import_id)
-                .await?;
+        let active = activity_import_attempts::Entity::active(&self.db, task.user_id, task.import_id).await?;
         let requested_attempt = data.get("attempt_id").and_then(serde_json::Value::as_i64);
         if let Some(active) = &active {
             if active.status != "queued" || requested_attempt != Some(i64::from(active.id)) {
-                return Err(worker_error(
-                    "This import has another queued or running attempt",
-                ));
+                return Err(worker_error("This import has another queued or running attempt"));
             }
         } else if requested_attempt.is_some() {
-            return Err(worker_error(
-                "Replay attempt has finished; queue a new replay",
-            ));
+            return Err(worker_error("Replay attempt has finished; queue a new replay"));
         }
 
         if should_skip_import_task(&import) {
             return Ok(());
         }
 
-        if self
-            .process_existing_activity_import(&task, &import)
-            .await?
-        {
+        if self.process_existing_activity_import(&task, &import).await? {
             return Ok(());
         }
         self.process_new_activity_import(&task, import).await

@@ -1,19 +1,13 @@
 //! Direct API-to-Temporal submission. Domain recording belongs to Activities.
 use crate::client::{self, Error};
-use bike_core::bike_tasks::{
-    ActivityImport, ImportSource, ImportTarget, JobReference, ReprocessInput, TaskCause,
-};
+use bike_core::bike_tasks::{ActivityImport, ImportSource, ImportTarget, JobReference, ReprocessInput, TaskCause};
 use std::sync::Arc;
 use temporalio_client::Client;
 use tokio::sync::OnceCell;
 
 #[async_trait::async_trait]
 pub trait ReprocessSubmission: Send + Sync {
-    async fn reprocess_activity_import(
-        &self,
-        input: ReprocessInput,
-        cause: TaskCause,
-    ) -> Result<JobReference, Error>;
+    async fn reprocess_activity_import(&self, input: ReprocessInput, cause: TaskCause) -> Result<JobReference, Error>;
 }
 
 #[derive(Clone)]
@@ -39,11 +33,7 @@ impl TaskSubmissionService {
         self.client.get_or_try_init(crate::runtime::connect).await
     }
 
-    pub async fn process_activity_import(
-        &self,
-        source: ImportSource,
-        cause: TaskCause,
-    ) -> Result<JobReference, Error> {
+    pub async fn process_activity_import(&self, source: ImportSource, cause: TaskCause) -> Result<JobReference, Error> {
         let source = source.with_cause(cause)?;
         ActivityImport {
             source: source.clone(),
@@ -66,11 +56,7 @@ impl TaskSubmissionService {
 
 #[async_trait::async_trait]
 impl ReprocessSubmission for TaskSubmissionService {
-    async fn reprocess_activity_import(
-        &self,
-        input: ReprocessInput,
-        cause: TaskCause,
-    ) -> Result<JobReference, Error> {
+    async fn reprocess_activity_import(&self, input: ReprocessInput, cause: TaskCause) -> Result<JobReference, Error> {
         TaskSubmissionService::reprocess_activity_import(self, input, cause).await
     }
 }

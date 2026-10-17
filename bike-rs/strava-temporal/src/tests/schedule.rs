@@ -92,10 +92,7 @@ fn failed_customer_does_not_prevent_later_customers_or_scan_pages() {
     let failed = logs.workflow(&fixture.event.workflow_id(), "failed");
     let succeeded = logs.workflow(&other_id, "completed");
     for row in [failed, succeeded] {
-        assert_eq!(
-            row["span"]["correlation_id"],
-            request.correlation_id.to_string()
-        );
+        assert_eq!(row["span"]["correlation_id"], request.correlation_id.to_string());
         assert_eq!(row["span"]["parent_temporal_workflow_id"], "unit-workflow");
         assert_eq!(
             row["span"]["parent_temporal_run_id"],
@@ -229,11 +226,7 @@ fn three_scan_pages_await_all_customers_and_accumulate_start_and_execution_failu
     }
 }
 
-fn customer_event(
-    fixture: &Fixture,
-    index: i32,
-    correlation_id: uuid::Uuid,
-) -> bike_core::strava::events::StravaEvent {
+fn customer_event(fixture: &Fixture, index: i32, correlation_id: uuid::Uuid) -> bike_core::strava::events::StravaEvent {
     let mut event = fixture.event.clone();
     event.bike_user_id = index + 1;
     event.connection_id = index + 1;

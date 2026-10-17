@@ -41,10 +41,7 @@ impl ActivityStorage for Storage {
     }
     async fn write(&self, key: &str, bytes: &[u8]) -> Result<ObjectRef, WorkflowError> {
         let path = format!("{key}/{}.json", checksum(bytes));
-        self.objects
-            .lock()
-            .unwrap()
-            .insert(path.clone(), bytes.to_vec());
+        self.objects.lock().unwrap().insert(path.clone(), bytes.to_vec());
         Ok(ObjectRef {
             path,
             sha256: checksum(bytes),
@@ -72,10 +69,7 @@ impl Provider {
     ) -> Result<ObjectRef, WorkflowError> {
         self.calls.lock().unwrap().push(resource);
         self.storage
-            .write(
-                &format!("fixture/{}/{resource}", event.strava_event_id),
-                bytes,
-            )
+            .write(&format!("fixture/{}/{resource}", event.strava_event_id), bytes)
             .await
     }
 }
@@ -92,13 +86,11 @@ impl StravaProvider for Provider {
     async fn page(
         &self,
         _input: &PageInput,
-    ) -> Result<Vec<bike_core::strava::provider_payload::StravaActivitySummary>, WorkflowError>
-    {
+    ) -> Result<Vec<bike_core::strava::provider_payload::StravaActivitySummary>, WorkflowError> {
         self.calls.lock().unwrap().push("page");
-        Ok(vec![serde_json::from_slice(include_bytes!(
-            "fixtures/activity.json"
-        ))
-        .unwrap()])
+        Ok(vec![
+            serde_json::from_slice(include_bytes!("fixtures/activity.json")).unwrap()
+        ])
     }
     async fn revoke(&self, _event: &StravaEvent) -> Result<(), WorkflowError> {
         self.calls.lock().unwrap().push("revoke");
@@ -119,12 +111,9 @@ fn environment_with_database(
         storage: storage.clone(),
         calls: Mutex::default(),
     });
-    let operations =
-        StravaOperations::with_dependencies(db.into_connection(), provider.clone(), storage);
+    let operations = StravaOperations::with_dependencies(db.into_connection(), provider.clone(), storage);
     let workflow = match event.operation {
-        StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => {
-            UpsertActivity::run.name()
-        }
+        StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => UpsertActivity::run.name(),
         StravaOperation::Delete => DeleteActivity::run.name(),
         StravaOperation::Sync => SyncActivities::run.name(),
         StravaOperation::Backfill => BackfillActivities::run.name(),
@@ -174,14 +163,10 @@ async fn child_handler_restores_remote_trace_and_logs_its_native_execution() {
 
     let parent = Fixture::new(StravaOperation::Sync);
     let mut fixture = Fixture::new(StravaOperation::Upsert);
-    fixture.event = parent
-        .event
-        .for_activity(fixture.activity_id, StravaOperation::Upsert);
+    fixture.event = parent.event.for_activity(fixture.activity_id, StravaOperation::Upsert);
     let storage = storage(&fixture);
     let logs = Logs::default();
-    opentelemetry::global::set_text_map_propagator(
-        opentelemetry_sdk::propagation::TraceContextPropagator::new(),
-    );
+    opentelemetry::global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new());
     let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder().build();
     let subscriber = tracing_subscriber::registry()
         .with(tracing_opentelemetry::layer().with_tracer(provider.tracer("strava-unit")))
@@ -191,9 +176,9 @@ async fn child_handler_restores_remote_trace_and_logs_its_native_execution() {
                 .with_writer(logs.clone())
                 .with_ansi(false),
         )
-        .with(tracing_subscriber::filter::dynamic_filter_fn(
-            |metadata, _| *metadata.level() <= tracing::Level::INFO,
-        ));
+        .with(tracing_subscriber::filter::dynamic_filter_fn(|metadata, _| {
+            *metadata.level() <= tracing::Level::INFO
+        }));
     environment(&fixture.event, storage.clone())
         .run(StravaActivities::normalize_activity, fixture.sources())
         .with_subscriber(subscriber)
@@ -204,19 +189,10 @@ async fn child_handler_restores_remote_trace_and_logs_its_native_execution() {
     assert_eq!(rows.len(), 2);
     for row in rows {
         let fields = &row["fields"];
-        assert_eq!(
-            fields["correlation_id"],
-            parent.event.correlation_id.to_string()
-        );
-        assert_eq!(
-            fields["parent_event_id"],
-            parent.event.strava_event_id.to_string()
-        );
+        assert_eq!(fields["correlation_id"], parent.event.correlation_id.to_string());
+        assert_eq!(fields["parent_event_id"], parent.event.strava_event_id.to_string());
         assert_eq!(fields["strava_activity_id"], fixture.activity_id);
-        assert_eq!(
-            fields["bike_customer_id"],
-            parent.event.bike_customer_id.to_string()
-        );
+        assert_eq!(fields["bike_customer_id"], parent.event.bike_customer_id.to_string());
         assert_eq!(fields["request_id"], "fixture-request");
         assert_eq!(fields["trace_id"], "12345678901234567890123456789012");
         assert_eq!(fields["temporal_workflow_id"], fixture.event.workflow_id());
@@ -280,14 +256,10 @@ async fn registered_handler_rejects_wrong_workflow_identity_before_external_work
     let environment = environment(&fixture.event, Arc::new(Storage::default()));
     let mut input = fixture.sources();
     input.event.strava_event_id = uuid::Uuid::from_u128(99);
-    let result = environment
-        .run(StravaActivities::normalize_activity, input)
-        .await;
+    let result = environment.run(StravaActivities::normalize_activity, input).await;
     assert!(matches!(
         result,
-        Err(ActivityEnvironmentError::Activity(
-            ActivityError::Application(_)
-        ))
+        Err(ActivityEnvironmentError::Activity(ActivityError::Application(_)))
     ));
 }
 

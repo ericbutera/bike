@@ -1,7 +1,6 @@
 use once_cell::sync::Lazy;
 use prometheus::{
-    register_histogram_vec, register_int_counter, register_int_gauge, HistogramVec, IntCounter,
-    IntGauge,
+    register_histogram_vec, register_int_counter, register_int_gauge, HistogramVec, IntCounter, IntGauge,
 };
 
 pub(super) struct Metrics {
@@ -30,11 +29,8 @@ pub(super) static METRICS: Lazy<Metrics> = Lazy::new(|| Metrics {
         "Generated maps that could not be cached."
     )
     .expect("register map cache write failures"),
-    pruned: register_int_counter!(
-        "bike_maps_cache_pruned_images_total",
-        "Idle cached map files deleted."
-    )
-    .expect("register map cache pruned files"),
+    pruned: register_int_counter!("bike_maps_cache_pruned_images_total", "Idle cached map files deleted.")
+        .expect("register map cache pruned files"),
     bytes: register_int_gauge!(
         "bike_maps_cache_disk_usage_bytes",
         "Bytes in the API map cache directory."

@@ -1,6 +1,4 @@
-use crate::activity_details::{
-    ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint,
-};
+use crate::activity_details::{ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint};
 use crate::activity_parser::ParsedActivityData;
 use crate::activity_sport::normalize_activity_sport;
 use crate::activity_summary::ActivityDraft;
@@ -127,10 +125,7 @@ impl StravaActivitySummary {
 
 pub fn parse_strava_provider_payload(bytes: &[u8]) -> Result<ParsedActivityData, AppError> {
     let payload: StoredStravaProviderPayload = serde_json::from_slice(bytes).map_err(|error| {
-        AppError::validation_field(
-            "file",
-            format!("Failed to parse Strava provider payload: {error}"),
-        )
+        AppError::validation_field("file", format!("Failed to parse Strava provider payload: {error}"))
     })?;
     if payload.provider != "strava" {
         return Err(AppError::validation_field(
@@ -147,26 +142,15 @@ pub fn parse_strava_provider_payload(bytes: &[u8]) -> Result<ParsedActivityData,
     let draft = build_strava_activity_draft(&payload.activity, &payload.streams);
     let mut derived_data = build_strava_derived_data(&draft, &payload.streams);
     derived_data.recording = recording_context(&payload.activity);
-    Ok(ParsedActivityData {
-        draft,
-        derived_data,
-    })
+    Ok(ParsedActivityData { draft, derived_data })
 }
 
-fn build_strava_activity_draft(
-    activity: &StravaActivitySummary,
-    streams: &StravaActivityStreams,
-) -> ActivityDraft {
+fn build_strava_activity_draft(activity: &StravaActivitySummary, streams: &StravaActivityStreams) -> ActivityDraft {
     let total_time_seconds = positive_i32(activity.elapsed_time.or(activity.moving_time));
     let moving_time_seconds = positive_i32(activity.moving_time).or(total_time_seconds);
-    let ended_at = total_time_seconds
-        .map(|seconds| activity.start_date + Duration::seconds(i64::from(seconds)));
-    let distance_meters = positive_f64(activity.distance).or_else(|| {
-        streams
-            .distance
-            .as_ref()
-            .and_then(|stream| stream.data.last().copied())
-    });
+    let ended_at = total_time_seconds.map(|seconds| activity.start_date + Duration::seconds(i64::from(seconds)));
+    let distance_meters = positive_f64(activity.distance)
+        .or_else(|| streams.distance.as_ref().and_then(|stream| stream.data.last().copied()));
     let average_speed_mps = match (distance_meters, moving_time_seconds.or(total_time_seconds)) {
         (Some(distance), Some(seconds)) if seconds > 0 => Some(distance / f64::from(seconds)),
         _ => None,
@@ -204,19 +188,12 @@ fn build_strava_activity_draft(
             .or(elevation_gain_meters),
         elevation_loss_meters,
         average_speed_mps: positive_f64(activity.average_speed_mps().or(average_speed_mps)),
-        max_speed_mps: positive_f64(
-            activity
-                .max_speed
-                .or_else(|| max_f64_stream(&streams.velocity_smooth)),
-        ),
+        max_speed_mps: positive_f64(activity.max_speed.or_else(|| max_f64_stream(&streams.velocity_smooth))),
         average_heart_rate_bpm: activity
             .average_heartrate
             .map(round_i32)
             .or_else(|| average_i32(heart_rates)),
-        max_heart_rate_bpm: activity
-            .max_heartrate
-            .map(round_i32)
-            .or_else(|| max_i32(heart_rates)),
+        max_heart_rate_bpm: activity.max_heartrate.map(round_i32).or_else(|| max_i32(heart_rates)),
         average_cadence_rpm: activity
             .average_cadence
             .map(round_i32)
@@ -226,12 +203,8 @@ fn build_strava_activity_draft(
     }
 }
 
-fn build_strava_derived_data(
-    draft: &ActivityDraft,
-    streams: &StravaActivityStreams,
-) -> ActivityDerivedData {
-    let chart_points =
-        downsample_chart_points(build_strava_chart_points(streams), MAX_STRAVA_CHART_POINTS);
+fn build_strava_derived_data(draft: &ActivityDraft, streams: &StravaActivityStreams) -> ActivityDerivedData {
+    let chart_points = downsample_chart_points(build_strava_chart_points(streams), MAX_STRAVA_CHART_POINTS);
     ActivityDerivedData {
         recording: Default::default(),
         laps: vec![full_activity_lap(draft)],
@@ -259,8 +232,7 @@ fn build_strava_route_points(streams: &StravaActivityStreams) -> Vec<ActivityRou
         .filter_map(|index| {
             let [latitude, longitude] = stream_latlng_value(streams, index)?;
             Some(ActivityRoutePoint {
-                elapsed_seconds: stream_i32_value(streams.time.as_ref(), index)
-                    .unwrap_or(index as i32),
+                elapsed_seconds: stream_i32_value(streams.time.as_ref(), index).unwrap_or(index as i32),
                 latitude,
                 longitude,
                 distance_meters: stream_f64_value(streams.distance.as_ref(), index),
@@ -295,56 +267,25 @@ fn full_activity_lap(summary: &ActivityDraft) -> ActivityLap {
 
 fn max_stream_count(streams: &StravaActivityStreams) -> usize {
     [
-        streams
-            .time
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .distance
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .latlng
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .altitude
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
+        streams.time.as_ref().map(|stream| stream.data.len()).unwrap_or(0),
+        streams.distance.as_ref().map(|stream| stream.data.len()).unwrap_or(0),
+        streams.latlng.as_ref().map(|stream| stream.data.len()).unwrap_or(0),
+        streams.altitude.as_ref().map(|stream| stream.data.len()).unwrap_or(0),
         streams
             .velocity_smooth
             .as_ref()
             .map(|stream| stream.data.len())
             .unwrap_or(0),
-        streams
-            .heartrate
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .cadence
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
-        streams
-            .watts
-            .as_ref()
-            .map(|stream| stream.data.len())
-            .unwrap_or(0),
+        streams.heartrate.as_ref().map(|stream| stream.data.len()).unwrap_or(0),
+        streams.cadence.as_ref().map(|stream| stream.data.len()).unwrap_or(0),
+        streams.watts.as_ref().map(|stream| stream.data.len()).unwrap_or(0),
     ]
     .into_iter()
     .max()
     .unwrap_or(0)
 }
 
-fn downsample_chart_points(
-    points: Vec<ActivityChartPoint>,
-    max_points: usize,
-) -> Vec<ActivityChartPoint> {
+fn downsample_chart_points(points: Vec<ActivityChartPoint>, max_points: usize) -> Vec<ActivityChartPoint> {
     if points.len() <= max_points || max_points == 0 {
         return points;
     }
@@ -352,8 +293,7 @@ fn downsample_chart_points(
     let last_index = points.len() - 1;
     (0..max_points)
         .map(|index| {
-            let source_index =
-                ((index as f64) * (last_index as f64) / ((max_points - 1) as f64)).round() as usize;
+            let source_index = ((index as f64) * (last_index as f64) / ((max_points - 1) as f64)).round() as usize;
             points[source_index].clone()
         })
         .collect()
@@ -374,18 +314,13 @@ pub fn strava_activity_sport_kind(activity: &StravaActivitySummary) -> StravaSpo
     }
 }
 
-pub fn recording_context(
-    activity: &StravaActivitySummary,
-) -> crate::activity_recording::RecordingContext {
+pub fn recording_context(activity: &StravaActivitySummary) -> crate::activity_recording::RecordingContext {
     let mut context = crate::activity_recording::RecordingContext::legacy(
         &normalized_strava_sport_token(activity),
         "strava_sync",
         &activity.name,
     );
-    context.observe(
-        "strava.sport_type",
-        activity.sport_type.as_deref().unwrap_or(""),
-    );
+    context.observe("strava.sport_type", activity.sport_type.as_deref().unwrap_or(""));
     context.observe("strava.type", activity.legacy_type.as_deref().unwrap_or(""));
     context.trainer("strava.trainer", activity.trainer == Some(true));
     for field in ["device_name", "external_id", "source"] {
@@ -403,8 +338,7 @@ pub fn recording_context(
 fn normalize_strava_sport(activity: &StravaActivitySummary) -> String {
     match strava_activity_sport_kind(activity) {
         StravaSportKind::Bike
-            if activity.trainer == Some(true)
-                || activity.name.to_ascii_lowercase().contains("zwift") =>
+            if activity.trainer == Some(true) || activity.name.to_ascii_lowercase().contains("zwift") =>
         {
             "indoor_trainer_ride".to_string()
         }
@@ -484,9 +418,7 @@ fn positive_i32(value: Option<i32>) -> Option<i32> {
 }
 
 fn positive_f64(value: Option<f64>) -> Option<f64> {
-    value
-        .filter(|value| value.is_finite())
-        .filter(|value| *value > 0.0)
+    value.filter(|value| value.is_finite()).filter(|value| *value > 0.0)
 }
 
 fn round_i32(value: f64) -> i32 {
@@ -536,10 +468,7 @@ mod tests {
         assert_eq!(route[7].distance_meters, Some(67.637657));
     }
 
-    fn test_activity_with_sport(
-        sport_type: Option<&str>,
-        legacy_type: Option<&str>,
-    ) -> StravaActivitySummary {
+    fn test_activity_with_sport(sport_type: Option<&str>, legacy_type: Option<&str>) -> StravaActivitySummary {
         StravaActivitySummary {
             additional_fields: Default::default(),
             id: 99,
@@ -584,10 +513,8 @@ mod tests {
 
     #[test]
     fn parses_strava_provider_payload_directly() {
-        let payload = StoredStravaProviderPayload::new(
-            test_activity_with_sport(Some("Ride"), Some("Ride")),
-            test_streams(),
-        );
+        let payload =
+            StoredStravaProviderPayload::new(test_activity_with_sport(Some("Ride"), Some("Ride")), test_streams());
 
         let parsed = parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
 
@@ -664,8 +591,7 @@ mod tests {
                 test_streams(),
             );
 
-            let parsed =
-                parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
+            let parsed = parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
             assert_eq!(parsed.draft.sport, expected);
             assert_eq!(parsed.draft.title, payload.activity.name);
         }

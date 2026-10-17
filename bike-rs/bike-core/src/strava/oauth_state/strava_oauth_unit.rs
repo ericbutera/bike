@@ -159,9 +159,7 @@ async fn persistence_adapter_rejects_the_callback_that_loses_one_time_consumptio
                 last_insert_id: 0,
             }])
             .into_connection();
-        let result = signer
-            .consume(&db, &state.token, &state.browser_session, now())
-            .await;
+        let result = signer.consume(&db, &state.token, &state.browser_session, now()).await;
         assert_eq!(result.is_ok(), rows_affected == 1);
         let log = format!("{:?}", db.into_transaction_log());
         assert!(log.contains("DELETE FROM"));
@@ -206,10 +204,7 @@ async fn wrong_or_missing_browser_cannot_consume_a_valid_state() {
     let signer = OAuthState::new("fixture-secret");
     let state = signer.issue(&store, 7, now()).await.unwrap();
     for browser in ["", "another-browser"] {
-        assert!(signer
-            .consume(&store, &state.token, browser, now())
-            .await
-            .is_err());
+        assert!(signer.consume(&store, &state.token, browser, now()).await.is_err());
     }
     assert_eq!(*store.consumes.lock().unwrap(), 0);
     assert!(signer
@@ -292,13 +287,7 @@ async fn issuing_again_rotates_the_browser_binding() {
 fn browser_cookie_is_private_and_covers_both_callback_aliases() {
     let cookie = session_cookie("fixture", "https://bike.example.test");
     assert!(cookie.starts_with("__Host-strava_oauth_session="));
-    for attribute in [
-        "HttpOnly",
-        "Path=/;",
-        "SameSite=Lax",
-        "Max-Age=600",
-        "; Secure",
-    ] {
+    for attribute in ["HttpOnly", "Path=/;", "SameSite=Lax", "Max-Age=600", "; Secure"] {
         assert!(cookie.contains(attribute));
     }
     assert!(!cookie.contains("Domain="));
@@ -312,10 +301,7 @@ fn production_requires_the_host_cookie_and_ignores_an_unprefixed_cookie() {
     let mut headers = HeaderMap::new();
     headers.insert(COOKIE, "strava_oauth_session=attacker".parse().unwrap());
     assert!(browser_session(&headers, "https://bike.example.test").is_err());
-    headers.append(
-        COOKIE,
-        "__Host-strava_oauth_session=fixture".parse().unwrap(),
-    );
+    headers.append(COOKIE, "__Host-strava_oauth_session=fixture".parse().unwrap());
     assert_eq!(
         browser_session(&headers, "https://bike.example.test").unwrap(),
         "fixture"
@@ -327,14 +313,8 @@ fn reads_cookie_headers_and_rejects_missing_empty_and_duplicate_binding() {
     use axum::http::header::COOKIE;
     let mut headers = HeaderMap::new();
     assert!(browser_session(&headers, "http://localhost:3000").is_err());
-    headers.append(
-        COOKIE,
-        "other=value; strava_oauth_session=fixture".parse().unwrap(),
-    );
-    assert_eq!(
-        browser_session(&headers, "http://localhost:3000").unwrap(),
-        "fixture"
-    );
+    headers.append(COOKIE, "other=value; strava_oauth_session=fixture".parse().unwrap());
+    assert_eq!(browser_session(&headers, "http://localhost:3000").unwrap(), "fixture");
     headers.append(COOKIE, "strava_oauth_session=second".parse().unwrap());
     assert!(browser_session(&headers, "http://localhost:3000").is_err());
     headers.clear();

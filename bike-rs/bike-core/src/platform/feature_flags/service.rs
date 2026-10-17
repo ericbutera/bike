@@ -29,10 +29,7 @@ impl FeatureFlagService {
         let client = api.create_client();
 
         for flag in flags {
-            let provider_val = client
-                .get_bool_value(&flag.feature_key, None, None)
-                .await
-                .ok();
+            let provider_val = client.get_bool_value(&flag.feature_key, None, None).await.ok();
 
             let final_val = provider_val.unwrap_or(flag.enabled);
             evaluated.insert(flag.feature_key.clone(), final_val);
@@ -48,9 +45,7 @@ impl FeatureFlagService {
     }
 
     /// List all feature flags from database
-    pub async fn list_all(
-        db: &DatabaseConnection,
-    ) -> Result<Vec<feature_flags::Model>, PlatformError> {
+    pub async fn list_all(db: &DatabaseConnection) -> Result<Vec<feature_flags::Model>, PlatformError> {
         let flags = feature_flags::Model::list_all(db).await?;
         Ok(flags)
     }

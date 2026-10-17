@@ -88,18 +88,10 @@ pub async fn list_strava_history(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<IntegrationEventResponse>>, AppError> {
-    let events = integration_event_service::list_account_strava_events(
-        &state.db,
-        user.id,
-        USER_HISTORY_LIMIT,
-    )
-    .await?;
+    let events = integration_event_service::list_account_strava_events(&state.db, user.id, USER_HISTORY_LIMIT).await?;
 
     Ok(Json(
-        events
-            .into_iter()
-            .map(IntegrationEventResponse::from_model)
-            .collect(),
+        events.into_iter().map(IntegrationEventResponse::from_model).collect(),
     ))
 }
 
@@ -134,18 +126,12 @@ pub async fn list_admin_integration_events(
             user_id: query.user_id,
             activity_id: query.activity_id,
             import_id: query.import_id,
-            limit: query
-                .limit
-                .unwrap_or(DEFAULT_ADMIN_LIMIT)
-                .clamp(1, MAX_ADMIN_LIMIT),
+            limit: query.limit.unwrap_or(DEFAULT_ADMIN_LIMIT).clamp(1, MAX_ADMIN_LIMIT),
         },
     )
     .await?;
 
     Ok(Json(
-        events
-            .into_iter()
-            .map(IntegrationEventResponse::from_model)
-            .collect(),
+        events.into_iter().map(IntegrationEventResponse::from_model).collect(),
     ))
 }

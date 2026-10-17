@@ -33,32 +33,12 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(IntegrationEvents::UserId).integer().null())
-                    .col(
-                        ColumnDef::new(IntegrationEvents::Provider)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(IntegrationEvents::EventType)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(IntegrationEvents::Provider).string().not_null())
+                    .col(ColumnDef::new(IntegrationEvents::EventType).string().not_null())
                     .col(ColumnDef::new(IntegrationEvents::Level).string().not_null())
-                    .col(
-                        ColumnDef::new(IntegrationEvents::Message)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(IntegrationEvents::ConnectionId)
-                            .integer()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(IntegrationEvents::Payload)
-                            .json_binary()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(IntegrationEvents::Message).string().not_null())
+                    .col(ColumnDef::new(IntegrationEvents::ConnectionId).integer().null())
+                    .col(ColumnDef::new(IntegrationEvents::Payload).json_binary().null())
                     .col(
                         ColumnDef::new(IntegrationEvents::CreatedAt)
                             .timestamp_with_time_zone()

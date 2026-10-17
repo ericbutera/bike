@@ -16,21 +16,12 @@ pub struct RebuildFitnessFreshness {
 #[workflow_methods]
 impl RebuildFitnessFreshness {
     #[run(name = "rebuild_fitness_freshness")]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        mut input: RebuildInput<FitnessChange>,
-    ) -> WorkflowResult<()> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, mut input: RebuildInput<FitnessChange>) -> WorkflowResult<()> {
         loop {
             let batch = debounce::next(ctx, &mut input, |s| &s.changes, |s| &mut s.changes).await?;
             let request = batch.request.clone();
             let options = options::activity(request.priority, format!("user-{}", request.user_id));
-            let publication = options::run(
-                ctx,
-                DerivedActivities::rebuild_fitness_freshness,
-                request,
-                options,
-            )
-            .await?;
+            let publication = options::run(ctx, DerivedActivities::rebuild_fitness_freshness, request, options).await?;
             input.complete(batch, publication);
         }
     }

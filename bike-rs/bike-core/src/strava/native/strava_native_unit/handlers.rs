@@ -41,20 +41,12 @@ async fn fetches_fixture_activity_and_streams_with_mocked_ownership_and_storage(
         .append_query_results([vec![fixture.domain.connection.clone()]])
         .append_query_results([vec![fixture.domain.customer.clone()]]);
     let operations = fixture.operations(db);
-    let activity = operations
-        .fetch_activity(fixture.domain.event.clone())
-        .await
-        .unwrap();
+    let activity = operations.fetch_activity(fixture.domain.event.clone()).await.unwrap();
     let sources = operations.fetch_streams(activity).await.unwrap();
-    let summary: StravaActivitySummary =
-        operations.store.read_json(&sources.activity).await.unwrap();
-    let streams: StravaActivityStreams =
-        operations.store.read_json(&sources.streams).await.unwrap();
+    let summary: StravaActivitySummary = operations.store.read_json(&sources.activity).await.unwrap();
+    let streams: StravaActivityStreams = operations.store.read_json(&sources.streams).await.unwrap();
     assert_eq!(summary.id, fixture.domain.event.strava_activity_id.unwrap());
-    assert_eq!(
-        sources.event.correlation_id,
-        fixture.domain.event.correlation_id
-    );
+    assert_eq!(sources.event.correlation_id, fixture.domain.event.correlation_id);
     assert_eq!(
         streams.time.unwrap().data,
         fixture.provider.payload.streams.time.clone().unwrap().data
@@ -80,25 +72,15 @@ async fn multi_megabyte_provider_data_stays_in_storage_across_workflow_boundarie
         .append_query_results([vec![fixture.domain.connection.clone()]])
         .append_query_results([vec![fixture.domain.customer.clone()]]);
     let operations = fixture.operations(db);
-    let source = operations
-        .fetch_activity(fixture.domain.event.clone())
-        .await
-        .unwrap();
+    let source = operations.fetch_activity(fixture.domain.event.clone()).await.unwrap();
     assert!(source.activity.bytes > 2 * 1024 * 1024);
     crate::strava::payload::validate_temporal(&source).unwrap();
     let sources = operations.fetch_streams(source).await.unwrap();
     crate::strava::payload::validate_temporal(&sources).unwrap();
     let normalized = operations.normalize_activity(sources).await.unwrap();
     crate::strava::payload::validate_temporal(&normalized).unwrap();
-    let retained: StoredStravaProviderPayload = operations
-        .store
-        .read_json(&normalized.source)
-        .await
-        .unwrap();
-    assert_eq!(
-        retained.activity.additional_fields["provider_extension"],
-        extension
-    );
+    let retained: StoredStravaProviderPayload = operations.store.read_json(&normalized.source).await.unwrap();
+    assert_eq!(retained.activity.additional_fields["provider_extension"], extension);
     assert!(normalized.parsed.is_some());
     assert!(serde_json::to_vec(&normalized).unwrap().len() < 4096);
 }
@@ -107,15 +89,8 @@ async fn multi_megabyte_provider_data_stays_in_storage_across_workflow_boundarie
 async fn normalizes_a_fixture_ride_without_provider_or_persistence_calls() {
     let fixture = HandlerFixture::new();
     let operations = fixture.operations(MockDatabase::new(DatabaseBackend::Postgres));
-    let normalized = operations
-        .normalize_activity(fixture.sources().await)
-        .await
-        .unwrap();
-    let saved: StoredStravaProviderPayload = operations
-        .store
-        .read_json(&normalized.source)
-        .await
-        .unwrap();
+    let normalized = operations.normalize_activity(fixture.sources().await).await.unwrap();
+    let saved: StoredStravaProviderPayload = operations.store.read_json(&normalized.source).await.unwrap();
     let parsed: ParsedActivityData = operations
         .store
         .read_json(normalized.parsed.as_ref().unwrap())
@@ -124,10 +99,7 @@ async fn normalizes_a_fixture_ride_without_provider_or_persistence_calls() {
     assert_eq!(saved.activity.id, fixture.provider.payload.activity.id);
     assert_eq!(parsed.draft.title, fixture.provider.payload.activity.name);
     assert!(parsed.draft.distance_meters.unwrap() > 0.0);
-    assert_eq!(
-        normalized.event.strava_event_id,
-        fixture.domain.event.strava_event_id
-    );
+    assert_eq!(normalized.event.strava_event_id, fixture.domain.event.strava_event_id);
     assert!(fixture.provider.calls.lock().unwrap().is_empty());
     assert!(operations.db.into_transaction_log().is_empty());
 }
@@ -270,10 +242,7 @@ async fn listing_passes_the_incremental_offset_and_filters_the_backfill_end() {
     assert_eq!(page.next_page, Some(4));
     assert_eq!(
         *fixture.provider.calls.lock().unwrap(),
-        [ProviderCall::Page {
-            after: at - 1,
-            page: 3
-        }]
+        [ProviderCall::Page { after: at - 1, page: 3 }]
     );
 }
 
@@ -283,10 +252,7 @@ async fn listing_retains_matching_ids_dates_and_stops_on_empty_provider_page() {
     let input = PageInput {
         collection: CollectionInput {
             event: fixture.domain.event.clone(),
-            window: ActivityWindow {
-                after: 0,
-                before: None,
-            },
+            window: ActivityWindow { after: 0, before: None },
         },
         page: 1,
     };
@@ -313,8 +279,7 @@ async fn listing_retains_matching_ids_dates_and_stops_on_empty_provider_page() {
 async fn persist_retry_returns_the_committed_mutation_without_reading_storage() {
     let fixture = HandlerFixture::new();
     let mut row = fixture.domain.row(ActivityStatus::Applied);
-    row.mutation =
-        Some(serde_json::to_value(fixture.domain.change(ActivityStatus::Applied)).unwrap());
+    row.mutation = Some(serde_json::to_value(fixture.domain.change(ActivityStatus::Applied)).unwrap());
     let db = fixture.connection_mock().append_query_results([vec![row]]);
     let operations = fixture.operations(db);
     *fixture.storage.failure.lock().unwrap() = true;

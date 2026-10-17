@@ -1,17 +1,15 @@
 use crate::activity_data::deserialize_derived_activity_data;
 use crate::activity_import_lock::{
-    mark_user_activity_import_lock_stage, release_user_activity_import_lock,
-    ActivityImportLockError, ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
-    ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    mark_user_activity_import_lock_stage, release_user_activity_import_lock, ActivityImportLockError,
+    ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::analytics::{
-    mark_segment_activity_changes, rebuild_activity_analytics_cache,
-    rebuild_segment_analytics_cache,
+    mark_segment_activity_changes, rebuild_activity_analytics_cache, rebuild_segment_analytics_cache,
 };
 use crate::entities::{activities, segment_efforts, segments};
 use crate::segment_support::{
-    deserialize_segment_route_points, replace_segment_efforts_for_activity,
-    replace_segment_efforts_for_segment, SegmentSupportError,
+    deserialize_segment_route_points, replace_segment_efforts_for_activity, replace_segment_efforts_for_segment,
+    SegmentSupportError,
 };
 use chrono::Utc;
 use sea_orm::{DatabaseConnection, DbErr};
@@ -62,9 +60,7 @@ pub async fn regenerate_segment_efforts(
 ) -> Result<(), SegmentRegenerationError> {
     let segment = segments::Model::find_by_id(db, segment_id)
         .await?
-        .ok_or_else(|| {
-            SegmentRegenerationError::internal(format!("segment {segment_id} was not found"))
-        })?;
+        .ok_or_else(|| SegmentRegenerationError::internal(format!("segment {segment_id} was not found")))?;
     let route_points = deserialize_segment_route_points(segment.route_data_json.as_ref());
 
     let affected_activity_ids =
@@ -89,8 +85,7 @@ pub async fn regenerate_segments_for_user(
         };
         after_id = last.id;
         for activity in candidates {
-            let route_points =
-                deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
+            let route_points = deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
             let affected_for_activity =
                 refresh_activity_segment_efforts(db, user_id, activity.id, &route_points).await?;
             affected_segment_ids.extend(affected_for_activity);
@@ -127,10 +122,7 @@ async fn refresh_activity_segment_efforts(
     Ok(affected_segment_ids)
 }
 
-async fn load_segment_ids_for_activity(
-    db: &DatabaseConnection,
-    activity_id: i32,
-) -> Result<Vec<i32>, DbErr> {
+async fn load_segment_ids_for_activity(db: &DatabaseConnection, activity_id: i32) -> Result<Vec<i32>, DbErr> {
     let mut segment_ids = segment_efforts::Model::segment_ids_for_activity(db, activity_id).await?;
     segment_ids.sort_unstable();
     segment_ids.dedup();
@@ -151,12 +143,8 @@ pub async fn process_user_segment_regeneration(
     .await?;
 
     let result = regenerate_segments_for_user(db, user_id).await;
-    let release_result = release_user_activity_import_lock(
-        db,
-        user_id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
-    )
-    .await;
+    let release_result =
+        release_user_activity_import_lock(db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION).await;
 
     match (result, release_result) {
         (Err(error), _) => Err(error),
@@ -173,8 +161,7 @@ pub async fn process_activity_segment_regeneration(
     let activity = activities::Model::find_by_id(db, activity_id)
         .await?
         .ok_or_else(|| SegmentRegenerationError::internal("Activity disappeared"))?;
-    let points =
-        deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
+    let points = deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
     let scope = WorkScope {
         kind: "segment_match",
         work_key: format!("activity:{activity_id}"),

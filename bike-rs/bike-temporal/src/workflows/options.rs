@@ -3,8 +3,7 @@ use bike_core::platform::temporal as policy;
 use serde::Serialize;
 use temporalio_common::{data_converters::TemporalDeserializable, Priority};
 use temporalio_sdk::{
-    ActivityCancellationType, ActivityOptions, WorkflowCancellationToken, WorkflowContext,
-    WorkflowResult,
+    ActivityCancellationType, ActivityOptions, WorkflowCancellationToken, WorkflowContext, WorkflowResult,
 };
 use temporalio_workflow::common::ActivityDefinition;
 
@@ -13,10 +12,7 @@ pub(crate) fn priority(priority: WorkPriority, fairness: String) -> Priority {
         WorkPriority::NewActivity => 1,
         WorkPriority::Background => 5,
     };
-    Priority::builder()
-        .priority_key(key)
-        .fairness_key(fairness)
-        .build()
+    Priority::builder().priority_key(key).fairness_key(fairness).build()
 }
 
 pub(crate) fn activity(priority: WorkPriority, fairness: String) -> ActivityOptions {
@@ -31,8 +27,7 @@ pub(crate) fn activity(priority: WorkPriority, fairness: String) -> ActivityOpti
 
 pub(super) fn manifest(priority: WorkPriority, fairness: String) -> ActivityOptions {
     let mut options = activity(priority, fairness);
-    options.close_timeouts =
-        temporalio_common::ActivityCloseTimeouts::StartToClose(policy::MANIFEST_EXECUTION_TIMEOUT);
+    options.close_timeouts = temporalio_common::ActivityCloseTimeouts::StartToClose(policy::MANIFEST_EXECUTION_TIMEOUT);
     options.heartbeat_timeout = Some(policy::ACTIVITY_HEARTBEAT_TIMEOUT);
     options
 }
@@ -62,15 +57,13 @@ where
     A::Input: Serialize,
     A::Output: TemporalDeserializable,
 {
-    ctx.execute_activity(definition, input, options)
-        .await
-        .map_err(|error| {
-            if error.as_cancelled().is_some() {
-                temporalio_sdk::WorkflowTermination::cancelled()
-            } else {
-                error.into()
-            }
-        })
+    ctx.execute_activity(definition, input, options).await.map_err(|error| {
+        if error.as_cancelled().is_some() {
+            temporalio_sdk::WorkflowTermination::cancelled()
+        } else {
+            error.into()
+        }
+    })
 }
 
 /// Once source application starts, complete its small durable handoffs. A later
@@ -103,10 +96,7 @@ impl<'a, W> CommitBoundary<'a, W> {
 
 /// A dependency may finish successfully after cancellation was requested.
 /// Wait for it to settle, then preserve the parent's cancellation outcome.
-pub(super) fn workflow_result<W, T>(
-    ctx: &WorkflowContext<W>,
-    result: WorkflowResult<T>,
-) -> WorkflowResult<T> {
+pub(super) fn workflow_result<W, T>(ctx: &WorkflowContext<W>, result: WorkflowResult<T>) -> WorkflowResult<T> {
     if ctx.cancellation_token().is_cancelled() {
         Err(temporalio_sdk::WorkflowTermination::cancelled())
     } else {

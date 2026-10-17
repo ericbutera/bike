@@ -66,10 +66,7 @@ impl Model {
             .all(db)
             .await
     }
-    pub async fn run_ids_for_task(
-        db: &impl ConnectionTrait,
-        id: i32,
-    ) -> Result<Vec<String>, DbErr> {
+    pub async fn run_ids_for_task(db: &impl ConnectionTrait, id: i32) -> Result<Vec<String>, DbErr> {
         use sea_orm::{QueryFilter, QuerySelect};
         Entity::find()
             .filter(Column::TaskId.eq(id))
@@ -79,11 +76,7 @@ impl Model {
             .all(db)
             .await
     }
-    pub async fn page_for_run(
-        db: &impl ConnectionTrait,
-        id: &str,
-        after: i32,
-    ) -> Result<Vec<Self>, DbErr> {
+    pub async fn page_for_run(db: &impl ConnectionTrait, id: &str, after: i32) -> Result<Vec<Self>, DbErr> {
         use sea_orm::{QueryFilter, QueryOrder, QuerySelect};
         Entity::find()
             .filter(Column::RunId.eq(id))

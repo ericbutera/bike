@@ -24,10 +24,7 @@ where
 
         for datetime in schedule.upcoming(chrono::Utc) {
             let now = chrono::Utc::now();
-            let sleep_for = datetime
-                .signed_duration_since(now)
-                .to_std()
-                .unwrap_or_default();
+            let sleep_for = datetime.signed_duration_since(now).to_std().unwrap_or_default();
 
             tokio::time::sleep(sleep_for).await;
 

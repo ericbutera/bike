@@ -17,9 +17,7 @@ fn disconnect_waits_for_owned_activity_deletion_before_removing_the_connection()
         &fixture.event,
         &vec![fixture.activity_id],
     );
-    let child = fixture
-        .event
-        .for_activity(fixture.activity_id, StravaOperation::Delete);
+    let child = fixture.event.for_activity(fixture.activity_id, StravaOperation::Delete);
     workflow.activity(
         StravaActivities::accept_child.name(),
         &ChildEvent {
@@ -52,9 +50,7 @@ fn deletion_failure_keeps_the_connection_for_retry() {
         &fixture.event,
         &vec![fixture.activity_id],
     );
-    let child = fixture
-        .event
-        .for_activity(fixture.activity_id, StravaOperation::Delete);
+    let child = fixture.event.for_activity(fixture.activity_id, StravaOperation::Delete);
     workflow.activity(
         StravaActivities::accept_child.name(),
         &ChildEvent {

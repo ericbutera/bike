@@ -33,20 +33,14 @@ fn oauth_cookie(state: &str, frontend_url: &str, max_age: u32) -> String {
     format!("{OAUTH_STATE_COOKIE_NAME}={state}; HttpOnly; Path=/api/oauth; SameSite=Lax; Max-Age={max_age}{secure}")
 }
 
-pub fn validate_oauth_state(
-    state: Option<&str>,
-    headers: &axum::http::HeaderMap,
-) -> Result<String, super::AuthError> {
+pub fn validate_oauth_state(state: Option<&str>, headers: &axum::http::HeaderMap) -> Result<String, super::AuthError> {
     let state = state
         .filter(|state| !state.is_empty())
         .ok_or_else(|| super::AuthError::bad_request("OAuth callback state is required"))?;
     let cookie = cookie_value(headers, OAUTH_STATE_COOKIE_NAME);
-    if cookie.map(super::entities::oauth_states::Model::hash)
-        != Some(super::entities::oauth_states::Model::hash(state))
+    if cookie.map(super::entities::oauth_states::Model::hash) != Some(super::entities::oauth_states::Model::hash(state))
     {
-        return Err(super::AuthError::bad_request(
-            "OAuth state does not match this browser",
-        ));
+        return Err(super::AuthError::bad_request("OAuth state does not match this browser"));
     }
     Ok(state.to_owned())
 }

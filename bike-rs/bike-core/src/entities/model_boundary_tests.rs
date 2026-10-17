@@ -21,8 +21,7 @@ async fn empty_import_links_do_not_query_and_database_errors_propagate() {
 }
 
 fn activity_edit_fixture(after: activities::Model) -> MockDatabase {
-    MockDatabase::new(DbBackend::Postgres)
-        .append_query_results([vec![test_support::activity()], vec![after]])
+    MockDatabase::new(DbBackend::Postgres).append_query_results([vec![test_support::activity()], vec![after]])
 }
 
 #[tokio::test]
@@ -35,10 +34,7 @@ async fn updating_activity_details_preserves_untouched_fields_and_archives_the_c
     ] {
         let updated = activities::Model {
             title: title.map_or_else(|| original.title.clone(), |title| title.trim().into()),
-            activity_type: kind.map_or_else(
-                || original.activity_type.clone(),
-                |kind| kind.as_str().into(),
-            ),
+            activity_type: kind.map_or_else(|| original.activity_type.clone(), |kind| kind.as_str().into()),
             ..original.clone()
         };
         let db = activity_edit_fixture(updated.clone())
@@ -71,11 +67,7 @@ async fn unchanged_or_invalid_manual_edits_never_archive_a_change() {
         .append_query_results([vec![original.clone()]])
         .into_connection();
     assert_eq!(
-        original
-            .clone()
-            .update_details(&db, None, None)
-            .await
-            .unwrap(),
+        original.clone().update_details(&db, None, None).await.unwrap(),
         original
     );
     let error = original
@@ -83,10 +75,7 @@ async fn unchanged_or_invalid_manual_edits_never_archive_a_change() {
         .await
         .unwrap_err();
     assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
-    assert_eq!(
-        error.errors.unwrap()["title"],
-        vec!["Activity title is required"]
-    );
+    assert_eq!(error.errors.unwrap()["title"], vec!["Activity title is required"]);
     assert_eq!(db.into_transaction_log().len(), 1);
 }
 
@@ -127,9 +116,7 @@ async fn oauth_user_creation_maps_provider_identity_and_display_name() {
         "sub":"subject-new", "email":"new@example.test", "preferred_username":"New rider"
     }))
     .unwrap();
-    let created = users::Model::create_oauth_user(&db, "fixture", provider)
-        .await
-        .unwrap();
+    let created = users::Model::create_oauth_user(&db, "fixture", provider).await.unwrap();
     assert_eq!(created.name, "New rider");
     assert_eq!(created.oauth_subject.as_deref(), Some("subject-new"));
     assert!(created.password.is_none());

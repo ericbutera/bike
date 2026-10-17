@@ -19,9 +19,7 @@ async fn archive_progress_preserves_running_status_and_requires_the_owned_job() 
     let db = fixtures::postgres_mock()
         .append_exec_results([fixtures::written()])
         .into_connection();
-    Entity::store_progress(&db, 7, 20, &progress())
-        .await
-        .unwrap();
+    Entity::store_progress(&db, 7, 20, &progress()).await.unwrap();
     let log = db.into_transaction_log();
     let write = &log[0].statements()[0];
     assert!(!write.sql.contains("\"status\" ="));

@@ -201,9 +201,7 @@ impl From<BikeCoreError> for AppError {
     fn from(error: BikeCoreError) -> Self {
         match error {
             BikeCoreError::BadRequest(message) => Self::bad_request(message),
-            BikeCoreError::ValidationField { field, message } => {
-                Self::validation_field(&field, message)
-            }
+            BikeCoreError::ValidationField { field, message } => Self::validation_field(&field, message),
             BikeCoreError::Internal(message) => Self::internal(message),
             BikeCoreError::Database(error) => Self::from(error),
             BikeCoreError::Cooldown {
@@ -213,8 +211,7 @@ impl From<BikeCoreError> for AppError {
                 status: StatusCode::TOO_MANY_REQUESTS,
                 message,
                 errors: None,
-                retry_at: retry_after_seconds
-                    .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds)),
+                retry_at: retry_after_seconds.map(|seconds| Utc::now() + chrono::Duration::seconds(seconds)),
             },
         }
     }
@@ -249,9 +246,7 @@ mod map_tests {
             (MapImageError::NotFound, StatusCode::NOT_FOUND),
             (MapImageError::InvalidPNG, StatusCode::BAD_GATEWAY),
             (
-                MapImageError::Snapshot(Box::new(tonic::Status::unavailable(
-                    "fixture worker unavailable",
-                ))),
+                MapImageError::Snapshot(Box::new(tonic::Status::unavailable("fixture worker unavailable"))),
                 StatusCode::BAD_GATEWAY,
             ),
             (

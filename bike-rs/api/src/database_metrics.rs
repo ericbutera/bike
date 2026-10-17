@@ -33,17 +33,10 @@ pub async fn refresh(db: &DatabaseConnection) -> Result<(), DbErr> {
     set_record_counts("activity_imports", &snapshot.activity_imports);
     set_record_counts("segments", &snapshot.segments);
     set_record_count("users", "24h", snapshot.auth.new_signups_last_24h);
-    set_record_count(
-        "refresh_tokens",
-        "30d",
-        snapshot.auth.refresh_tokens_created_last_30d,
-    );
+    set_record_count("refresh_tokens", "30d", snapshot.auth.refresh_tokens_created_last_30d);
     for (event, count) in [
         ("login_failed", snapshot.auth.failed_logins_last_30d),
-        (
-            "password_reset_request",
-            snapshot.auth.password_resets_last_30d,
-        ),
+        ("password_reset_request", snapshot.auth.password_resets_last_30d),
     ] {
         RECENT_AUTH_EVENTS
             .with_label_values(&[event, "30d"])

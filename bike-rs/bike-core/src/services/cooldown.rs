@@ -1,7 +1,5 @@
 use crate::errors::BikeCoreError;
-use crate::platform::cooldown::{
-    BackoffStrategy as CooldownBackoffStrategy, CooldownService as SharedCooldownService,
-};
+use crate::platform::cooldown::{BackoffStrategy as CooldownBackoffStrategy, CooldownService as SharedCooldownService};
 use sea_orm::DatabaseConnection;
 
 #[derive(Debug, Clone, Copy)]

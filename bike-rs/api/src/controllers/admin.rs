@@ -1,9 +1,8 @@
 use crate::activity_import_lock::{
     acquire_user_activity_import_lock, release_user_activity_import_lock,
     ACTIVITY_IMPORT_LOCK_SOURCE_ACTIVITY_REPROCESSING, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-    ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP,
-    ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
-    ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
+    ACTIVITY_IMPORT_LOCK_SOURCE_DUPLICATE_CLEANUP, ACTIVITY_IMPORT_LOCK_SOURCE_SEGMENT_REGENERATION,
+    ACTIVITY_IMPORT_LOCK_STAGE_QUEUED, ACTIVITY_IMPORT_LOCK_STAGE_RUNNING,
 };
 use crate::app_error::{ApiErrorResponse, AppError};
 use crate::controllers::activity_import_history;
@@ -20,8 +19,7 @@ use bike_core::activity_import_pipeline::ACTIVITY_PROCESSING_PROVIDER;
 use bike_core::activity_lifecycle::cleanup_duplicate_activities_for_user;
 use bike_core::analytics::mark_user_activity_changes;
 use bike_core::archive_import::{
-    import_activity_archive_from_path, resolve_local_archive_import_path,
-    ImportActivityArchiveRequest,
+    import_activity_archive_from_path, resolve_local_archive_import_path, ImportActivityArchiveRequest,
 };
 use bike_core::auth::entities::users;
 use bike_core::auth::AdminUserContext;
@@ -69,10 +67,7 @@ pub struct AdminActivityImportTraceResponse {
 }
 
 impl AdminActivityResponse {
-    fn from_list_row(
-        activity: activities::AdminListRow,
-        import: Option<&activity_imports::Model>,
-    ) -> Self {
+    fn from_list_row(activity: activities::AdminListRow, import: Option<&activity_imports::Model>) -> Self {
         Self {
             id: activity.id,
             user_id: activity.user_id,
@@ -91,10 +86,7 @@ impl AdminActivityResponse {
 
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()
-        .route(
-            "/activity-imports/history",
-            get(activity_import_history::history),
-        )
+        .route("/activity-imports/history", get(activity_import_history::history))
         .route(
             "/activity-imports/:id/replay",
             get(activity_import_history::replay_plan).post(activity_import_history::replay),
@@ -103,26 +95,14 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .route("/analytics/backfill", post(backfill_analytics))
         .route("/training/xc-backfill", post(backfill_user_xc_training))
         .route("/segments/regenerate", post(regenerate_user_segments))
-        .route(
-            "/segments/regenerate-efforts",
-            post(regenerate_segment_efforts),
-        )
-        .route(
-            "/activity-imports/reprocess",
-            post(reprocess_user_activity_imports),
-        )
-        .route(
-            "/activity-imports/:id/trace",
-            get(get_admin_activity_import_trace),
-        )
+        .route("/segments/regenerate-efforts", post(regenerate_segment_efforts))
+        .route("/activity-imports/reprocess", post(reprocess_user_activity_imports))
+        .route("/activity-imports/:id/trace", get(get_admin_activity_import_trace))
         .route(
             "/activities/:id/import-trace",
             get(get_admin_activity_import_trace_for_activity),
         )
-        .route(
-            "/activity-imports/reprocess-activity",
-            post(reprocess_activity_import),
-        )
+        .route("/activity-imports/reprocess-activity", post(reprocess_activity_import))
         .route(
             "/activity-imports/cleanup-duplicates",
             post(cleanup_user_duplicate_activities),
@@ -155,8 +135,7 @@ pub async fn list_admin_activities(
         return Err(AppError::bad_request("User ID must be positive"));
     }
     let (page, per_page) = params.normalized();
-    let (activities, total) =
-        activities::Model::admin_page(&state.db, &filters, page as u64, per_page as u64).await?;
+    let (activities, total) = activities::Model::admin_page(&state.db, &filters, page as u64, per_page as u64).await?;
     let import_ids = activities
         .iter()
         .filter_map(|activity| activity.activity_import_id)
@@ -209,8 +188,7 @@ pub async fn get_admin_activity_import_trace(
     State(state): State<Arc<AppStorage>>,
     Path(import_id): Path<i32>,
 ) -> Result<Json<activity_imports_controller::ActivityImportTraceResponse>, AppError> {
-    let import =
-        crate::activity_import_history::admin_import_for_inspection(&state.db, import_id).await?;
+    let import = crate::activity_import_history::admin_import_for_inspection(&state.db, import_id).await?;
     let trace = build_admin_activity_import_trace(&state.db, import, None).await?;
 
     Ok(Json(trace))
@@ -249,9 +227,7 @@ pub async fn get_admin_activity_import_trace_for_activity(
         .ok_or_else(|| AppError::not_found("Activity import not found"))?;
     let trace = build_admin_activity_import_trace(&state.db, import, Some(activity)).await?;
 
-    Ok(Json(AdminActivityImportTraceResponse {
-        trace: Some(trace),
-    }))
+    Ok(Json(AdminActivityImportTraceResponse { trace: Some(trace) }))
 }
 
 async fn build_admin_activity_import_trace(
@@ -286,17 +262,11 @@ async fn build_admin_activity_import_trace(
     let trace_nodes = attempts
         .first()
         .map(|attempt| attempt.nodes.clone())
-        .unwrap_or(activity_imports_controller::build_trace_nodes(
-            &import,
-            &trace_events,
-        )?);
+        .unwrap_or(activity_imports_controller::build_trace_nodes(&import, &trace_events)?);
 
     Ok(activity_imports_controller::ActivityImportTraceResponse {
         attempts,
-        import: activity_imports_controller::ActivityImportResponse::from_model(
-            import,
-            activity.as_ref(),
-        ),
+        import: activity_imports_controller::ActivityImportResponse::from_model(import, activity.as_ref()),
         graph: activity_imports_controller::ActivityProcessingGraphResponse::from_graph(),
         nodes: trace_nodes,
         events: trace_events,
@@ -434,9 +404,7 @@ pub struct ReprocessActivityImportRequest {
     pub command_id: Option<uuid::Uuid>,
 }
 
-impl From<ReprocessActivityImportRequest>
-    for crate::activity_reprocessing::ReprocessActivityCommand
-{
+impl From<ReprocessActivityImportRequest> for crate::activity_reprocessing::ReprocessActivityCommand {
     fn from(request: ReprocessActivityImportRequest) -> Self {
         Self {
             activity_id: request.activity_id,
@@ -572,8 +540,7 @@ pub async fn backfill_user_xc_training(
         .await?
         .ok_or_else(|| AppError::not_found(format!("User {} was not found", request.user_id)))?;
 
-    let (status, message) =
-        queue_user_xc_goal_backfill(&state.db, &state.tasks, request.user_id).await?;
+    let (status, message) = queue_user_xc_goal_backfill(&state.db, &state.tasks, request.user_id).await?;
 
     Ok((
         StatusCode::ACCEPTED,
@@ -662,19 +629,13 @@ pub async fn regenerate_segment_efforts(
 ) -> Result<(StatusCode, Json<RegenerateSegmentEffortsResponse>), AppError> {
     segments::Model::find_by_id(&state.db, request.segment_id)
         .await?
-        .ok_or_else(|| {
-            AppError::not_found(format!("Segment {} was not found", request.segment_id))
-        })?;
+        .ok_or_else(|| AppError::not_found(format!("Segment {} was not found", request.segment_id)))?;
 
     let task = state
         .tasks
         .regenerate_segment_efforts(request.segment_id)
         .await
-        .map_err(|message| {
-            AppError::internal(format!(
-                "Failed to queue segment effort regeneration: {message}"
-            ))
-        })?;
+        .map_err(|message| AppError::internal(format!("Failed to queue segment effort regeneration: {message}")))?;
 
     Ok((
         StatusCode::ACCEPTED,
@@ -727,10 +688,7 @@ pub async fn reprocess_user_activity_imports(
             .reprocess_archive_fit_activity_imports(request.user_id)
             .await
     } else {
-        state
-            .tasks
-            .reprocess_user_activity_imports(request.user_id)
-            .await
+        state.tasks.reprocess_user_activity_imports(request.user_id).await
     };
     if let Err(message) = queue_result {
         release_user_activity_import_lock(
@@ -819,35 +777,30 @@ pub async fn cleanup_user_duplicate_activities(
     )
     .await?;
 
-    let result = cleanup_duplicate_activities_for_user(
-        &state.db,
-        &state.uploads_dir,
-        &state.tasks,
-        request.user_id,
-    )
-    .await
-    .map(|summary| {
-        let message = if summary.deleted_activity_count == 0 {
-            "No duplicate activities matched the current dedupe rules.".to_string()
-        } else {
-            format!(
-                "Removed {} duplicate activities across {} duplicate groups.",
-                summary.deleted_activity_count, summary.duplicate_group_count
-            )
-        };
+    let result = cleanup_duplicate_activities_for_user(&state.db, &state.uploads_dir, &state.tasks, request.user_id)
+        .await
+        .map(|summary| {
+            let message = if summary.deleted_activity_count == 0 {
+                "No duplicate activities matched the current dedupe rules.".to_string()
+            } else {
+                format!(
+                    "Removed {} duplicate activities across {} duplicate groups.",
+                    summary.deleted_activity_count, summary.duplicate_group_count
+                )
+            };
 
-        (
-            StatusCode::OK,
-            Json(CleanupUserDuplicateActivitiesResponse {
-                user_id: request.user_id,
-                status: "completed".to_string(),
-                message,
-                duplicate_group_count: summary.duplicate_group_count as i32,
-                deleted_activity_count: summary.deleted_activity_count as i32,
-                retained_activity_count: summary.retained_activity_count as i32,
-            }),
-        )
-    });
+            (
+                StatusCode::OK,
+                Json(CleanupUserDuplicateActivitiesResponse {
+                    user_id: request.user_id,
+                    status: "completed".to_string(),
+                    message,
+                    duplicate_group_count: summary.duplicate_group_count as i32,
+                    deleted_activity_count: summary.deleted_activity_count as i32,
+                    retained_activity_count: summary.retained_activity_count as i32,
+                }),
+            )
+        });
 
     let release_result = release_user_activity_import_lock(
         &state.db,
@@ -885,8 +838,7 @@ pub async fn import_activity_archive(
     State(state): State<Arc<AppStorage>>,
     Json(request): Json<ArchiveImportRequest>,
 ) -> Result<(StatusCode, Json<ArchiveImportResponse>), AppError> {
-    let archive_path =
-        resolve_local_archive_import_path(&state.uploads_dir, &request.archive_path)?;
+    let archive_path = resolve_local_archive_import_path(&state.uploads_dir, &request.archive_path)?;
     let user_storage_key = admin.user.pid.to_string();
     acquire_user_activity_import_lock(
         &state.db,
@@ -926,12 +878,8 @@ pub async fn import_activity_archive(
         )
     });
 
-    let release_result = release_user_activity_import_lock(
-        &state.db,
-        admin.user.id,
-        ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT,
-    )
-    .await;
+    let release_result =
+        release_user_activity_import_lock(&state.db, admin.user.id, ACTIVITY_IMPORT_LOCK_SOURCE_ARCHIVE_IMPORT).await;
 
     match (result, release_result) {
         (Err(error), _) => Err(error.into()),
@@ -948,17 +896,11 @@ async fn load_segment_ids(state: &Arc<AppStorage>) -> Result<Vec<i32>, AppError>
     Ok(segments::Model::all_ids(&state.db).await?)
 }
 
-async fn enqueue_segment_backfill_tasks(
-    state: &Arc<AppStorage>,
-    segment_ids: &[i32],
-) -> Result<i32, AppError> {
+async fn enqueue_segment_backfill_tasks(state: &Arc<AppStorage>, segment_ids: &[i32]) -> Result<i32, AppError> {
     let mut task_count = 0;
 
     for chunk in segment_ids.chunks(SEGMENT_BACKFILL_CHUNK_SIZE) {
-        state
-            .tasks
-            .rebuild_segment_analytics(chunk.to_vec())
-            .await?;
+        state.tasks.rebuild_segment_analytics(chunk.to_vec()).await?;
         task_count += 1;
     }
 
@@ -1011,9 +953,6 @@ mod tests {
         let db = sea_orm::MockDatabase::new(sea_orm::DbBackend::Postgres).into_connection();
         let state = Arc::new(AppStorage::for_test(db));
 
-        assert_eq!(
-            enqueue_segment_backfill_tasks(&state, &[]).await.unwrap(),
-            0
-        );
+        assert_eq!(enqueue_segment_backfill_tasks(&state, &[]).await.unwrap(), 0);
     }
 }

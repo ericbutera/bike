@@ -20,11 +20,7 @@ pub async fn enqueue_email_notification<S: TaskStorage>(
     queue
         .enqueue(
             EMAIL_NOTIFICATION_TASK_TYPE.to_string(),
-            EmailNotificationTask {
-                to,
-                subject,
-                message,
-            },
+            EmailNotificationTask { to, subject, message },
         )
         .await
         .map(|_| ())

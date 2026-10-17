@@ -16,12 +16,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Segments::Table)
-                    .add_column(
-                        ColumnDef::new(Segments::Mode)
-                            .string_len(16)
-                            .not_null()
-                            .default("xc"),
-                    )
+                    .add_column(ColumnDef::new(Segments::Mode).string_len(16).not_null().default("xc"))
                     .to_owned(),
             )
             .await

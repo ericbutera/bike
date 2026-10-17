@@ -17,11 +17,7 @@ impl<S: TaskStorage> TaskQueue<S> {
     }
 
     /// Enqueue a task to be processed in the background
-    pub async fn enqueue<T: serde::Serialize>(
-        &self,
-        task_type: String,
-        task: T,
-    ) -> Result<TaskRecord, TaskError> {
+    pub async fn enqueue<T: serde::Serialize>(&self, task_type: String, task: T) -> Result<TaskRecord, TaskError> {
         self.enqueue_with_options(task_type, task, None, 3).await
     }
 
@@ -52,10 +48,7 @@ impl<S: TaskStorage> TaskQueue<S> {
                 .await?;
 
             span_for_records.record("task.id", task_record.id.as_str());
-            debug!(
-                "Task enqueued successfully: id={}, type={}",
-                task_record.id, task_type
-            );
+            debug!("Task enqueued successfully: id={}, type={}", task_record.id, task_type);
 
             Ok(task_record)
         }

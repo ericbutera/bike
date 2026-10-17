@@ -1,18 +1,18 @@
 use crate::workflows::options;
 use crate::{
     workflows::{
-        DebouncePolicy, PrepareHeatmap, ProcessActivityImport, RebuildFitnessFreshness,
-        RebuildInput, RebuildSegmentAnalytics, ReprocessActivityImport, ReprocessInput,
+        DebouncePolicy, PrepareHeatmap, ProcessActivityImport, RebuildFitnessFreshness, RebuildInput,
+        RebuildSegmentAnalytics, ReprocessActivityImport, ReprocessInput,
     },
     TASK_QUEUE,
 };
 use bike_core::bike_tasks::{
-    validate_revision, ActivityImport, BatchEntry, FitnessChange, HeatmapChange, ImportSource,
-    ImportTarget, JobReference, Priority, SegmentChange,
+    validate_revision, ActivityImport, BatchEntry, FitnessChange, HeatmapChange, ImportSource, ImportTarget,
+    JobReference, Priority, SegmentChange,
 };
 use temporalio_client::{
-    errors::WorkflowStartError, Client, NamespacedClient, WorkflowIdConflictPolicy,
-    WorkflowIdReusePolicy, WorkflowStartOptions,
+    errors::WorkflowStartError, Client, NamespacedClient, WorkflowIdConflictPolicy, WorkflowIdReusePolicy,
+    WorkflowStartOptions,
 };
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -85,11 +85,7 @@ pub async fn request_segment_analytics(
     Ok(())
 }
 
-pub async fn request_heatmap(
-    client: &Client,
-    change: HeatmapChange,
-    policy: DebouncePolicy,
-) -> Result<(), Error> {
+pub async fn request_heatmap(client: &Client, change: HeatmapChange, policy: DebouncePolicy) -> Result<(), Error> {
     validate_revision(change.generation)?;
     let options = start_options(
         heatmap_workflow_id(change.activity_id),
@@ -134,10 +130,7 @@ fn job_reference(
     })
 }
 
-pub(crate) async fn process_activity_import(
-    client: &Client,
-    source: ImportSource,
-) -> Result<JobReference, Error> {
+pub(crate) async fn process_activity_import(client: &Client, source: ImportSource) -> Result<JobReference, Error> {
     ActivityImport {
         source: source.clone(),
         target: ImportTarget::NewActivity,
@@ -146,10 +139,7 @@ pub(crate) async fn process_activity_import(
     start_command(client, ProcessActivityImport::run, source).await
 }
 
-pub(crate) async fn reprocess_activity_import(
-    client: &Client,
-    input: ReprocessInput,
-) -> Result<JobReference, Error> {
+pub(crate) async fn reprocess_activity_import(client: &Client, input: ReprocessInput) -> Result<JobReference, Error> {
     ActivityImport {
         source: input.source.clone(),
         target: ImportTarget::ExistingActivity {
@@ -161,11 +151,7 @@ pub(crate) async fn reprocess_activity_import(
     start_command(client, ReprocessActivityImport::run, input).await
 }
 
-async fn start_command<D>(
-    client: &Client,
-    definition: D,
-    input: D::Input,
-) -> Result<JobReference, Error>
+async fn start_command<D>(client: &Client, definition: D, input: D::Input) -> Result<JobReference, Error>
 where
     D: temporalio_common::HasWorkflowDefinition,
     D::Input: BatchEntry + Send,

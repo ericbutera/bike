@@ -17,11 +17,7 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
-    pub async fn from_task(
-        db: &impl ConnectionTrait,
-        run_id: &str,
-        payload: &Json,
-    ) -> Result<(), DbErr> {
+    pub async fn from_task(db: &impl ConnectionTrait, run_id: &str, payload: &Json) -> Result<(), DbErr> {
         let data = payload.get("data").unwrap_or(payload);
         for (kind, key) in [
             ("activity", "activity_id"),
@@ -35,14 +31,13 @@ impl Model {
             {
                 Self::attach(db, run_id, kind, id).await?;
                 if kind == "import" {
-                    if let Some(activity_id) =
-                        crate::entities::activity_imports::Entity::find_by_id(id)
-                            .select_only()
-                            .column(crate::entities::activity_imports::Column::ActivityId)
-                            .into_tuple::<Option<i32>>()
-                            .one(db)
-                            .await?
-                            .flatten()
+                    if let Some(activity_id) = crate::entities::activity_imports::Entity::find_by_id(id)
+                        .select_only()
+                        .column(crate::entities::activity_imports::Column::ActivityId)
+                        .into_tuple::<Option<i32>>()
+                        .one(db)
+                        .await?
+                        .flatten()
                     {
                         Self::attach(db, run_id, "activity", activity_id).await?;
                     }
@@ -62,12 +57,7 @@ impl Model {
         }
         Ok(())
     }
-    pub async fn attach(
-        db: &impl ConnectionTrait,
-        run_id: &str,
-        kind: &str,
-        subject_id: i32,
-    ) -> Result<(), DbErr> {
+    pub async fn attach(db: &impl ConnectionTrait, run_id: &str, kind: &str, subject_id: i32) -> Result<(), DbErr> {
         Entity::insert(ActiveModel {
             run_id: Set(run_id.into()),
             kind: Set(kind.into()),

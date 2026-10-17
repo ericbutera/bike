@@ -19,8 +19,7 @@ impl Default for Logs {
         static DISPATCH: OnceLock<tracing::Dispatch> = OnceLock::new();
         DISPATCH.get_or_init(|| {
             tracing::Dispatch::new(
-                tracing_subscriber::registry()
-                    .with(tracing_subscriber::filter::dynamic_filter_fn(|_, _| false)),
+                tracing_subscriber::registry().with(tracing_subscriber::filter::dynamic_filter_fn(|_, _| false)),
             )
         });
         Self(Arc::default())
@@ -45,15 +44,11 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Logs {
 impl Logs {
     pub fn rows(&self) -> Vec<serde_json::Value> {
         let text = String::from_utf8(self.0.lock().unwrap().clone()).unwrap();
-        text.lines()
-            .map(|line| serde_json::from_str(line).unwrap())
-            .collect()
+        text.lines().map(|line| serde_json::from_str(line).unwrap()).collect()
     }
 
     pub fn capture(&self, operation: impl FnOnce()) {
-        opentelemetry::global::set_text_map_propagator(
-            opentelemetry_sdk::propagation::TraceContextPropagator::new(),
-        );
+        opentelemetry::global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new());
         let subscriber = tracing_subscriber::registry()
             .with(
                 tracing_subscriber::fmt::layer()
@@ -62,18 +57,16 @@ impl Logs {
                     .with_writer(self.clone())
                     .with_ansi(false),
             )
-            .with(tracing_subscriber::filter::dynamic_filter_fn(
-                |metadata, _| *metadata.level() <= tracing::Level::INFO,
-            ));
+            .with(tracing_subscriber::filter::dynamic_filter_fn(|metadata, _| {
+                *metadata.level() <= tracing::Level::INFO
+            }));
         tracing::subscriber::with_default(subscriber, operation);
     }
 
     pub fn workflow(&self, id: &str, status: &str) -> serde_json::Value {
         self.rows()
             .into_iter()
-            .find(|row| {
-                row["span"]["temporal_workflow_id"] == id && row["fields"]["status"] == status
-            })
+            .find(|row| row["span"]["temporal_workflow_id"] == id && row["fields"]["status"] == status)
             .unwrap_or_else(|| panic!("Expected {id} {status} lifecycle log: {:?}", self.rows()))
     }
 }
@@ -90,10 +83,7 @@ fn handoff_success_and_failure_share_searchable_customer_remote_and_event_fields
     let logs = Logs::default();
     logs.capture(|| {
         crate::client::handoff_span(&row, &config).in_scope(|| {
-            tracing::info!(
-                temporal_run_id = "fixture-run",
-                "Strava event handed to Temporal"
-            );
+            tracing::info!(temporal_run_id = "fixture-run", "Strava event handed to Temporal");
             tracing::error!(error = "fixture error", "Temporal handoff will retry");
         });
     });
@@ -155,10 +145,7 @@ fn structured_attempt_and_exchange_logs_include_customer_remote_and_temporal_ids
     };
     let logs = Logs::default();
     logs.capture(|| {
-        context.attempt(
-            StravaActivities::fetch_activity.name(),
-            AttemptStatus::Started,
-        );
+        context.attempt(StravaActivities::fetch_activity.name(), AttemptStatus::Started);
         context.exchange(
             "fixture-exchange",
             "GET",
@@ -175,34 +162,22 @@ fn structured_attempt_and_exchange_logs_include_customer_remote_and_temporal_ids
         assert_temporal_fields(fields, &context.temporal);
     }
     assert_eq!(rows[1]["fields"]["exchange_id"], "fixture-exchange");
-    assert_eq!(
-        rows[1]["fields"]["strava_request_id"],
-        "fixture-strava-request"
-    );
+    assert_eq!(rows[1]["fields"]["strava_request_id"], "fixture-strava-request");
     assert_eq!(rows[1]["fields"]["status"], 200);
 }
 
 fn assert_event_fields(fields: &serde_json::Value, event: &bike_core::strava::events::StravaEvent) {
-    assert_eq!(
-        fields["bike_customer_id"],
-        event.bike_customer_id.to_string()
-    );
+    assert_eq!(fields["bike_customer_id"], event.bike_customer_id.to_string());
     assert_eq!(fields["bike_user_id"], event.bike_user_id);
     assert_eq!(
         fields["bike_activity_id"].as_i64(),
         event.bike_activity_id.map(i64::from)
     );
-    assert_eq!(
-        fields["parent_event_id"],
-        event.parent_event_id.unwrap().to_string()
-    );
+    assert_eq!(fields["parent_event_id"], event.parent_event_id.unwrap().to_string());
     assert_eq!(fields["request_id"].as_str(), event.request_id.as_deref());
     assert_eq!(fields["trace_id"], "12345678901234567890123456789012");
     assert_eq!(fields["strava_athlete_id"], event.strava_athlete_id);
-    assert_eq!(
-        fields["strava_activity_id"].as_i64(),
-        event.strava_activity_id
-    );
+    assert_eq!(fields["strava_activity_id"].as_i64(), event.strava_activity_id);
     assert_eq!(fields["strava_event_id"], event.strava_event_id.to_string());
     assert_eq!(fields["correlation_id"], event.correlation_id.to_string());
 }

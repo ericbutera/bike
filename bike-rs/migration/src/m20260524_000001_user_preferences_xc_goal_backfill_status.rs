@@ -17,11 +17,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(UserPreferences::Table)
-                    .add_column(
-                        ColumnDef::new(UserPreferences::XcGoalBackfillStatus)
-                            .string()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(UserPreferences::XcGoalBackfillStatus).string().null())
                     .add_column(
                         ColumnDef::new(UserPreferences::XcGoalBackfillCompletedAt)
                             .timestamp_with_time_zone()

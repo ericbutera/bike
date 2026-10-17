@@ -91,12 +91,7 @@ pub fn init_provider_metrics() {
     Lazy::force(&PROVIDER_RATE_LIMIT_RESET_TIMESTAMP);
 }
 
-pub fn record_provider_api_request(
-    provider: &str,
-    operation: &str,
-    request_class: &str,
-    status: &str,
-) {
+pub fn record_provider_api_request(provider: &str, operation: &str, request_class: &str, status: &str) {
     PROVIDER_API_REQUESTS_TOTAL
         .with_label_values(&[provider, operation, request_class, status])
         .inc();
@@ -184,17 +179,8 @@ mod tests {
 
     #[test]
     fn maps_provider_request_classes_to_counter_labels() {
-        assert_eq!(
-            provider_api_request_counter_classes("overall_only"),
-            &["overall"]
-        );
-        assert_eq!(
-            provider_api_request_counter_classes("read"),
-            &["overall", "read"]
-        );
-        assert_eq!(
-            provider_api_request_counter_classes("unknown"),
-            &["overall"]
-        );
+        assert_eq!(provider_api_request_counter_classes("overall_only"), &["overall"]);
+        assert_eq!(provider_api_request_counter_classes("read"), &["overall", "read"]);
+        assert_eq!(provider_api_request_counter_classes("unknown"), &["overall"]);
     }
 }

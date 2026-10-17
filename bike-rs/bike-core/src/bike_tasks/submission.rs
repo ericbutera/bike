@@ -7,9 +7,7 @@ use std::collections::BTreeMap;
 impl TaskCause {
     pub fn validate(&self, user_id: i32) -> Result<(), WorkflowError> {
         if self.user_id != user_id {
-            return Err(WorkflowError::bad_request(
-                "Affected user does not match command owner",
-            ));
+            return Err(WorkflowError::bad_request("Affected user does not match command owner"));
         }
         if self.correlation_id.trim().is_empty() {
             return Err(WorkflowError::bad_request("Correlation ID is required"));

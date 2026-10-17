@@ -3,9 +3,7 @@ use crate::provider_rate_limit::ProviderQuotaBucketSpec;
 use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DbBackend, DbErr, QueryFilter, QueryOrder, QuerySelect, Set,
-};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbBackend, DbErr, QueryFilter, QueryOrder, QuerySelect, Set};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "provider_rate_limit_buckets")]
@@ -49,11 +47,7 @@ impl Model {
             .await
     }
 
-    pub async fn list_for_reservation<C>(
-        db: &C,
-        provider: &str,
-        bucket_names: &[&str],
-    ) -> Result<Vec<Model>, DbErr>
+    pub async fn list_for_reservation<C>(db: &C, provider: &str, bucket_names: &[&str]) -> Result<Vec<Model>, DbErr>
     where
         C: ConnectionTrait,
     {
@@ -68,11 +62,7 @@ impl Model {
         query.all(db).await
     }
 
-    pub async fn find_bucket<C>(
-        db: &C,
-        provider: &str,
-        bucket: &str,
-    ) -> Result<Option<Model>, DbErr>
+    pub async fn find_bucket<C>(db: &C, provider: &str, bucket: &str) -> Result<Option<Model>, DbErr>
     where
         C: ConnectionTrait,
     {
@@ -115,9 +105,7 @@ impl Model {
         }
 
         let now = Utc::now();
-        let Some(row) =
-            provider_rate_limit_buckets::Model::find_bucket(db, provider, bucket).await?
-        else {
+        let Some(row) = provider_rate_limit_buckets::Model::find_bucket(db, provider, bucket).await? else {
             let row = provider_rate_limit_buckets::ActiveModel {
                 provider: Set(provider.to_string()),
                 bucket: Set(bucket.to_string()),

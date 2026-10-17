@@ -91,18 +91,8 @@ pub(super) fn started<W>(ctx: &WorkflowContext<W>, event: &StravaEvent) {
     );
 }
 
-pub(super) fn finished<W, T>(
-    ctx: &WorkflowContext<W>,
-    event: &StravaEvent,
-    result: &WorkflowResult<T>,
-) {
-    record_result(
-        ctx,
-        Some(event),
-        event.correlation_id,
-        &Execution::current(ctx),
-        result,
-    );
+pub(super) fn finished<W, T>(ctx: &WorkflowContext<W>, event: &StravaEvent, result: &WorkflowResult<T>) {
+    record_result(ctx, Some(event), event.correlation_id, &Execution::current(ctx), result);
 }
 
 pub(super) fn scan_started<W>(ctx: &WorkflowContext<W>, request: &ScanRequest) {
@@ -116,18 +106,8 @@ pub(super) fn scan_started<W>(ctx: &WorkflowContext<W>, request: &ScanRequest) {
     );
 }
 
-pub(super) fn scan_finished<W, T>(
-    ctx: &WorkflowContext<W>,
-    request: &ScanRequest,
-    result: &WorkflowResult<T>,
-) {
-    record_result(
-        ctx,
-        None,
-        request.correlation_id,
-        &Execution::current(ctx),
-        result,
-    );
+pub(super) fn scan_finished<W, T>(ctx: &WorkflowContext<W>, request: &ScanRequest, result: &WorkflowResult<T>) {
+    record_result(ctx, None, request.correlation_id, &Execution::current(ctx), result);
 }
 
 pub(super) struct ChildLog {
@@ -136,12 +116,7 @@ pub(super) struct ChildLog {
 }
 
 impl ChildLog {
-    pub fn new<W>(
-        ctx: &WorkflowContext<W>,
-        event: StravaEvent,
-        workflow_id: String,
-        workflow_type: &str,
-    ) -> Self {
+    pub fn new<W>(ctx: &WorkflowContext<W>, event: StravaEvent, workflow_id: String, workflow_type: &str) -> Self {
         Self {
             event,
             execution: Execution::child(ctx, workflow_id, workflow_type),
@@ -185,14 +160,7 @@ fn record_result<W, T>(
         Err(WorkflowTermination::Evicted) => return,
         Err(error) => (WorkflowStatus::Failed, Some(error.to_string())),
     };
-    record(
-        ctx,
-        event,
-        correlation_id,
-        execution,
-        status,
-        error.as_deref(),
-    );
+    record(ctx, event, correlation_id, execution, status, error.as_deref());
 }
 
 fn record<W>(

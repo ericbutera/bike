@@ -1,6 +1,6 @@
 use crate::activity_import_lock::{
-    describe_source, describe_stage, load_user_activity_import_lock,
-    release_user_activity_import_lock, ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
+    describe_source, describe_stage, load_user_activity_import_lock, release_user_activity_import_lock,
+    ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD,
 };
 use crate::activity_location::location_from_derived_json;
 use crate::app_error::{ApiErrorResponse, AppError};
@@ -9,13 +9,11 @@ use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use bike_core::activity_import_pipeline::{
-    activity_processing_graph_mermaid, activity_processing_graph_nodes,
-    find_stored_activity_import, mark_activity_import_failed, store_activity_upload_import,
-    validate_activity_format, ActivityProcessingGraphNode, ActivityUploadPayload,
+    activity_processing_graph_mermaid, activity_processing_graph_nodes, find_stored_activity_import,
+    mark_activity_import_failed, store_activity_upload_import, validate_activity_format, ActivityProcessingGraphNode,
+    ActivityUploadPayload,
 };
-use bike_core::archive_import::{
-    decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url,
-};
+use bike_core::archive_import::{decode_error_samples, enqueue_activity_archive_import_job, normalize_archive_url};
 use bike_core::auth::UserContext;
 use bike_core::config::Config;
 use bike_core::entities::{activities, activity_archive_import_jobs, activity_imports};
@@ -184,10 +182,7 @@ pub struct ActivityProcessingStateResponse {
 }
 
 impl ActivityImportResponse {
-    pub(crate) fn from_model(
-        model: activity_imports::Model,
-        activity: Option<&activities::Model>,
-    ) -> Self {
+    pub(crate) fn from_model(model: activity_imports::Model, activity: Option<&activities::Model>) -> Self {
         Self {
             id: model.id,
             source: model.source,
@@ -205,8 +200,7 @@ impl ActivityImportResponse {
             activity_started_at: activity.map(|value| value.started_at),
             activity_duration_seconds: activity
                 .and_then(|value| value.moving_time_seconds.or(value.total_time_seconds)),
-            activity_location: activity
-                .and_then(|value| location_from_derived_json(value.derived_data_json.as_ref())),
+            activity_location: activity.and_then(|value| location_from_derived_json(value.derived_data_json.as_ref())),
         }
     }
 }
@@ -287,10 +281,7 @@ pub(crate) fn build_trace_nodes(
         .collect())
 }
 
-fn stage_completed_at(
-    events: &[ActivityImportTraceEventResponse],
-    stage: &str,
-) -> Option<DateTime<Utc>> {
+fn stage_completed_at(events: &[ActivityImportTraceEventResponse], stage: &str) -> Option<DateTime<Utc>> {
     events
         .iter()
         .filter(|event| event.event_type == "stage_completed")
@@ -359,8 +350,7 @@ pub async fn list_activity_imports(
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<ActivityImportResponse>>, AppError> {
     let imports = activity_imports::Entity::recent_manual_uploads(&state.db, user.id).await?;
-    let activities_by_import_id =
-        activities::Model::linked_to_imports(&state.db, user.id, &imports).await?;
+    let activities_by_import_id = activities::Model::linked_to_imports(&state.db, user.id, &imports).await?;
 
     Ok(Json(
         imports
@@ -509,10 +499,7 @@ pub async fn upload_activity_import(
 ) -> Result<(StatusCode, Json<ActivityImportResponse>), AppError> {
     let upload = read_uploaded_activity_file(multipart).await?;
     if let Some(existing) = find_stored_activity_import(&state.db, user.id, &upload.bytes).await? {
-        return Ok((
-            StatusCode::OK,
-            Json(ActivityImportResponse::from_model(existing, None)),
-        ));
+        return Ok((StatusCode::OK, Json(ActivityImportResponse::from_model(existing, None))));
     }
 
     let user_storage_key = user.pid.to_string();
@@ -539,20 +526,11 @@ pub async fn upload_activity_import(
     )
     .await
     {
-        let error = AppError::internal(format!(
-            "Failed to queue activity import: {}",
-            failure.message
-        ));
-        let workflow_error =
-            bike_core::workflow_error::WorkflowError::internal(error.message.clone());
-        mark_activity_import_failed(
-            &state.db,
-            &import,
-            &import.processing_stage,
-            &workflow_error,
-        )
-        .await
-        .map_err(AppError::from)?;
+        let error = AppError::internal(format!("Failed to queue activity import: {}", failure.message));
+        let workflow_error = bike_core::workflow_error::WorkflowError::internal(error.message.clone());
+        mark_activity_import_failed(&state.db, &import, &import.processing_stage, &workflow_error)
+            .await
+            .map_err(AppError::from)?;
         return Err(error);
     }
 
@@ -585,14 +563,8 @@ pub async fn import_activity_archive_from_url(
 ) -> Result<(StatusCode, Json<ActivityArchiveImportJobResponse>), AppError> {
     let archive_url = normalize_archive_url(&request.archive_url)?;
     let user_storage_key = user.pid.to_string();
-    let job = enqueue_activity_archive_import_job(
-        &state.db,
-        &state.tasks,
-        user.id,
-        &user_storage_key,
-        archive_url,
-    )
-    .await?;
+    let job =
+        enqueue_activity_archive_import_job(&state.db, &state.tasks, user.id, &user_storage_key, archive_url).await?;
 
     Ok((
         StatusCode::ACCEPTED,
@@ -600,18 +572,14 @@ pub async fn import_activity_archive_from_url(
     ))
 }
 
-async fn read_uploaded_activity_file(
-    mut multipart: Multipart,
-) -> Result<ActivityUploadPayload, AppError> {
+async fn read_uploaded_activity_file(mut multipart: Multipart) -> Result<ActivityUploadPayload, AppError> {
     let max_upload_bytes = Config::get().max_upload_bytes;
 
-    while let Some(mut field) = multipart.next_field().await.map_err(|err| {
-        map_multipart_error(
-            &err.to_string(),
-            max_upload_bytes,
-            "Malformed multipart payload",
-        )
-    })? {
+    while let Some(mut field) = multipart
+        .next_field()
+        .await
+        .map_err(|err| map_multipart_error(&err.to_string(), max_upload_bytes, "Malformed multipart payload"))?
+    {
         if field.name() != Some("file") && field.file_name().is_none() {
             continue;
         }
@@ -619,21 +587,17 @@ async fn read_uploaded_activity_file(
         let original_filename = field
             .file_name()
             .map(|value| value.to_string())
-            .ok_or_else(|| {
-                AppError::validation_field("file", "Uploaded file is missing a filename")
-            })?;
+            .ok_or_else(|| AppError::validation_field("file", "Uploaded file is missing a filename"))?;
         let format = validate_activity_format(&original_filename)?;
         let mime_type = field.content_type().map(|value| value.to_string());
         let mut bytes = Vec::new();
         let mut total_bytes = 0usize;
 
-        while let Some(chunk) = field.chunk().await.map_err(|err| {
-            map_multipart_error(
-                &err.to_string(),
-                max_upload_bytes,
-                "Failed to read upload field",
-            )
-        })? {
+        while let Some(chunk) = field
+            .chunk()
+            .await
+            .map_err(|err| map_multipart_error(&err.to_string(), max_upload_bytes, "Failed to read upload field"))?
+        {
             total_bytes += chunk.len();
             if total_bytes > max_upload_bytes {
                 return Err(AppError::payload_too_large(
@@ -663,11 +627,7 @@ async fn read_uploaded_activity_file(
     ))
 }
 
-fn map_multipart_error(
-    error_text: &str,
-    max_upload_bytes: usize,
-    default_message: &str,
-) -> AppError {
+fn map_multipart_error(error_text: &str, max_upload_bytes: usize, default_message: &str) -> AppError {
     let normalized = error_text.to_ascii_lowercase();
     let is_too_large = normalized.contains("body too large")
         || normalized.contains("field too large")
@@ -690,9 +650,7 @@ fn map_multipart_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bike_core::activity_details::{
-        serialize_derived_activity_data, ActivityDerivedData, ActivityRoutePoint,
-    };
+    use bike_core::activity_details::{serialize_derived_activity_data, ActivityDerivedData, ActivityRoutePoint};
     use chrono::Utc;
 
     #[test]
@@ -728,10 +686,7 @@ mod tests {
         let error = validate_activity_format("ride.csv").unwrap_err();
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            error.message,
-            "Only .fit, .tcx, and .gpx uploads are supported"
-        );
+        assert_eq!(error.message, "Only .fit, .tcx, and .gpx uploads are supported");
         assert_eq!(
             error.errors.unwrap().get("file").unwrap(),
             &vec!["Only .fit, .tcx, and .gpx uploads are supported".to_string()]
@@ -759,39 +714,34 @@ mod tests {
         let error = map_multipart_error("missing boundary", 1024, "Malformed multipart payload");
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            error.message,
-            "Malformed multipart payload: missing boundary"
-        );
+        assert_eq!(error.message, "Malformed multipart payload: missing boundary");
         assert!(error.errors.is_none());
     }
 
     #[test]
     fn activity_archive_import_job_response_maps_error_samples() {
         let now = bike_core::test_support::timestamp();
-        let response =
-            ActivityArchiveImportJobResponse::from_model(activity_archive_import_jobs::Model {
-                id: 5,
-                user_id: 12,
-                user_storage_key: "user-12".to_string(),
-                archive_url: "https://example.com/export.zip".to_string(),
-                resolved_url: Some("https://cdn.example.com/export.zip".to_string()),
-                status: "succeeded".to_string(),
-                error_samples_json: Some(
-                    serde_json::to_string(&vec!["bad.fit: parse failed".to_string()])
-                        .expect("serialize error samples"),
-                ),
-                total_entries: 10,
-                supported_entry_count: 8,
-                imported_count: 7,
-                duplicate_count: 1,
-                skipped_unsupported_count: 2,
-                created_at: now,
-                started_at: Some(now),
-                finished_at: Some(now),
-                updated_at: now,
-                ..bike_core::test_support::archive_import_job()
-            });
+        let response = ActivityArchiveImportJobResponse::from_model(activity_archive_import_jobs::Model {
+            id: 5,
+            user_id: 12,
+            user_storage_key: "user-12".to_string(),
+            archive_url: "https://example.com/export.zip".to_string(),
+            resolved_url: Some("https://cdn.example.com/export.zip".to_string()),
+            status: "succeeded".to_string(),
+            error_samples_json: Some(
+                serde_json::to_string(&vec!["bad.fit: parse failed".to_string()]).expect("serialize error samples"),
+            ),
+            total_entries: 10,
+            supported_entry_count: 8,
+            imported_count: 7,
+            duplicate_count: 1,
+            skipped_unsupported_count: 2,
+            created_at: now,
+            started_at: Some(now),
+            finished_at: Some(now),
+            updated_at: now,
+            ..bike_core::test_support::archive_import_job()
+        });
 
         assert_eq!(response.id, 5);
         assert_eq!(response.archive_url, "https://example.com/export.zip");
@@ -804,8 +754,7 @@ mod tests {
     fn activity_import_response_maps_model_fields() {
         let now = Utc::now();
         let activity = activity_import_activity_fixture(now);
-        let response =
-            ActivityImportResponse::from_model(activity_import_fixture(now), Some(&activity));
+        let response = ActivityImportResponse::from_model(activity_import_fixture(now), Some(&activity));
 
         assert_eq!(response.id, 7);
         assert_eq!(
@@ -855,8 +804,7 @@ mod tests {
         }
     }
 
-    fn activity_import_derived_data_json() -> bike_core::activity_details::StoredActivityDerivedData
-    {
+    fn activity_import_derived_data_json() -> bike_core::activity_details::StoredActivityDerivedData {
         serialize_derived_activity_data(&ActivityDerivedData {
             recording: Default::default(),
             laps: Vec::new(),

@@ -21,11 +21,7 @@ impl TaskProcessor for RegenerateActivitySegments {
     async fn process(&self, _task_id: i32, payload: serde_json::Value) -> Result<(), WorkerError> {
         let task: RegenerateActivitySegmentsTask =
             serde_json::from_value(payload.get("data").unwrap_or(&payload).clone())?;
-        bike_core::segment_regeneration::process_activity_segment_regeneration(
-            &self.db,
-            task.activity_id,
-        )
-        .await?;
+        bike_core::segment_regeneration::process_activity_segment_regeneration(&self.db, task.activity_id).await?;
         Ok(())
     }
 }

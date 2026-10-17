@@ -26,27 +26,15 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Attempts::UserId).integer().not_null())
-                    .col(
-                        ColumnDef::new(Attempts::ActivityImportId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Attempts::ActivityImportId).integer().not_null())
                     .col(ColumnDef::new(Attempts::ActivityId).integer())
                     .col(ColumnDef::new(Attempts::Status).string().not_null())
                     .col(ColumnDef::new(Attempts::RequestedStage).string().not_null())
                     .col(ColumnDef::new(Attempts::StartStage).string().not_null())
                     .col(ColumnDef::new(Attempts::CurrentStage).string().not_null())
                     .col(ColumnDef::new(Attempts::ReusedAttemptId).integer())
-                    .col(
-                        ColumnDef::new(Attempts::SourceJson)
-                            .json_binary()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Attempts::StagesJson)
-                            .json_binary()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Attempts::SourceJson).json_binary().not_null())
+                    .col(ColumnDef::new(Attempts::StagesJson).json_binary().not_null())
                     .col(ColumnDef::new(Attempts::CheckpointJson).json_binary())
                     .col(ColumnDef::new(Attempts::Error).text())
                     .col(
@@ -137,13 +125,10 @@ mod tests {
     #[tokio::test]
     #[ignore = "Set BIKE_INGESTION_TEST_DATABASE_URL to a disposable PostgreSQL database"]
     async fn postgres_migration_enforces_active_execution_uniqueness_and_preserves_history() {
-        let url =
-            std::env::var("BIKE_INGESTION_TEST_DATABASE_URL").expect("disposable database URL");
+        let url = std::env::var("BIKE_INGESTION_TEST_DATABASE_URL").expect("disposable database URL");
         let db = Database::connect(&url).await.unwrap();
         let schema = format!("ingestion_{}", std::process::id());
-        db.execute_unprepared(&format!("CREATE SCHEMA {schema}"))
-            .await
-            .unwrap();
+        db.execute_unprepared(&format!("CREATE SCHEMA {schema}")).await.unwrap();
         let mut options = sea_orm_migration::sea_orm::ConnectOptions::new(url);
         options.set_schema_search_path(schema.clone());
         let isolated = Database::connect(options).await.unwrap();
@@ -159,9 +144,7 @@ mod tests {
         assert!(insert_attempt(&isolated, 1, 43).await.is_err());
         assert!(insert_attempt(&isolated, 2, 42).await.is_err());
         isolated
-            .execute_unprepared(
-                "UPDATE activity_import_attempts SET status='completed' WHERE activity_import_id=1",
-            )
+            .execute_unprepared("UPDATE activity_import_attempts SET status='completed' WHERE activity_import_id=1")
             .await
             .unwrap();
         insert_attempt(&isolated, 1, 42).await.unwrap();
@@ -182,24 +165,15 @@ mod tests {
         assert_eq!(count, 0);
         Migration.down(&manager).await.unwrap();
         assert!(!manager.has_table("activity_import_attempts").await.unwrap());
-        assert!(!manager
-            .has_column("activity_imports", "archive_job_id")
-            .await
-            .unwrap());
+        assert!(!manager.has_column("activity_imports", "archive_job_id").await.unwrap());
         isolated
             .execute_unprepared("DROP TABLE activity_imports")
             .await
             .unwrap();
-        db.execute_unprepared(&format!("DROP SCHEMA {schema}"))
-            .await
-            .unwrap();
+        db.execute_unprepared(&format!("DROP SCHEMA {schema}")).await.unwrap();
     }
 
-    async fn insert_attempt(
-        db: &DatabaseConnection,
-        import_id: i32,
-        activity_id: i32,
-    ) -> Result<(), DbErr> {
+    async fn insert_attempt(db: &DatabaseConnection, import_id: i32, activity_id: i32) -> Result<(), DbErr> {
         db.execute_unprepared(&format!("INSERT INTO activity_import_attempts(user_id,activity_import_id,activity_id,status,requested_stage,start_stage,current_stage,source_json,stages_json,created_at,updated_at) VALUES (1,{import_id},{activity_id},'queued','raw_stored','raw_stored','raw_stored','{{}}','[]',now(),now())")).await?;
         Ok(())
     }

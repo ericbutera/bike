@@ -7,9 +7,7 @@ use temporalio_common::{
     protos::{
         coresdk::{
             activity_result, child_workflow,
-            workflow_activation::{
-                self, workflow_activation_job::Variant, WorkflowActivation, WorkflowActivationJob,
-            },
+            workflow_activation::{self, workflow_activation_job::Variant, WorkflowActivation, WorkflowActivationJob},
             workflow_commands::{workflow_command, StartChildWorkflowExecution, WorkflowCommand},
         },
         temporal::api::{
@@ -20,9 +18,8 @@ use temporalio_common::{
 };
 use temporalio_workflow::{
     __private::sdk::{
-        GuestWorkflowInstance, MainRoutineCompletion, RoutineCompletion,
-        TerminalOutcome as WorkflowCompletion, WorkflowHost, WorkflowImplementation, WorkflowInit,
-        WorkflowInstance, MAIN_ROUTINE_ID,
+        GuestWorkflowInstance, MainRoutineCompletion, RoutineCompletion, TerminalOutcome as WorkflowCompletion,
+        WorkflowHost, WorkflowImplementation, WorkflowInit, WorkflowInstance, MAIN_ROUTINE_ID,
     },
     common::WorkflowDefinition,
     BaseWorkflowContext,
@@ -76,11 +73,9 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
             input,
             false,
             vec![workflow_activation::WorkflowActivationJob {
-                variant: Some(Variant::CancelWorkflow(
-                    workflow_activation::CancelWorkflow {
-                        reason: "Canceled before processing".into(),
-                    },
-                )),
+                variant: Some(Variant::CancelWorkflow(workflow_activation::CancelWorkflow {
+                    reason: "Canceled before processing".into(),
+                })),
             }],
             std::time::UNIX_EPOCH,
         )
@@ -94,10 +89,7 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
         Self::with_patches::<W>(input, replaying, vec![], std::time::UNIX_EPOCH)
     }
 
-    pub fn at_time<W>(
-        input: <W::Run as WorkflowDefinition>::Input,
-        at: std::time::SystemTime,
-    ) -> Self
+    pub fn at_time<W>(input: <W::Run as WorkflowDefinition>::Input, at: std::time::SystemTime) -> Self
     where
         W: WorkflowImplementation + Default,
         <W::Run as WorkflowDefinition>::Input: Send,
@@ -132,8 +124,7 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
             None,
             vec![],
         );
-        let instance =
-            GuestWorkflowInstance::<W>::new_with_workflow(W::default(), context, Some(input));
+        let instance = GuestWorkflowInstance::<W>::new_with_workflow(W::default(), context, Some(input));
         let mut mock = Self {
             instance: Box::new(instance),
             commands,
@@ -184,23 +175,16 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
         W: WorkflowImplementation + Default,
         <W::Run as WorkflowDefinition>::Input: Send,
     {
-        assert!(
-            self.completion.is_none(),
-            "Only restart an unfinished workflow"
-        );
+        assert!(self.completion.is_none(), "Only restart an unfinished workflow");
         let patches = self
             .issued
             .iter()
             .filter_map(|command| match &command.variant {
-                Some(workflow_command::Variant::SetPatchMarker(marker)) => {
-                    Some(WorkflowActivationJob {
-                        variant: Some(Variant::NotifyHasPatch(
-                            workflow_activation::NotifyHasPatch {
-                                patch_id: marker.patch_id.clone(),
-                            },
-                        )),
-                    })
-                }
+                Some(workflow_command::Variant::SetPatchMarker(marker)) => Some(WorkflowActivationJob {
+                    variant: Some(Variant::NotifyHasPatch(workflow_activation::NotifyHasPatch {
+                        patch_id: marker.patch_id.clone(),
+                    })),
+                }),
                 _ => None,
             })
             .collect();
@@ -210,11 +194,7 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
             restarted.apply_activation(activation);
         }
         for expected in self.issued {
-            assert_eq!(
-                restarted.pop_command(),
-                expected,
-                "Replay changed a command"
-            );
+            assert_eq!(restarted.pop_command(), expected, "Replay changed a command");
         }
         assert_eq!(
             *restarted.commands.0.borrow(),
@@ -266,20 +246,15 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
     }
 
     fn resolve_activity(&mut self, seq: u32, status: activity_result::activity_resolution::Status) {
-        self.activate(Variant::ResolveActivity(
-            workflow_activation::ResolveActivity {
-                seq,
-                result: Some(activity_result::ActivityResolution {
-                    status: Some(status),
-                }),
-                ..Default::default()
-            },
-        ));
+        self.activate(Variant::ResolveActivity(workflow_activation::ResolveActivity {
+            seq,
+            result: Some(activity_result::ActivityResolution { status: Some(status) }),
+            ..Default::default()
+        }));
     }
 
     fn child_command(&mut self, name: &str, input: &impl Serialize) -> u32 {
-        let workflow_command::Variant::StartChildWorkflowExecution(command) = self.next_command()
-        else {
+        let workflow_command::Variant::StartChildWorkflowExecution(command) = self.next_command() else {
             panic!("Expected child {name}")
         };
         assert_eq!(command.workflow_type, name);
@@ -353,9 +328,7 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
             workflow_command::Variant::CancelChildWorkflowExecution(_)
         ));
         let failure = Failure {
-            failure_info: Some(FailureInfo::ChildWorkflowExecutionFailureInfo(
-                Default::default(),
-            )),
+            failure_info: Some(FailureInfo::ChildWorkflowExecutionFailureInfo(Default::default())),
             cause: Some(Box::new(Failure {
                 failure_info: Some(FailureInfo::CanceledFailureInfo(Default::default())),
                 ..Default::default()
@@ -364,30 +337,24 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
         };
         self.resolve_child(
             seq,
-            child_workflow::child_workflow_result::Status::Cancelled(
-                child_workflow::Cancellation {
-                    failure: Some(failure),
-                },
-            ),
+            child_workflow::child_workflow_result::Status::Cancelled(child_workflow::Cancellation {
+                failure: Some(failure),
+            }),
         );
     }
     fn resolve_child(&mut self, seq: u32, status: child_workflow::child_workflow_result::Status) {
         self.activate(Variant::ResolveChildWorkflowExecution(
             workflow_activation::ResolveChildWorkflowExecution {
                 seq,
-                result: Some(child_workflow::ChildWorkflowResult {
-                    status: Some(status),
-                }),
+                result: Some(child_workflow::ChildWorkflowResult { status: Some(status) }),
             },
         ));
     }
 
     pub fn cancel(&mut self) {
-        self.activate(Variant::CancelWorkflow(
-            workflow_activation::CancelWorkflow {
-                reason: "Fixture cancellation".into(),
-            },
-        ));
+        self.activate(Variant::CancelWorkflow(workflow_activation::CancelWorkflow {
+            reason: "Fixture cancellation".into(),
+        }));
     }
     pub fn cancel_activity(&mut self, name: &str) {
         let (seq, _) = self.next_activity(name);
@@ -402,11 +369,9 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
         };
         self.resolve_activity(
             seq,
-            activity_result::activity_resolution::Status::Cancelled(
-                activity_result::Cancellation {
-                    failure: Some(failure),
-                },
-            ),
+            activity_result::activity_resolution::Status::Cancelled(activity_result::Cancellation {
+                failure: Some(failure),
+            }),
         );
     }
 
@@ -415,26 +380,15 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
         let Some(WorkflowCompletion::Completed(result)) = &self.completion else {
             panic!("Expected success, got {:?}", self.completion)
         };
-        serde_json::from_slice(if result.data.is_empty() {
-            b"null"
-        } else {
-            &result.data
-        })
-        .unwrap()
+        serde_json::from_slice(if result.data.is_empty() { b"null" } else { &result.data }).unwrap()
     }
     pub fn assert_failed(&self) {
         self.assert_no_commands();
-        assert!(matches!(
-            self.completion,
-            Some(WorkflowCompletion::Failed(_))
-        ));
+        assert!(matches!(self.completion, Some(WorkflowCompletion::Failed(_))));
     }
     pub fn assert_cancelled(&self) {
         self.assert_no_commands();
-        assert!(matches!(
-            self.completion,
-            Some(WorkflowCompletion::Cancelled(_))
-        ));
+        assert!(matches!(self.completion, Some(WorkflowCompletion::Cancelled(_))));
     }
     pub fn continued_input<T: DeserializeOwned>(&self) -> T {
         self.assert_no_commands();
@@ -444,10 +398,7 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
         serde_json::from_slice(&command.arguments[0].data).unwrap()
     }
     pub fn assert_no_commands(&self) {
-        assert!(
-            self.commands.0.borrow().is_empty(),
-            "Unexpected activity or child"
-        );
+        assert!(self.commands.0.borrow().is_empty(), "Unexpected activity or child");
     }
 
     pub fn next_command(&mut self) -> workflow_command::Variant {
@@ -472,9 +423,7 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
             timestamp: Some(at.into()),
             is_replaying: self.replaying,
             continue_as_new_suggested: self.continue_as_new_suggested,
-            jobs: vec![WorkflowActivationJob {
-                variant: Some(variant),
-            }],
+            jobs: vec![WorkflowActivationJob { variant: Some(variant) }],
             ..Default::default()
         });
     }
@@ -498,12 +447,13 @@ impl<A: WorkflowAssertions> WorkflowMock<A> {
         {
             self.completion = Some(*completion);
         }
-        while self.commands.0.borrow().front().is_some_and(|command| {
-            matches!(
-                command.variant,
-                Some(workflow_command::Variant::SetPatchMarker(_))
-            )
-        }) {
+        while self
+            .commands
+            .0
+            .borrow()
+            .front()
+            .is_some_and(|command| matches!(command.variant, Some(workflow_command::Variant::SetPatchMarker(_))))
+        {
             self.pop_command();
         }
     }
@@ -526,12 +476,10 @@ fn assert_input(actual: &[Payload], expected: &impl Serialize) {
 fn failure(message: &str) -> Failure {
     Failure {
         message: message.into(),
-        failure_info: Some(FailureInfo::ApplicationFailureInfo(
-            ApplicationFailureInfo {
-                non_retryable: true,
-                ..Default::default()
-            },
-        )),
+        failure_info: Some(FailureInfo::ApplicationFailureInfo(ApplicationFailureInfo {
+            non_retryable: true,
+            ..Default::default()
+        })),
         ..Default::default()
     }
 }

@@ -62,23 +62,15 @@ impl SessionService {
         Self { db, jwt_secret }
     }
 
-    pub async fn refresh(
-        &self,
-        db: &DatabaseConnection,
-        token: String,
-    ) -> Result<TokenResponse, AuthError> {
+    pub async fn refresh(&self, db: &DatabaseConnection, token: String) -> Result<TokenResponse, AuthError> {
         let stored = refresh_tokens::Model::find_by_token(db, &token)
             .await?
             .ok_or_else(|| AuthError::unauthorized("Invalid refresh token"))?;
 
         if stored.expires_at <= Utc::now().timestamp() {
             let _ = refresh_tokens::Model::remove_by_token(db, &stored.token).await;
-            self.record_event(
-                auth_events::EventType::TokenRefreshFailed,
-                None,
-                Some("expired"),
-            )
-            .await;
+            self.record_event(auth_events::EventType::TokenRefreshFailed, None, Some("expired"))
+                .await;
             return Err(AuthError::unauthorized("Token expired"));
         }
 
@@ -99,17 +91,12 @@ impl SessionService {
     }
 
     pub async fn logout(&self, _pid: Uuid) -> Result<(), AuthError> {
-        self.record_event(auth_events::EventType::Logout, None, None)
-            .await;
+        self.record_event(auth_events::EventType::Logout, None, None).await;
         crate::platform::api_metrics::logout_counter().inc();
         Ok(())
     }
 
-    pub async fn issue_tokens(
-        &self,
-        db: &DatabaseConnection,
-        user: &users::Model,
-    ) -> Result<TokenResponse, AuthError> {
+    pub async fn issue_tokens(&self, db: &DatabaseConnection, user: &users::Model) -> Result<TokenResponse, AuthError> {
         user.ensure_enabled()?;
         let access_token = generate_access_token(user, &self.jwt_secret)?;
         let (refresh_token, _) = generate_refresh_token();
@@ -124,12 +111,7 @@ impl SessionService {
         })
     }
 
-    async fn record_event(
-        &self,
-        event: auth_events::EventType,
-        user: Option<&users::Model>,
-        reason: Option<&str>,
-    ) {
+    async fn record_event(&self, event: auth_events::EventType, user: Option<&users::Model>, reason: Option<&str>) {
         let payload = auth_events::AuthEventPayload {
             user_id: user.map(|user| user.id),
             email: user.map(|user| user.email.clone()),

@@ -48,10 +48,7 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
-    pub async fn recent_for_user(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-    ) -> Result<Vec<Model>, DbErr> {
+    pub async fn recent_for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<Model>, DbErr> {
         Self::find()
             .filter(Column::UserId.eq(user_id))
             .order_by_desc(Column::CreatedAt)
@@ -60,11 +57,7 @@ impl Entity {
             .await
     }
 
-    pub async fn find_owned(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-        job_id: i32,
-    ) -> Result<Option<Model>, DbErr> {
+    pub async fn find_owned(db: &impl ConnectionTrait, user_id: i32, job_id: i32) -> Result<Option<Model>, DbErr> {
         Self::find_by_id(job_id)
             .filter(Column::UserId.eq(user_id))
             .one(db)
@@ -77,8 +70,7 @@ impl Entity {
         job_id: i32,
         summary: &crate::archive_import::ActivityArchiveImportResponse,
     ) -> Result<(), DbErr> {
-        let errors = serde_json::to_string(&summary.error_samples)
-            .map_err(|error| DbErr::Custom(error.to_string()))?;
+        let errors = serde_json::to_string(&summary.error_samples).map_err(|error| DbErr::Custom(error.to_string()))?;
         let result = Self::update_many()
             .set(
                 ActiveModel {
@@ -93,9 +85,7 @@ impl Entity {
             .exec(db)
             .await?;
         if result.rows_affected != 1 {
-            return Err(DbErr::RecordNotFound(
-                "Owned archive job was not found".into(),
-            ));
+            return Err(DbErr::RecordNotFound("Owned archive job was not found".into()));
         }
         Ok(())
     }
@@ -104,10 +94,7 @@ impl Entity {
 crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Entity {
-    pub async fn find_for_batch(
-        db: &impl ConnectionTrait,
-        job_id: i32,
-    ) -> Result<Option<Model>, DbErr> {
+    pub async fn find_for_batch(db: &impl ConnectionTrait, job_id: i32) -> Result<Option<Model>, DbErr> {
         Self::find_by_id(job_id).one(db).await
     }
 }
@@ -129,14 +116,8 @@ impl Model {
             .await?
             .ok_or_else(|| sea_orm::DbErr::RecordNotFound("Archive job missing".into()))?;
         let imports = crate::entities::activity_imports::Entity::archive_statuses(db, id).await?;
-        let imported = imports
-            .iter()
-            .filter(|status| status.as_str() == "processed")
-            .count() as i32;
-        let duplicate = imports
-            .iter()
-            .filter(|status| status.as_str() == "duplicate")
-            .count() as i32;
+        let imported = imports.iter().filter(|status| status.as_str() == "processed").count() as i32;
+        let duplicate = imports.iter().filter(|status| status.as_str() == "duplicate").count() as i32;
         let failed = (job.supported_entry_count - imported - duplicate).max(0);
         let task_failed = tasks.iter().any(|task| task.status != "completed");
         let has_failure = task_failed || failed > 0 || job.supported_entry_count == 0;
@@ -161,8 +142,7 @@ impl Model {
                 .into()),
                 failure_message: Set(errors.first().cloned()),
                 error_samples_json: Set(Some(
-                    serde_json::to_string(&errors)
-                        .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?,
+                    serde_json::to_string(&errors).map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?,
                 )),
                 resolved_url: Set(batch.source["resolved_url"].as_str().map(str::to_owned)),
                 finished_at: Set(Some(Utc::now())),
@@ -209,13 +189,9 @@ impl Model {
             resolved_url: Set(Some(summary.source.clone())),
             status: Set(archive_outcome(summary).into()),
             failure_message: Set(None),
-            error_samples_json: Set(Some(
-                serde_json::to_string(&summary.error_samples).map_err(|error| {
-                    AppError::internal(format!(
-                        "Failed to serialize archive import errors: {error}"
-                    ))
-                })?,
-            )),
+            error_samples_json: Set(Some(serde_json::to_string(&summary.error_samples).map_err(
+                |error| AppError::internal(format!("Failed to serialize archive import errors: {error}")),
+            )?)),
             finished_at: Set(Some(Utc::now())),
             ..Default::default()
         }

@@ -4,15 +4,12 @@ use bike_core::{
 };
 use temporalio_sdk::activities::ActivityContext;
 
-pub(super) fn execution(
-    ctx: &ActivityContext,
-    command: ActivityImport,
-) -> Result<ImportExecution, WorkflowError> {
+pub(super) fn execution(ctx: &ActivityContext, command: ActivityImport) -> Result<ImportExecution, WorkflowError> {
     let info = ctx.info();
     let required = |value: &Option<String>| {
-        value.clone().ok_or_else(|| {
-            WorkflowError::bad_request("Import requires a Temporal workflow execution")
-        })
+        value
+            .clone()
+            .ok_or_else(|| WorkflowError::bad_request("Import requires a Temporal workflow execution"))
     };
     Ok(ImportExecution {
         command,

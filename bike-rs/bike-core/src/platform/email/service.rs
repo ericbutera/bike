@@ -43,18 +43,15 @@ pub struct EmailService {
 
 impl EmailService {
     pub fn new(config: &SmtpConfig) -> Result<Self, Box<dyn Error + Send + Sync>> {
-        let transport =
-            if let (Some(username), Some(password)) = (&config.username, &config.password) {
-                let credentials = Credentials::new(username.clone(), password.clone());
-                SmtpTransport::starttls_relay(&config.host)?
-                    .port(config.port)
-                    .credentials(credentials)
-                    .build()
-            } else {
-                SmtpTransport::builder_dangerous(&config.host)
-                    .port(config.port)
-                    .build()
-            };
+        let transport = if let (Some(username), Some(password)) = (&config.username, &config.password) {
+            let credentials = Credentials::new(username.clone(), password.clone());
+            SmtpTransport::starttls_relay(&config.host)?
+                .port(config.port)
+                .credentials(credentials)
+                .build()
+        } else {
+            SmtpTransport::builder_dangerous(&config.host).port(config.port).build()
+        };
 
         Ok(Self {
             transport,
@@ -107,10 +104,7 @@ impl EmailService {
         let from_mailbox = Mailbox::new(Some(self.from_name.clone()), self.from_email.parse()?);
         let to_mailbox: Mailbox = to.parse()?;
 
-        let mut email_builder = Message::builder()
-            .from(from_mailbox)
-            .to(to_mailbox)
-            .subject(subject);
+        let mut email_builder = Message::builder().from(from_mailbox).to(to_mailbox).subject(subject);
 
         if let Some(key) = idempotency_key {
             email_builder = email_builder.header(ResendIdempotencyKey(key));
@@ -118,16 +112,8 @@ impl EmailService {
 
         Ok(email_builder.multipart(
             MultiPart::alternative()
-                .singlepart(
-                    SinglePart::builder()
-                        .header(ContentType::TEXT_PLAIN)
-                        .body(text_body),
-                )
-                .singlepart(
-                    SinglePart::builder()
-                        .header(ContentType::TEXT_HTML)
-                        .body(html_body),
-                ),
+                .singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(text_body))
+                .singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html_body)),
         )?)
     }
 }

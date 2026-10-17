@@ -2,8 +2,7 @@ use crate::config::Config;
 use crate::observability;
 use crate::provider_metrics as metrics;
 use crate::provider_rate_limit::{
-    reconcile_provider_quota_usage, reserve_provider_quota, ProviderQuotaBucketSpec,
-    ProviderQuotaReservation,
+    reconcile_provider_quota_usage, reserve_provider_quota, ProviderQuotaBucketSpec, ProviderQuotaReservation,
 };
 use crate::strava::objects::{ObjectStore, ResponseObject};
 use crate::strava::provider_payload::{StravaActivityStreams, StravaActivitySummary};
@@ -128,8 +127,7 @@ impl StravaApiClient {
             base_url: if config.environment == "production" {
                 "https://www.strava.com".into()
             } else {
-                std::env::var("STRAVA_API_ORIGIN")
-                    .unwrap_or_else(|_| "https://www.strava.com".into())
+                std::env::var("STRAVA_API_ORIGIN").unwrap_or_else(|_| "https://www.strava.com".into())
             },
         })
     }
@@ -288,8 +286,7 @@ impl StravaApiClient {
                 Some(response) => {
                     let status_label = response.status.as_u16().to_string();
                     http_span.record("status", field::display(&status_label));
-                    if let Some(retry_at) = parse_retry_after_header(&response.headers, Utc::now())
-                    {
+                    if let Some(retry_at) = parse_retry_after_header(&response.headers, Utc::now()) {
                         http_span.record("retry_at", field::display(retry_at));
                     }
                 }
@@ -297,24 +294,14 @@ impl StravaApiClient {
                     http_span.record("status", "transport_error");
                 }
             }
-            self.parse_json_response(
-                response.1,
-                response.0.is_ok(),
-                request_class,
-                operation,
-                action,
-            )
-            .await
+            self.parse_json_response(response.1, response.0.is_ok(), request_class, operation, action)
+                .await
         }
         .instrument(span)
         .await
     }
 
-    async fn reserve_quota(
-        &self,
-        request_class: StravaRequestClass,
-        operation: &'static str,
-    ) -> Result<(), AppError> {
+    async fn reserve_quota(&self, request_class: StravaRequestClass, operation: &'static str) -> Result<(), AppError> {
         let span = tracing::info_span!(
             "provider.quota.reserve",
             provider = STRAVA_PROVIDER,
@@ -340,11 +327,7 @@ impl StravaApiClient {
                     current.record("decision", "rate_limited");
                     current.record("bucket", field::display(&pause.bucket));
                     current.record("retry_at", field::display(pause.retry_at));
-                    metrics::record_provider_rate_limit_pause(
-                        STRAVA_PROVIDER,
-                        &pause.bucket,
-                        operation,
-                    );
+                    metrics::record_provider_rate_limit_pause(STRAVA_PROVIDER, &pause.bucket, operation);
                     tracing::warn!(
                         provider = %pause.provider,
                         bucket = %pause.bucket,
@@ -379,12 +362,7 @@ impl StravaApiClient {
     {
         let response = response.ok_or_else(|| {
             tracing::Span::current().record("status", "transport_error");
-            metrics::record_provider_api_request(
-                STRAVA_PROVIDER,
-                operation,
-                request_class.as_str(),
-                "transport_error",
-            );
+            metrics::record_provider_api_request(STRAVA_PROVIDER, operation, request_class.as_str(), "transport_error");
             tracing::error!(
                 action,
                 operation,
@@ -395,12 +373,7 @@ impl StravaApiClient {
         let status = response.status;
         let status_label = status.as_u16().to_string();
         tracing::Span::current().record("status", field::display(&status_label));
-        metrics::record_provider_api_request(
-            STRAVA_PROVIDER,
-            operation,
-            request_class.as_str(),
-            &status_label,
-        );
+        metrics::record_provider_api_request(STRAVA_PROVIDER, operation, request_class.as_str(), &status_label);
         reconcile_strava_rate_limit_headers(&self.db, &response.headers, request_class).await;
         let retry_after = parse_retry_after_header(&response.headers, Utc::now());
 
@@ -433,11 +406,7 @@ impl StravaApiClient {
         activity_id: i64,
     ) -> Result<StravaActivitySummary, AppError> {
         self.send_json(
-            activities_api::get_activity_by_id(
-                &self.sdk(Some(access_token)),
-                activity_id,
-                Some(false),
-            ),
+            activities_api::get_activity_by_id(&self.sdk(Some(access_token)), activity_id, Some(false)),
             StravaRequestClass::Read,
             "get_activity",
             "fetch a Strava activity",
@@ -498,16 +467,8 @@ pub(crate) async fn retain_response(
     let retained_headers = response
         .headers
         .iter()
-        .filter(|(name, _)| {
-            name.as_str().starts_with("x-")
-                || ["content-type", "retry-after"].contains(&name.as_str())
-        })
-        .filter_map(|(name, value)| {
-            value
-                .to_str()
-                .ok()
-                .map(|value| (name.to_string(), value.to_owned()))
-        })
+        .filter(|(name, _)| name.as_str().starts_with("x-") || ["content-type", "retry-after"].contains(&name.as_str()))
+        .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.to_string(), value.to_owned())))
         .collect();
     let saved = if encrypted {
         archive
@@ -526,9 +487,7 @@ pub(crate) async fn retain_response(
 
 pub(crate) fn exchange_prefix(id: uuid::Uuid) -> String {
     super::paths::exchange(
-        RequestArchive::current()
-            .as_ref()
-            .map(|archive| archive.key.as_str()),
+        RequestArchive::current().as_ref().map(|archive| archive.key.as_str()),
         &id.to_string(),
     )
 }
@@ -623,14 +582,7 @@ async fn reconcile_strava_rate_limit_headers(
             short_reset_at,
         )
         .await;
-        reconcile_strava_bucket(
-            db,
-            STRAVA_OVERALL_DAILY_BUCKET,
-            daily_limit,
-            daily_used,
-            daily_reset_at,
-        )
-        .await;
+        reconcile_strava_bucket(db, STRAVA_OVERALL_DAILY_BUCKET, daily_limit, daily_used, daily_reset_at).await;
     }
 
     if matches!(request_class, StravaRequestClass::Read) {
@@ -646,14 +598,7 @@ async fn reconcile_strava_rate_limit_headers(
                 short_reset_at,
             )
             .await;
-            reconcile_strava_bucket(
-                db,
-                STRAVA_READ_DAILY_BUCKET,
-                daily_limit,
-                daily_used,
-                daily_reset_at,
-            )
-            .await;
+            reconcile_strava_bucket(db, STRAVA_READ_DAILY_BUCKET, daily_limit, daily_used, daily_reset_at).await;
         }
     }
 }
@@ -678,15 +623,8 @@ async fn reconcile_strava_bucket(
 
     async move {
         observability::record_current_trace_context();
-        if let Err(error) = reconcile_provider_quota_usage(
-            db,
-            STRAVA_PROVIDER,
-            bucket,
-            limit_count,
-            used_count,
-            reset_at,
-        )
-        .await
+        if let Err(error) =
+            reconcile_provider_quota_usage(db, STRAVA_PROVIDER, bucket, limit_count, used_count, reset_at).await
         {
             tracing::warn!(
                 bucket,
@@ -728,10 +666,7 @@ fn parse_retry_after_header(headers: &HeaderMap, now: DateTime<Utc>) -> Option<D
         .filter(|timestamp| *timestamp >= now)
 }
 
-fn strava_retry_at_for_class_at(
-    _request_class: StravaRequestClass,
-    now: DateTime<Utc>,
-) -> DateTime<Utc> {
+fn strava_retry_at_for_class_at(_request_class: StravaRequestClass, now: DateTime<Utc>) -> DateTime<Utc> {
     next_strava_short_window_reset(now)
 }
 
@@ -778,10 +713,7 @@ mod tests {
             .unwrap()
             .with_timezone(&Utc);
         let mut headers = HeaderMap::new();
-        headers.insert(
-            RETRY_AFTER,
-            "Sat, 12 Sep 2026 12:03:00 GMT".parse().unwrap(),
-        );
+        headers.insert(RETRY_AFTER, "Sat, 12 Sep 2026 12:03:00 GMT".parse().unwrap());
 
         assert_eq!(parse_retry_after_header(&headers, now), Some(retry_at));
     }
@@ -831,10 +763,7 @@ mod tests {
         );
 
         assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(
-            error.message,
-            "Strava request failed with status 429 Too Many Requests"
-        );
+        assert_eq!(error.message, "Strava request failed with status 429 Too Many Requests");
         assert_eq!(error.retry_at, Some(retry_at));
     }
 

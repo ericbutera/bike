@@ -3,8 +3,8 @@ use crate::{
     activity_import_pipeline::load_best_activity_parsing_artifact,
     activity_parser::{parse_activity_artifact, ActivityParserArtifact},
     bike_tasks::{
-        ActivityImportResult, FitnessChange, HeatmapChange, ImportExecution, ImportSource,
-        ImportTarget, Priority, ReprocessInput, SegmentChange,
+        ActivityImportResult, FitnessChange, HeatmapChange, ImportExecution, ImportSource, ImportTarget, Priority,
+        ReprocessInput, SegmentChange,
     },
     entities::{activities, activity_event_history, activity_imports},
     object_store::ObjectStore,
@@ -28,10 +28,7 @@ pub struct RefreshScope {
 }
 
 impl RefreshScope {
-    pub fn result(
-        &self,
-        command: &crate::bike_tasks::ActivityImport,
-    ) -> Result<ActivityImportResult, WorkflowError> {
+    pub fn result(&self, command: &crate::bike_tasks::ActivityImport) -> Result<ActivityImportResult, WorkflowError> {
         let ImportTarget::ExistingActivity { activity_id, .. } = command.target else {
             return Err(WorkflowError::bad_request(
                 "This adapter reprocesses existing activities",
@@ -104,9 +101,7 @@ async fn owned_import(
         .ok_or_else(|| WorkflowError::not_found("Activity import not found"))?;
     import.require_sql_processing()?;
     if import.activity_id != Some(activity.id) {
-        return Err(WorkflowError::conflict(
-            "Import does not belong to this activity",
-        ));
+        return Err(WorkflowError::conflict("Import does not belong to this activity"));
     }
     Ok(import)
 }
@@ -125,9 +120,7 @@ pub async fn reprocess(
 ) -> Result<ActivityImportResult, WorkflowError> {
     execution.command.validate()?;
     let ImportTarget::ExistingActivity { activity_id, .. } = execution.command.target else {
-        return Err(WorkflowError::bad_request(
-            "New imports have not been converted",
-        ));
+        return Err(WorkflowError::bad_request("New imports have not been converted"));
     };
     if let Some(scope) = activity_event_history::Model::import_refresh(db, &execution).await? {
         return scope.result(&execution.command);
@@ -139,9 +132,7 @@ pub async fn reprocess(
     let import = owned_import(db, &activity).await?;
     let artifact = load_best_activity_parsing_artifact(db, &import).await?;
     if import.id != source.activity_import_id || artifact.object_reference()? != source.object {
-        return Err(WorkflowError::conflict(
-            "Retained source changed since submission",
-        ));
+        return Err(WorkflowError::conflict("Retained source changed since submission"));
     }
     let bytes = objects.read(&source.object).await?;
     let mut parsed = parse_activity_artifact(ActivityParserArtifact {
@@ -151,15 +142,8 @@ pub async fn reprocess(
         source_quality: &artifact.source_quality,
         bytes: &bytes,
     })?;
-    crate::activity_import_pipeline::enrich_recording(
-        db,
-        objects,
-        &import,
-        &artifact,
-        Some(&activity),
-        &mut parsed,
-    )
-    .await?;
+    crate::activity_import_pipeline::enrich_recording(db, objects, &import, &artifact, Some(&activity), &mut parsed)
+        .await?;
     let profile = crate::training_profile::load_training_profile(db, source.user_id).await?;
     activity
         .apply_reprocessing(db, &execution, &artifact, &parsed, &profile)

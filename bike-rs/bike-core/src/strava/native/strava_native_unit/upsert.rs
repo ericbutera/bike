@@ -31,10 +31,7 @@ async fn verify_upsert(update: bool, sport: &str) {
         .activity
         .sport_type = Some(sport.into());
     let normalization = fixture.operations(MockDatabase::new(DatabaseBackend::Postgres));
-    let input = normalization
-        .normalize_activity(fixture.sources().await)
-        .await
-        .unwrap();
+    let input = normalization.normalize_activity(fixture.sources().await).await.unwrap();
     let source_hash = input.source.sha256.clone();
     let operations = fixture.operations(upsert_mock(&fixture, update));
     let result = operations.persist_activity(input).await;
@@ -50,10 +47,7 @@ async fn verify_upsert(update: bool, sport: &str) {
     assert_eq!(change.bike_activity_id, Some(42));
     assert_eq!(change.import_id, Some(18));
     assert_eq!(change.dirty_from.is_some(), sport == "Ride" || update);
-    assert_eq!(
-        change.event.strava_activity_id,
-        fixture.domain.event.strava_activity_id
-    );
+    assert_eq!(change.event.strava_activity_id, fixture.domain.event.strava_activity_id);
     let operation = if update { "UPDATE" } else { "INSERT INTO" };
     assert!(sql.contains(&format!("{operation} \"activities\"")));
     assert!(sql.contains(&format!("{operation} \"activity_imports\"")));
@@ -68,11 +62,7 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
     let domain = &fixture.domain;
     let mut activity = domain.activity();
     activity.activity_import_id = Some(18);
-    let existing = if update {
-        vec![activity.clone()]
-    } else {
-        vec![]
-    };
+    let existing = if update { vec![activity.clone()] } else { vec![] };
     let mut mock = fixture
         .connection_mock()
         .append_query_results([vec![domain.row(ActivityStatus::Pending)]])
@@ -94,9 +84,7 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
         .append_query_results([existing])
         .append_query_results([vec![activity]])
         .append_query_results([vec![domain.activity_state()]]);
-    let mock = if crate::strava::provider_payload::strava_activity_is_bike(
-        &fixture.provider.payload.activity,
-    ) || update
+    let mock = if crate::strava::provider_payload::strava_activity_is_bike(&fixture.provider.payload.activity) || update
     {
         mock.append_exec_results([executed()])
     } else {

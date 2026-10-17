@@ -3,8 +3,7 @@
 
 pub mod paths {
     pub use crate::background_jobs::admin::{
-        __path_activity_pipelines, __path_pipeline, __path_processors, activity_pipelines,
-        pipeline, processors,
+        __path_activity_pipelines, __path_pipeline, __path_processors, activity_pipelines, pipeline, processors,
     };
     pub use crate::background_jobs::admin::{cancel_task, get_task, list_tasks, rerun_task};
 
@@ -14,12 +13,8 @@ pub mod paths {
 }
 
 pub mod schemas {
-    pub use crate::background_jobs::admin::{
-        PaginatedResponse, PaginationMetadata, TaskDetailResponse, TaskResponse,
-    };
-    pub use crate::background_jobs::diagnostics::{
-        Distribution, PipelineGraph, PipelinePage, ProcessorSummary,
-    };
+    pub use crate::background_jobs::admin::{PaginatedResponse, PaginationMetadata, TaskDetailResponse, TaskResponse};
+    pub use crate::background_jobs::diagnostics::{Distribution, PipelineGraph, PipelinePage, ProcessorSummary};
     pub use crate::background_jobs::history::{TaskAttemptResponse, TaskPipelineResponse};
     pub use crate::background_jobs::storage::{TaskRecord, TaskStatus};
 }

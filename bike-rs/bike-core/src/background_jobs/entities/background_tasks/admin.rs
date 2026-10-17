@@ -23,10 +23,7 @@ fn default_per_page() -> u64 {
     20
 }
 impl Model {
-    pub async fn admin_page(
-        db: &DatabaseConnection,
-        params: &TaskListQuery,
-    ) -> Result<(Vec<Self>, i64), DbErr> {
+    pub async fn admin_page(db: &DatabaseConnection, params: &TaskListQuery) -> Result<(Vec<Self>, i64), DbErr> {
         let page = std::cmp::max(params.page, 1);
         let per_page = params.per_page.clamp(1, 100);
         let mut query = Entity::find().order_by_desc(Column::CreatedAt);

@@ -25,11 +25,7 @@ pub async fn plan_activity_import_replay(
     let artifact = load_best_activity_parsing_artifact(db, import).await?;
     let bytes = tokio::fs::read(Path::new(uploads_dir).join(&artifact.storage_path))
         .await
-        .map_err(|_| {
-            AppError::bad_request(
-                "Retained source is missing or unreadable; restore it before replay",
-            )
-        })?;
+        .map_err(|_| AppError::bad_request("Retained source is missing or unreadable; restore it before replay"))?;
     if artifact
         .checksum_sha256
         .as_ref()
@@ -49,30 +45,17 @@ pub async fn plan_activity_import_replay(
         Some(id) => activities::Model::find_owned(db, id, import.user_id).await?,
         None => None,
     };
-    let previous = find_reusable_attempt(
-        db,
-        import,
-        &source,
-        &nodes[..requested_index],
-        activity.as_ref(),
-    )
-    .await?;
+    let previous = find_reusable_attempt(db, import, &source, &nodes[..requested_index], activity.as_ref()).await?;
     let can_reuse = requested_index == 0 || previous.is_some();
     Ok(ActivityImportReplayPlan {
         requested_stage: requested_stage.into(),
-        start_stage: if can_reuse {
-            requested_stage
-        } else {
-            "raw_stored"
-        }
-        .into(),
+        start_stage: if can_reuse { requested_stage } else { "raw_stored" }.into(),
         reused_attempt_id: previous
             .as_ref()
             .filter(|_| requested_index > 0)
             .map(|attempt| attempt.id),
-        reason: (!can_reuse).then(|| {
-            "Earlier results are missing or stale. This replay must start at Raw stored.".into()
-        }),
+        reason: (!can_reuse)
+            .then(|| "Earlier results are missing or stale. This replay must start at Raw stored.".into()),
     })
 }
 
@@ -86,15 +69,11 @@ async fn find_reusable_attempt(
     if prerequisites.is_empty() {
         return Ok(None);
     }
-    for metadata in
-        activity_import_attempts::Entity::recent_metadata(db, import.user_id, import.id).await?
-    {
+    for metadata in activity_import_attempts::Entity::recent_metadata(db, import.user_id, import.id).await? {
         if metadata.source_json != *source {
             continue;
         }
-        let Some(attempt) =
-            activity_import_attempts::Entity::find_for_execution(db, metadata.id).await?
-        else {
+        let Some(attempt) = activity_import_attempts::Entity::find_for_execution(db, metadata.id).await? else {
             continue;
         };
         if reusable_attempt(&attempt, source, prerequisites, activity) {
@@ -117,9 +96,9 @@ fn reusable_attempt(
         return false;
     };
     if !prerequisites.iter().all(|node| {
-        records.iter().any(|record| {
-            record.stage == node.id() && matches!(record.status.as_str(), "completed" | "reused")
-        })
+        records
+            .iter()
+            .any(|record| record.stage == node.id() && matches!(record.status.as_str(), "completed" | "reused"))
     }) {
         return false;
     }
@@ -128,17 +107,15 @@ fn reusable_attempt(
             return false;
         };
         if checkpoint.version != 1
-            || activity
-                .is_some_and(|activity| checkpoint.activity_updated_at != Some(activity.updated_at))
+            || activity.is_some_and(|activity| checkpoint.activity_updated_at != Some(activity.updated_at))
         {
             return false;
         }
     }
     if prerequisites.contains(&ActivityProcessingNode::ActivitySaved) {
         return activity.is_some_and(|activity| {
-            execution::checkpoint(attempt).is_some_and(|checkpoint| {
-                checkpoint.activity_updated_at == Some(activity.updated_at)
-            })
+            execution::checkpoint(attempt)
+                .is_some_and(|checkpoint| checkpoint.activity_updated_at == Some(activity.updated_at))
         });
     }
     true
@@ -159,14 +136,7 @@ pub async fn queue_expected_activity_import_replay(
     import: &activity_imports::Model,
     expected: &ActivityImportReplayPlan,
 ) -> Result<(ActivityImportReplayPlan, i32), AppError> {
-    queue_replay(
-        db,
-        uploads_dir,
-        import,
-        &expected.requested_stage,
-        Some(expected),
-    )
-    .await
+    queue_replay(db, uploads_dir, import, &expected.requested_stage, Some(expected)).await
 }
 
 async fn queue_replay(

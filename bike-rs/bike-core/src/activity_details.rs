@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 use roxmltree::{Document, Node};
 
 pub use crate::activity_data::{
-    ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint,
-    StoredActivityDerivedData, StoredRoutePointSeries,
+    ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint, StoredActivityDerivedData,
+    StoredRoutePointSeries,
 };
 
 const MAX_CHART_POINTS: usize = 180;
@@ -38,36 +38,27 @@ pub fn derive_activity_detail_data(
     result.map_err(|message| AppError::validation_field("file", message))
 }
 
-pub fn serialize_derived_activity_data(
-    data: &ActivityDerivedData,
-) -> Result<StoredActivityDerivedData, AppError> {
+pub fn serialize_derived_activity_data(data: &ActivityDerivedData) -> Result<StoredActivityDerivedData, AppError> {
     Ok(StoredActivityDerivedData::from(data))
 }
 
-pub fn deserialize_derived_activity_data(
-    raw: Option<&StoredActivityDerivedData>,
-) -> ActivityDerivedData {
+pub fn deserialize_derived_activity_data(raw: Option<&StoredActivityDerivedData>) -> ActivityDerivedData {
     match raw {
         Some(value) => ActivityDerivedData::from(value.clone()),
         _ => ActivityDerivedData::default(),
     }
 }
 
-pub fn serialize_route_point_series(
-    route_points: &[ActivityRoutePoint],
-) -> Result<StoredRoutePointSeries, AppError> {
+pub fn serialize_route_point_series(route_points: &[ActivityRoutePoint]) -> Result<StoredRoutePointSeries, AppError> {
     Ok(StoredRoutePointSeries(route_points.to_vec()))
 }
 
-pub fn deserialize_route_point_series(
-    raw: Option<&StoredRoutePointSeries>,
-) -> Vec<ActivityRoutePoint> {
+pub fn deserialize_route_point_series(raw: Option<&StoredRoutePointSeries>) -> Vec<ActivityRoutePoint> {
     raw.map(|series| series.0.clone()).unwrap_or_default()
 }
 
 fn derive_gpx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDerivedData, String> {
-    let summary =
-        summarize_activity_upload(filename, "gpx", bytes).map_err(|error| error.message)?;
+    let summary = summarize_activity_upload(filename, "gpx", bytes).map_err(|error| error.message)?;
     let document = parse_xml_document(bytes, "GPX")?;
     let track = document
         .descendants()
@@ -82,17 +73,13 @@ fn derive_gpx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDe
     Ok(ActivityDerivedData {
         recording: crate::activity_recording::RecordingContext::from_xml(&document),
         laps: vec![full_activity_lap(&summary)],
-        chart_points: downsample_chart_points(
-            build_gpx_chart_points(&points, summary.started_at),
-            MAX_CHART_POINTS,
-        ),
+        chart_points: downsample_chart_points(build_gpx_chart_points(&points, summary.started_at), MAX_CHART_POINTS),
         route_points: build_gpx_route_points(&points, summary.started_at),
     })
 }
 
 fn derive_tcx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDerivedData, String> {
-    let summary =
-        summarize_activity_upload(filename, "tcx", bytes).map_err(|error| error.message)?;
+    let summary = summarize_activity_upload(filename, "tcx", bytes).map_err(|error| error.message)?;
     let document = parse_xml_document(bytes, "TCX")?;
     let activity = tcx_activity_node(&document)?;
     let laps = tcx_lap_nodes(activity);
@@ -103,10 +90,7 @@ fn derive_tcx_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDe
     Ok(ActivityDerivedData {
         recording: crate::activity_recording::RecordingContext::from_xml(&document),
         laps: detail_laps,
-        chart_points: downsample_chart_points(
-            build_tcx_chart_points(&points, summary.started_at),
-            MAX_CHART_POINTS,
-        ),
+        chart_points: downsample_chart_points(build_tcx_chart_points(&points, summary.started_at), MAX_CHART_POINTS),
         route_points: build_tcx_route_points(&points, summary.started_at),
     })
 }
@@ -125,9 +109,7 @@ fn tcx_lap_nodes<'a>(activity: Node<'a, 'a>) -> Vec<Node<'a, 'a>> {
         .collect()
 }
 
-fn parse_tcx_activity_track_points(
-    activity: Node<'_, '_>,
-) -> Result<Vec<TrackPointSample>, String> {
+fn parse_tcx_activity_track_points(activity: Node<'_, '_>) -> Result<Vec<TrackPointSample>, String> {
     activity
         .descendants()
         .filter(|node| is_element_named(*node, "Trackpoint"))
@@ -135,18 +117,14 @@ fn parse_tcx_activity_track_points(
         .collect()
 }
 
-fn build_tcx_activity_laps(
-    summary: &ActivityDraft,
-    laps: &[Node<'_, '_>],
-) -> Result<Vec<ActivityLap>, String> {
+fn build_tcx_activity_laps(summary: &ActivityDraft, laps: &[Node<'_, '_>]) -> Result<Vec<ActivityLap>, String> {
     let mut activity_laps = Vec::new();
     let mut fallback_start_offset_seconds = 0;
 
     for (index, lap) in laps.iter().enumerate() {
-        let activity_lap =
-            build_tcx_activity_lap(summary, *lap, index, fallback_start_offset_seconds)?;
-        fallback_start_offset_seconds = fallback_start_offset_seconds
-            .saturating_add(activity_lap.duration_seconds.unwrap_or_default());
+        let activity_lap = build_tcx_activity_lap(summary, *lap, index, fallback_start_offset_seconds)?;
+        fallback_start_offset_seconds =
+            fallback_start_offset_seconds.saturating_add(activity_lap.duration_seconds.unwrap_or_default());
         activity_laps.push(activity_lap);
     }
 
@@ -171,14 +149,13 @@ fn build_tcx_activity_lap(
     let lap_duration_seconds = child_text(lap, "TotalTimeSeconds")
         .and_then(parse_f64)
         .and_then(seconds_from_f64);
-    let lap_distance_meters =
-        metric_from_f64(child_text(lap, "DistanceMeters").and_then(parse_f64)).or_else(|| {
-            lap_points
-                .iter()
-                .filter_map(|point| point.distance_meters)
-                .reduce(f64::max)
-                .and_then(|distance| metric_from_f64(Some(distance)))
-        });
+    let lap_distance_meters = metric_from_f64(child_text(lap, "DistanceMeters").and_then(parse_f64)).or_else(|| {
+        lap_points
+            .iter()
+            .filter_map(|point| point.distance_meters)
+            .reduce(f64::max)
+            .and_then(|distance| metric_from_f64(Some(distance)))
+    });
     let (lap_elevation_gain_meters, lap_elevation_loss_meters) = summarize_elevation(&lap_points);
     let lap_heart_rates = lap_points
         .iter()
@@ -242,8 +219,7 @@ fn derive_fit_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDe
             .track_points
             .iter()
             .map(|point| ActivityChartPoint {
-                elapsed_seconds: elapsed_seconds_from(parsed.draft.started_at, point.timestamp)
-                    .unwrap_or(0),
+                elapsed_seconds: elapsed_seconds_from(parsed.draft.started_at, point.timestamp).unwrap_or(0),
                 distance_meters: point.distance_meters,
                 elevation_meters: point.elevation_meters,
                 speed_mps: point.speed_mps,
@@ -259,8 +235,7 @@ fn derive_fit_activity_detail(filename: &str, bytes: &[u8]) -> Result<ActivityDe
         .iter()
         .filter_map(|point| {
             Some(ActivityRoutePoint {
-                elapsed_seconds: elapsed_seconds_from(parsed.draft.started_at, point.timestamp)
-                    .unwrap_or(0),
+                elapsed_seconds: elapsed_seconds_from(parsed.draft.started_at, point.timestamp).unwrap_or(0),
                 latitude: point.latitude?,
                 longitude: point.longitude?,
                 distance_meters: point.distance_meters,
@@ -339,10 +314,7 @@ fn full_activity_lap(summary: &ActivityDraft) -> ActivityLap {
     }
 }
 
-fn build_gpx_chart_points(
-    points: &[TrackPointSample],
-    started_at: DateTime<Utc>,
-) -> Vec<ActivityChartPoint> {
+fn build_gpx_chart_points(points: &[TrackPointSample], started_at: DateTime<Utc>) -> Vec<ActivityChartPoint> {
     let mut chart_points = Vec::with_capacity(points.len());
     let mut cumulative_distance_meters = 0.0;
 
@@ -358,8 +330,9 @@ fn build_gpx_chart_points(
             cumulative_distance_meters += segment_distance_meters;
 
             match (previous.time, point.time) {
-                (Some(start), Some(end)) => seconds_between(start, end)
-                    .map(|seconds| segment_distance_meters / f64::from(seconds)),
+                (Some(start), Some(end)) => {
+                    seconds_between(start, end).map(|seconds| segment_distance_meters / f64::from(seconds))
+                }
                 _ => None,
             }
         } else {
@@ -383,10 +356,7 @@ fn build_gpx_chart_points(
     chart_points
 }
 
-fn build_gpx_route_points(
-    points: &[TrackPointSample],
-    started_at: DateTime<Utc>,
-) -> Vec<ActivityRoutePoint> {
+fn build_gpx_route_points(points: &[TrackPointSample], started_at: DateTime<Utc>) -> Vec<ActivityRoutePoint> {
     let mut route_points = Vec::with_capacity(points.len());
     let mut cumulative_distance_meters = 0.0;
 
@@ -407,8 +377,9 @@ fn build_gpx_route_points(
             cumulative_distance_meters += segment_distance_meters;
 
             match (previous.time, point.time) {
-                (Some(start), Some(end)) => seconds_between(start, end)
-                    .map(|seconds| segment_distance_meters / f64::from(seconds)),
+                (Some(start), Some(end)) => {
+                    seconds_between(start, end).map(|seconds| segment_distance_meters / f64::from(seconds))
+                }
                 _ => None,
             }
         } else {
@@ -434,10 +405,7 @@ fn build_gpx_route_points(
     route_points
 }
 
-fn build_tcx_chart_points(
-    points: &[TrackPointSample],
-    started_at: DateTime<Utc>,
-) -> Vec<ActivityChartPoint> {
+fn build_tcx_chart_points(points: &[TrackPointSample], started_at: DateTime<Utc>) -> Vec<ActivityChartPoint> {
     let mut chart_points = Vec::with_capacity(points.len());
     let mut previous_distance_meters = None;
     let mut previous_time = None;
@@ -445,17 +413,9 @@ fn build_tcx_chart_points(
 
     for (index, point) in points.iter().enumerate() {
         let distance_meters = point.distance_meters.or(last_known_distance_meters);
-        let speed_mps = match (
-            previous_distance_meters,
-            distance_meters,
-            previous_time,
-            point.time,
-        ) {
-            (Some(prev_distance), Some(curr_distance), Some(start), Some(end))
-                if curr_distance >= prev_distance =>
-            {
-                seconds_between(start, end)
-                    .map(|seconds| (curr_distance - prev_distance) / f64::from(seconds))
+        let speed_mps = match (previous_distance_meters, distance_meters, previous_time, point.time) {
+            (Some(prev_distance), Some(curr_distance), Some(start), Some(end)) if curr_distance >= prev_distance => {
+                seconds_between(start, end).map(|seconds| (curr_distance - prev_distance) / f64::from(seconds))
             }
             _ => None,
         };
@@ -465,8 +425,7 @@ fn build_tcx_chart_points(
                 .time
                 .and_then(|time| elapsed_seconds_from(started_at, time))
                 .unwrap_or(index as i32),
-            distance_meters: distance_meters
-                .and_then(|distance| sample_metric_from_f64(Some(distance))),
+            distance_meters: distance_meters.and_then(|distance| sample_metric_from_f64(Some(distance))),
             elevation_meters: sample_metric_from_f64(point.elevation_meters),
             speed_mps: sample_metric_from_f64(speed_mps),
             heart_rate_bpm: point.heart_rate_bpm,
@@ -484,10 +443,7 @@ fn build_tcx_chart_points(
     chart_points
 }
 
-fn build_tcx_route_points(
-    points: &[TrackPointSample],
-    started_at: DateTime<Utc>,
-) -> Vec<ActivityRoutePoint> {
+fn build_tcx_route_points(points: &[TrackPointSample], started_at: DateTime<Utc>) -> Vec<ActivityRoutePoint> {
     let mut route_points = Vec::new();
     let mut previous_distance_meters = None;
     let mut previous_time = None;
@@ -507,17 +463,9 @@ fn build_tcx_route_points(
         };
 
         let distance_meters = point.distance_meters.or(last_known_distance_meters);
-        let speed_mps = match (
-            previous_distance_meters,
-            distance_meters,
-            previous_time,
-            point.time,
-        ) {
-            (Some(prev_distance), Some(curr_distance), Some(start), Some(end))
-                if curr_distance >= prev_distance =>
-            {
-                seconds_between(start, end)
-                    .map(|seconds| (curr_distance - prev_distance) / f64::from(seconds))
+        let speed_mps = match (previous_distance_meters, distance_meters, previous_time, point.time) {
+            (Some(prev_distance), Some(curr_distance), Some(start), Some(end)) if curr_distance >= prev_distance => {
+                seconds_between(start, end).map(|seconds| (curr_distance - prev_distance) / f64::from(seconds))
             }
             _ => None,
         };
@@ -529,8 +477,7 @@ fn build_tcx_route_points(
                 .unwrap_or(index as i32),
             latitude,
             longitude,
-            distance_meters: distance_meters
-                .and_then(|distance| sample_metric_from_f64(Some(distance))),
+            distance_meters: distance_meters.and_then(|distance| sample_metric_from_f64(Some(distance))),
             elevation_meters: sample_metric_from_f64(point.elevation_meters),
             speed_mps: sample_metric_from_f64(speed_mps),
             heart_rate_bpm: point.heart_rate_bpm,
@@ -548,10 +495,7 @@ fn build_tcx_route_points(
     route_points
 }
 
-fn downsample_chart_points(
-    chart_points: Vec<ActivityChartPoint>,
-    max_points: usize,
-) -> Vec<ActivityChartPoint> {
+fn downsample_chart_points(chart_points: Vec<ActivityChartPoint>, max_points: usize) -> Vec<ActivityChartPoint> {
     if chart_points.len() <= max_points || max_points == 0 {
         return chart_points;
     }
@@ -578,8 +522,7 @@ fn downsample_chart_points(
 }
 
 fn parse_xml_document<'a>(bytes: &'a [u8], format_name: &str) -> Result<Document<'a>, String> {
-    let xml = std::str::from_utf8(bytes)
-        .map_err(|_| format!("{format_name} uploads must be UTF-8 XML files"))?;
+    let xml = std::str::from_utf8(bytes).map_err(|_| format!("{format_name} uploads must be UTF-8 XML files"))?;
     let xml = xml
         .strip_prefix('\u{feff}')
         .unwrap_or(xml)
@@ -605,9 +548,7 @@ fn parse_gpx_track_point(node: Node<'_, '_>) -> Result<TrackPointSample, String>
         distance_meters: None,
         heart_rate_bpm: descendant_text(node, "hr").as_deref().and_then(parse_i32),
         cadence_rpm: descendant_text(node, "cad").as_deref().and_then(parse_i32),
-        power_watts: descendant_text(node, "power")
-            .as_deref()
-            .and_then(parse_i32),
+        power_watts: descendant_text(node, "power").as_deref().and_then(parse_i32),
     })
 }
 
@@ -625,14 +566,10 @@ fn parse_tcx_track_point(node: Node<'_, '_>) -> Result<TrackPointSample, String>
         heart_rate_bpm: child_element(node, "HeartRateBpm")
             .and_then(|heart_rate| child_text(heart_rate, "Value"))
             .and_then(parse_i32),
-        cadence_rpm: child_text(node, "Cadence").and_then(parse_i32).or_else(|| {
-            descendant_text(node, "RunCadence")
-                .as_deref()
-                .and_then(parse_i32)
-        }),
-        power_watts: descendant_text(node, "Watts")
-            .as_deref()
-            .and_then(parse_i32),
+        cadence_rpm: child_text(node, "Cadence")
+            .and_then(parse_i32)
+            .or_else(|| descendant_text(node, "RunCadence").as_deref().and_then(parse_i32)),
+        power_watts: descendant_text(node, "Watts").as_deref().and_then(parse_i32),
     })
 }
 
@@ -668,9 +605,7 @@ fn summarize_elevation(points: &[TrackPointSample]) -> (Option<f64>, Option<f64>
     let mut loss_meters = 0.0;
 
     for window in points.windows(2) {
-        if let (Some(previous), Some(current)) =
-            (window[0].elevation_meters, window[1].elevation_meters)
-        {
+        if let (Some(previous), Some(current)) = (window[0].elevation_meters, window[1].elevation_meters) {
             let delta = current - previous;
             if delta > 0.0 {
                 gain_meters += delta;
@@ -680,10 +615,7 @@ fn summarize_elevation(points: &[TrackPointSample]) -> (Option<f64>, Option<f64>
         }
     }
 
-    (
-        metric_from_f64(Some(gain_meters)),
-        metric_from_f64(Some(loss_meters)),
-    )
+    (metric_from_f64(Some(gain_meters)), metric_from_f64(Some(loss_meters)))
 }
 
 fn average_metric(values: &[i32]) -> Option<i32> {
@@ -691,10 +623,7 @@ fn average_metric(values: &[i32]) -> Option<i32> {
         return None;
     }
 
-    Some(
-        (values.iter().copied().map(i64::from).sum::<i64>() as f64 / values.len() as f64).round()
-            as i32,
-    )
+    Some((values.iter().copied().map(i64::from).sum::<i64>() as f64 / values.len() as f64).round() as i32)
 }
 
 fn max_metric(values: &[i32]) -> Option<i32> {
@@ -702,9 +631,7 @@ fn max_metric(values: &[i32]) -> Option<i32> {
 }
 
 fn metric_from_f64(value: Option<f64>) -> Option<f64> {
-    value
-        .filter(|metric| metric.is_finite())
-        .filter(|metric| *metric > 0.0)
+    value.filter(|metric| metric.is_finite()).filter(|metric| *metric > 0.0)
 }
 
 fn sample_metric_from_f64(value: Option<f64>) -> Option<f64> {
@@ -751,21 +678,14 @@ fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
         .map(|datetime| datetime.with_timezone(&Utc))
 }
 
-fn haversine_distance_meters(
-    start_latitude: f64,
-    start_longitude: f64,
-    end_latitude: f64,
-    end_longitude: f64,
-) -> f64 {
+fn haversine_distance_meters(start_latitude: f64, start_longitude: f64, end_latitude: f64, end_longitude: f64) -> f64 {
     let earth_radius_meters = 6_371_000.0;
     let latitude_delta = (end_latitude - start_latitude).to_radians();
     let longitude_delta = (end_longitude - start_longitude).to_radians();
     let start_latitude_radians = start_latitude.to_radians();
     let end_latitude_radians = end_latitude.to_radians();
     let a = (latitude_delta / 2.0).sin().powi(2)
-        + start_latitude_radians.cos()
-            * end_latitude_radians.cos()
-            * (longitude_delta / 2.0).sin().powi(2);
+        + start_latitude_radians.cos() * end_latitude_radians.cos() * (longitude_delta / 2.0).sin().powi(2);
     let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
 
     earth_radius_meters * c
@@ -867,8 +787,7 @@ mod tests {
             </gpx>
         "#;
 
-        let detail = derive_activity_detail_data("evening-ride.gpx", "gpx", gpx.as_bytes())
-            .expect("gpx detail");
+        let detail = derive_activity_detail_data("evening-ride.gpx", "gpx", gpx.as_bytes()).expect("gpx detail");
 
         assert_eq!(detail.laps.len(), 1);
         assert_eq!(detail.laps[0].title, "Full activity");
@@ -938,8 +857,7 @@ mod tests {
             </TrainingCenterDatabase>
         "#;
 
-        let detail = derive_activity_detail_data("lunch-ride.tcx", "tcx", tcx.as_bytes())
-            .expect("tcx detail");
+        let detail = derive_activity_detail_data("lunch-ride.tcx", "tcx", tcx.as_bytes()).expect("tcx detail");
 
         assert_eq!(detail.laps.len(), 1);
         assert_eq!(detail.laps[0].calories, Some(220));
@@ -1159,8 +1077,7 @@ mod tests {
                         </TrainingCenterDatabase>
                 "#;
 
-        let detail = derive_activity_detail_data("power.tcx", "tcx", tcx.as_bytes())
-            .expect("tcx detail with power");
+        let detail = derive_activity_detail_data("power.tcx", "tcx", tcx.as_bytes()).expect("tcx detail with power");
 
         assert_eq!(detail.chart_points[0].power_watts, Some(205));
     }

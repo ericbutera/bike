@@ -4,8 +4,7 @@ use bike_core::strava::events::StravaEvent;
 use temporalio_common::data_converters::TemporalDeserializable;
 use temporalio_common::error::ActivityExecutionError;
 use temporalio_sdk::{
-    ActivityCancellationType, ActivityOptions, ChildWorkflowOptions, WorkflowContext,
-    WorkflowResult,
+    ActivityCancellationType, ActivityOptions, ChildWorkflowOptions, WorkflowContext, WorkflowResult,
 };
 use temporalio_workflow::common::WorkflowDefinition;
 use temporalio_workflow::{common::ActivityDefinition, WorkflowTermination};
@@ -39,10 +38,7 @@ where
     Ok((child, log))
 }
 
-pub(super) async fn execute_child_workflow<
-    W,
-    D: WorkflowDefinition<Input = StravaEvent> + 'static,
->(
+pub(super) async fn execute_child_workflow<W, D: WorkflowDefinition<Input = StravaEvent> + 'static>(
     ctx: &mut WorkflowContext<W>,
     definition: D,
     event: StravaEvent,
@@ -57,10 +53,7 @@ where
     result
 }
 
-pub(super) fn workflow_result<W, T>(
-    ctx: &WorkflowContext<W>,
-    result: WorkflowResult<T>,
-) -> WorkflowResult<T> {
+pub(super) fn workflow_result<W, T>(ctx: &WorkflowContext<W>, result: WorkflowResult<T>) -> WorkflowResult<T> {
     if ctx.cancellation_token().is_cancelled() {
         Err(WorkflowTermination::cancelled())
     } else {
@@ -78,19 +71,13 @@ where
 {
     validate_input(ctx, &input)?;
     let name = definition.name();
-    let summary = name
-        .strip_prefix("strava_")
-        .unwrap_or(name)
-        .replace('_', " ");
+    let summary = name.strip_prefix("strava_").unwrap_or(name).replace('_', " ");
     ctx.execute_activity(definition, input, activity(&summary))
         .await
         .map_err(termination)
 }
 
-pub(super) fn validate_input<W, T: serde::Serialize>(
-    ctx: &WorkflowContext<W>,
-    input: &T,
-) -> WorkflowResult<()> {
+pub(super) fn validate_input<W, T: serde::Serialize>(ctx: &WorkflowContext<W>, input: &T) -> WorkflowResult<()> {
     match bike_core::strava::payload::validate_temporal(input) {
         Err(error) if ctx.patched("strava-payload-budget-v1") => Err(failure(error.to_string())),
         _ => Ok(()),
@@ -115,10 +102,7 @@ pub(super) fn termination(error: ActivityExecutionError) -> WorkflowTermination 
 }
 
 pub(super) fn failure(message: impl Into<String>) -> WorkflowTermination {
-    temporalio_common::error::ApplicationFailure::non_retryable(std::io::Error::other(
-        message.into(),
-    ))
-    .into()
+    temporalio_common::error::ApplicationFailure::non_retryable(std::io::Error::other(message.into())).into()
 }
 
 pub(super) fn upsert_child(event: &bike_core::strava::events::StravaEvent) -> ChildWorkflowOptions {

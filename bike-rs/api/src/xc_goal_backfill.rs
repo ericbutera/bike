@@ -7,8 +7,7 @@ use sea_orm::DatabaseConnection;
 
 pub use bike_core::xc_goal_backfill::{
     message_for_status, XC_GOAL_BACKFILL_STATUS_COMPLETED, XC_GOAL_BACKFILL_STATUS_FAILED,
-    XC_GOAL_BACKFILL_STATUS_QUEUED, XC_GOAL_BACKFILL_STATUS_RUNNING,
-    XC_GOAL_BACKFILL_STATUS_WAITING,
+    XC_GOAL_BACKFILL_STATUS_QUEUED, XC_GOAL_BACKFILL_STATUS_RUNNING, XC_GOAL_BACKFILL_STATUS_WAITING,
 };
 
 impl From<XcGoalBackfillError> for AppError {
@@ -44,10 +43,7 @@ pub async fn set_user_xc_goal_backfill_state(
         .map_err(AppError::from)
 }
 
-pub async fn clear_user_xc_goal_backfill_state(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<(), AppError> {
+pub async fn clear_user_xc_goal_backfill_state(db: &DatabaseConnection, user_id: i32) -> Result<(), AppError> {
     core_xc_goal_backfill::clear_user_xc_goal_backfill_state(db, user_id)
         .await
         .map_err(AppError::from)

@@ -9,12 +9,8 @@ use temporalio_sdk::workflow_replayer::{WorkflowReplayer, WorkflowReplayerOption
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let mut args = std::env::args().skip(1);
-    let mode = args
-        .next()
-        .ok_or("Use --file history.json or --workflow workflow-id")?;
-    let value = args
-        .next()
-        .ok_or("A history path or workflow ID is required")?;
+    let mode = args.next().ok_or("Use --file history.json or --workflow workflow-id")?;
+    let value = args.next().ok_or("A history path or workflow ID is required")?;
     if args.next().is_some() {
         return Err("Expected exactly a mode and value".into());
     }
@@ -39,9 +35,7 @@ async fn main() -> Result<(), Error> {
         .register_workflow::<DisconnectStrava>()?
         .register_workflow::<ScheduledSync>()?
         .build();
-    WorkflowReplayer::new(options)?
-        .replay_workflow(history)
-        .await?;
+    WorkflowReplayer::new(options)?.replay_workflow(history).await?;
     println!("Native worker replay passed: {value}");
     Ok(())
 }

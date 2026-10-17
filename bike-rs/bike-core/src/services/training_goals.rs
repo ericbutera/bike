@@ -3,8 +3,8 @@ use crate::activity_type::ActivityType;
 use crate::analytics::{FATIGUE_WINDOW_DAYS, FITNESS_WINDOW_DAYS};
 use crate::entities::activities::ActivitySummaryRow;
 use crate::entities::{
-    activities, activity_training_analyses, analytics_user_states, fitness_freshness_daily,
-    segment_efforts, segments, user_preferences,
+    activities, activity_training_analyses, analytics_user_states, fitness_freshness_daily, segment_efforts, segments,
+    user_preferences,
 };
 use crate::errors::BikeCoreError;
 use crate::training_data::deserialize_activity_heart_rate_zones;
@@ -472,15 +472,13 @@ impl TrainingGoalsService {
         now: DateTime<Utc>,
     ) -> Result<XcGoalProgressResponse, BikeCoreError> {
         let goal = load_xc_event_goal(db, user_id).await?;
-        let freshness =
-            load_latest_fitness_freshness_snapshot(db, user_id, now.date_naive()).await?;
+        let freshness = load_latest_fitness_freshness_snapshot(db, user_id, now.date_naive()).await?;
         let analysis_models = activity_training_analyses::Model::for_user(db, user_id).await?;
         let activity_ids = analysis_models
             .iter()
             .map(|analysis| analysis.activity_id)
             .collect::<Vec<_>>();
-        let activity_by_id =
-            activities::Model::training_summaries(db, user_id, &activity_ids).await?;
+        let activity_by_id = activities::Model::training_summaries(db, user_id, &activity_ids).await?;
 
         let mut rides = xc_rides_from_analysis_models(analysis_models, &activity_by_id);
         let race_activities = activities::Model::race_summaries(db, user_id).await?;
@@ -496,14 +494,10 @@ impl TrainingGoalsService {
         user_id: i32,
         now: DateTime<Utc>,
     ) -> Result<DhGoalProgressResponse, BikeCoreError> {
-        let freshness =
-            load_latest_fitness_freshness_snapshot(db, user_id, now.date_naive()).await?;
+        let freshness = load_latest_fitness_freshness_snapshot(db, user_id, now.date_naive()).await?;
         let segment_models = segments::Model::downhill_for_user(db, user_id).await?;
 
-        let segment_ids = segment_models
-            .iter()
-            .map(|segment| segment.id)
-            .collect::<Vec<_>>();
+        let segment_ids = segment_models.iter().map(|segment| segment.id).collect::<Vec<_>>();
         let effort_models = if segment_ids.is_empty() {
             Vec::new()
         } else {
@@ -513,16 +507,10 @@ impl TrainingGoalsService {
             .iter()
             .map(|effort| effort.activity_id)
             .collect::<Vec<_>>();
-        let activity_by_id =
-            activities::Model::training_summaries(db, user_id, &activity_ids).await?;
+        let activity_by_id = activities::Model::training_summaries(db, user_id, &activity_ids).await?;
         let efforts = dh_effort_sources_from_models(effort_models, &activity_by_id);
 
-        Ok(build_dh_goal_progress_response(
-            segment_models,
-            efforts,
-            freshness,
-            now,
-        ))
+        Ok(build_dh_goal_progress_response(segment_models, efforts, freshness, now))
     }
 }
 
@@ -570,19 +558,12 @@ fn xc_ride_from_analysis_model(
         z4_seconds: zone_seconds[3],
         z5_seconds: zone_seconds[4],
         training_purpose: XcTrainingPurpose::DataQuality,
-        training_purpose_detail:
-            "Training purpose will be classified with the active event target.".to_string(),
+        training_purpose_detail: "Training purpose will be classified with the active event target.".to_string(),
     })
 }
 
-fn append_missing_race_rides(
-    rides: &mut Vec<XcRideProgressResponse>,
-    race_activities: Vec<ActivitySummaryRow>,
-) {
-    let ride_ids = rides
-        .iter()
-        .map(|ride| ride.activity_id)
-        .collect::<HashSet<_>>();
+fn append_missing_race_rides(rides: &mut Vec<XcRideProgressResponse>, race_activities: Vec<ActivitySummaryRow>) {
+    let ride_ids = rides.iter().map(|ride| ride.activity_id).collect::<HashSet<_>>();
 
     rides.extend(
         race_activities
@@ -647,8 +628,8 @@ fn race_activity_without_analysis(activity: ActivitySummaryRow) -> XcRideProgres
         z4_seconds: zone_seconds[3],
         z5_seconds: zone_seconds[4],
         training_purpose: XcTrainingPurpose::DataQuality,
-        training_purpose_detail:
-            "Race result is used as an outcome benchmark, not a training prescription.".to_string(),
+        training_purpose_detail: "Race result is used as an outcome benchmark, not a training prescription."
+            .to_string(),
     }
 }
 
@@ -678,14 +659,8 @@ async fn load_xc_event_goal(
         preferences.xc_goal_target_distance_meters,
         preferences.xc_goal_target_elevation_gain_meters,
     ) {
-        (
-            Some(start_date),
-            Some(target_date),
-            Some(target_distance_meters),
-            Some(target_elevation_gain_meters),
-        ) if start_date <= target_date
-            && target_distance_meters > 0.0
-            && target_elevation_gain_meters > 0.0 =>
+        (Some(start_date), Some(target_date), Some(target_distance_meters), Some(target_elevation_gain_meters))
+            if start_date <= target_date && target_distance_meters > 0.0 && target_elevation_gain_meters > 0.0 =>
         {
             Ok(Some(XcEventGoal {
                 start_date,
@@ -694,9 +669,7 @@ async fn load_xc_event_goal(
                 target_elevation_gain_meters,
                 event_name: preferences.xc_goal_event_name,
                 target_finish_time_seconds: preferences.xc_goal_target_finish_time_seconds,
-                event_profile: XcEventProfile::from_stored(
-                    preferences.xc_goal_event_profile.as_deref(),
-                ),
+                event_profile: XcEventProfile::from_stored(preferences.xc_goal_event_profile.as_deref()),
             }))
         }
         _ => Ok(None),
@@ -718,8 +691,7 @@ async fn load_latest_fitness_freshness_snapshot(
         return Ok(None);
     }
 
-    let latest_row =
-        fitness_freshness_daily::Model::latest_at_or_before(db, user_id, end_date).await?;
+    let latest_row = fitness_freshness_daily::Model::latest_at_or_before(db, user_id, end_date).await?;
 
     Ok(latest_row.map(|row| {
         decay_fitness_freshness_snapshot_to_day(
@@ -772,15 +744,7 @@ fn build_xc_goal_progress_response(
     let goals = xc_goal_metrics(&recent_metrics);
     let (readiness, deficits) = goal
         .as_ref()
-        .map(|goal| {
-            build_xc_readiness(
-                &rides,
-                goal,
-                now,
-                recent_metrics.recent_decoupling_average,
-                freshness,
-            )
-        })
+        .map(|goal| build_xc_readiness(&rides, goal, now, recent_metrics.recent_decoupling_average, freshness))
         .unwrap_or((None, Vec::new()));
     let recommendations = if goal.is_some() {
         build_xc_event_recommendations(
@@ -856,14 +820,8 @@ fn xc_recent_training_metrics(
             .filter(|ride| ride.started_at >= decoupling_window_start)
             .filter_map(|ride| ride.aerobic_decoupling_percent),
     );
-    let total_z2_time_seconds = recent_rides
-        .iter()
-        .map(|ride| ride.z2_time_seconds)
-        .sum::<i32>();
-    let total_climbing_time_seconds = recent_rides
-        .iter()
-        .map(|ride| ride.climbing_time_seconds)
-        .sum::<i32>();
+    let total_z2_time_seconds = recent_rides.iter().map(|ride| ride.z2_time_seconds).sum::<i32>();
+    let total_climbing_time_seconds = recent_rides.iter().map(|ride| ride.climbing_time_seconds).sum::<i32>();
     let total_climbing_elevation_gain_meters = recent_rides
         .iter()
         .filter_map(|ride| ride.climbing_elevation_gain_meters)
@@ -877,9 +835,7 @@ fn xc_recent_training_metrics(
             comparable_ride_count: comparable_ride_count as i32,
             total_z2_time_seconds,
             total_climbing_time_seconds,
-            total_climbing_elevation_gain_meters: round_metric(
-                total_climbing_elevation_gain_meters,
-            ),
+            total_climbing_elevation_gain_meters: round_metric(total_climbing_elevation_gain_meters),
             average_aerobic_decoupling_percent: recent_decoupling_average.map(round_metric),
         },
         comparable_ride_count,
@@ -971,10 +927,7 @@ fn build_xc_event_goal_response(
         event_profile: goal.event_profile,
         start_date: goal.start_date.format("%Y-%m-%d").to_string(),
         target_date: goal.target_date.format("%Y-%m-%d").to_string(),
-        days_remaining: goal
-            .target_date
-            .signed_duration_since(now.date_naive())
-            .num_days(),
+        days_remaining: goal.target_date.signed_duration_since(now.date_naive()).num_days(),
         target_distance_meters: round_metric(goal.target_distance_meters),
         target_elevation_gain_meters: round_metric(goal.target_elevation_gain_meters),
         target_finish_time_seconds: goal.target_finish_time_seconds,
@@ -989,11 +942,7 @@ fn build_xc_event_goal_response(
             )
             .unwrap_or_default(),
         ),
-        training_window_days: (goal
-            .target_date
-            .signed_duration_since(goal.start_date)
-            .num_days()
-            + 1) as i32,
+        training_window_days: (goal.target_date.signed_duration_since(goal.start_date).num_days() + 1) as i32,
         counted_ride_count: counted_rides.len() as i32,
         counted_distance_meters: round_metric(counted_distance_meters),
         counted_elevation_gain_meters: round_metric(counted_elevation_gain_meters),
@@ -1015,10 +964,7 @@ fn build_xc_readiness(
     now: DateTime<Utc>,
     recent_decoupling_average: Option<f64>,
     freshness: Option<FitnessFreshnessSnapshot>,
-) -> (
-    Option<XcReadinessSummaryResponse>,
-    Vec<XcTrainingDeficitResponse>,
-) {
+) -> (Option<XcReadinessSummaryResponse>, Vec<XcTrainingDeficitResponse>) {
     if goal.start_date > goal.target_date {
         return (None, Vec::new());
     }
@@ -1159,8 +1105,7 @@ fn xc_readiness_gates(
             unit: TrainingMetricUnit::MetersPerSecond,
             on_track_ratio: 1.0,
             watch_ratio: XC_FINISH_SPEED_WATCH_RATIO / XC_FINISH_SPEED_READY_RATIO,
-            detail:
-                "Recent Z2 speed compared with the event elapsed-speed target plus a small buffer.",
+            detail: "Recent Z2 speed compared with the event elapsed-speed target plus a small buffer.",
         }));
     }
 
@@ -1217,14 +1162,10 @@ struct XcReadinessGateInput {
 
 fn build_at_least_gate(input: XcReadinessGateInput) -> XcReadinessGateResponse {
     let status = match input.current_value {
-        Some(current)
-            if input.target_value > 0.0 && current >= input.target_value * input.on_track_ratio =>
-        {
+        Some(current) if input.target_value > 0.0 && current >= input.target_value * input.on_track_ratio => {
             XcReadinessStatus::OnTrack
         }
-        Some(current)
-            if input.target_value > 0.0 && current >= input.target_value * input.watch_ratio =>
-        {
+        Some(current) if input.target_value > 0.0 && current >= input.target_value * input.watch_ratio => {
             XcReadinessStatus::Watch
         }
         Some(_) => XcReadinessStatus::FallingBehind,
@@ -1255,14 +1196,10 @@ fn build_at_least_gate(input: XcReadinessGateInput) -> XcReadinessGateResponse {
 
 fn build_at_most_gate(input: XcReadinessGateInput) -> XcReadinessGateResponse {
     let status = match input.current_value {
-        Some(current)
-            if input.target_value > 0.0 && current <= input.target_value * input.on_track_ratio =>
-        {
+        Some(current) if input.target_value > 0.0 && current <= input.target_value * input.on_track_ratio => {
             XcReadinessStatus::OnTrack
         }
-        Some(current)
-            if input.target_value > 0.0 && current <= input.target_value * input.watch_ratio =>
-        {
+        Some(current) if input.target_value > 0.0 && current <= input.target_value * input.watch_ratio => {
             XcReadinessStatus::Watch
         }
         Some(_) => XcReadinessStatus::FallingBehind,
@@ -1281,12 +1218,8 @@ fn build_at_most_gate(input: XcReadinessGateInput) -> XcReadinessGateResponse {
             .current_value
             .map(|current| (current - input.target_value).max(0.0))
             .map(round_metric),
-        progress_percent: goal_progress_percent(
-            input.current_value,
-            input.target_value,
-            TrainingGoalDirection::AtMost,
-        )
-        .map(round_metric),
+        progress_percent: goal_progress_percent(input.current_value, input.target_value, TrainingGoalDirection::AtMost)
+            .map(round_metric),
         detail: input.detail.to_string(),
     }
 }
@@ -1315,12 +1248,8 @@ fn build_recovery_gate(freshness: Option<FitnessFreshnessSnapshot>) -> XcReadine
             XcReadinessStatus::FallingBehind => {
                 "Fatigue is outrunning fitness; make the next ride easier before adding load."
             }
-            XcReadinessStatus::OnTrack => {
-                "Fitness is established and form is positive enough for a quality benchmark."
-            }
-            XcReadinessStatus::Watch => {
-                "Recovery is usable, but not a green light for stacking every deficit at once."
-            }
+            XcReadinessStatus::OnTrack => "Fitness is established and form is positive enough for a quality benchmark.",
+            XcReadinessStatus::Watch => "Recovery is usable, but not a green light for stacking every deficit at once.",
             XcReadinessStatus::MissingData => {
                 "Fitness/fatigue/form is not available, so recovery cannot adjust the advice."
             }
@@ -1336,12 +1265,7 @@ fn build_xc_deficits_from_gates(
 ) -> Vec<XcTrainingDeficitResponse> {
     gates
         .iter()
-        .filter(|gate| {
-            matches!(
-                gate.status,
-                XcReadinessStatus::Watch | XcReadinessStatus::FallingBehind
-            )
-        })
+        .filter(|gate| matches!(gate.status, XcReadinessStatus::Watch | XcReadinessStatus::FallingBehind))
         .map(|gate| deficit_from_gate(gate, goal, now))
         .collect()
 }
@@ -1356,10 +1280,7 @@ fn deficit_from_gate(
     } else {
         TrainingRecommendationPriority::Medium
     };
-    let days_to_goal = goal
-        .target_date
-        .signed_duration_since(now.date_naive())
-        .num_days();
+    let days_to_goal = goal.target_date.signed_duration_since(now.date_naive()).num_days();
     let in_taper_window = days_to_goal <= XC_TAPER_WINDOW_DAYS;
 
     match gate.key {
@@ -1436,8 +1357,7 @@ fn suggested_long_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSuggested
         climbing_elevation_gain_meters: Some(readiness_goal_elevation_gain_meters(goal) * 0.3),
         intensity: "Z2 with a conservative finish".to_string(),
         terrain: "MTB route that resembles the event surface where possible".to_string(),
-        detail: "Useful for long-ride durability, fueling practice, and confidence at event scale."
-            .to_string(),
+        detail: "Useful for long-ride durability, fueling practice, and confidence at event scale.".to_string(),
     }
 }
 
@@ -1452,20 +1372,14 @@ fn suggested_climbing_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSugge
         duration_seconds_max: Some(18_000),
         distance_meters_min: None,
         distance_meters_max: None,
-        climbing_elevation_gain_meters: Some(
-            (readiness_goal_elevation_gain_meters(goal) * 0.25).max(600.0),
-        ),
+        climbing_elevation_gain_meters: Some((readiness_goal_elevation_gain_meters(goal) * 0.25).max(600.0)),
         intensity: "Z2 on climbs with short tempo pressure only if fresh".to_string(),
         terrain: "Hilly MTB route or repeated climbs".to_string(),
-        detail: "Useful for climbing durability and making the event elevation feel normal."
-            .to_string(),
+        detail: "Useful for climbing durability and making the event elevation feel normal.".to_string(),
     }
 }
 
-fn suggested_specificity_ride(
-    goal: &XcEventGoal,
-    in_taper_window: bool,
-) -> XcSuggestedRideResponse {
+fn suggested_specificity_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSuggestedRideResponse {
     if in_taper_window {
         return suggested_taper_ride();
     }
@@ -1484,8 +1398,7 @@ fn suggested_specificity_ride(
         climbing_elevation_gain_meters: target_density.map(|density| density * 40.0),
         intensity: "Mostly aerobic with event-like surges".to_string(),
         terrain: terrain_focus_for_goal(goal),
-        detail: "Useful for matching the event's climbing density and technical fatigue pattern."
-            .to_string(),
+        detail: "Useful for matching the event's climbing density and technical fatigue pattern.".to_string(),
     }
 }
 
@@ -1503,9 +1416,7 @@ fn suggested_tempo_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSuggeste
         climbing_elevation_gain_meters: None,
         intensity: "Z2 warmup, then 2-3 tempo blocks of 15-25 minutes".to_string(),
         terrain: "Controlled route where pacing stays steady".to_string(),
-        detail:
-            "Useful for lifting sustainable speed without turning the day into a maximal effort."
-                .to_string(),
+        detail: "Useful for lifting sustainable speed without turning the day into a maximal effort.".to_string(),
     }
 }
 
@@ -1523,8 +1434,7 @@ fn suggested_durability_ride(goal: &XcEventGoal, in_taper_window: bool) -> XcSug
         climbing_elevation_gain_meters: Some(readiness_goal_elevation_gain_meters(goal) * 0.2),
         intensity: "Strict Z2, steady fueling, no late hero pacing".to_string(),
         terrain: "Repeatable endurance route with reliable heart-rate data".to_string(),
-        detail: "Useful for reducing decoupling and proving the pace survives the back half."
-            .to_string(),
+        detail: "Useful for reducing decoupling and proving the pace survives the back half.".to_string(),
     }
 }
 
@@ -1538,9 +1448,7 @@ fn suggested_recovery_ride() -> XcSuggestedRideResponse {
         climbing_elevation_gain_meters: None,
         intensity: "Z1 to low Z2 only".to_string(),
         terrain: "Easy route with low consequence and low climbing pressure".to_string(),
-        detail:
-            "Useful for absorbing the current load before chasing another event-specific workout."
-                .to_string(),
+        detail: "Useful for absorbing the current load before chasing another event-specific workout.".to_string(),
     }
 }
 
@@ -1563,9 +1471,7 @@ fn terrain_focus_for_goal(goal: &XcEventGoal) -> String {
         Some(XcEventProfile::TechnicalSingletrack) => {
             "Technical singletrack with punchy climbs and repeated accelerations".to_string()
         }
-        Some(XcEventProfile::UltraMtb) => {
-            "Long MTB route with self-supported pacing and fueling practice".to_string()
-        }
+        Some(XcEventProfile::UltraMtb) => "Long MTB route with self-supported pacing and fueling practice".to_string(),
         Some(XcEventProfile::XcMarathon) => {
             "Race-like MTB loop with sustained pedaling and controlled surges".to_string()
         }
@@ -1579,16 +1485,10 @@ fn terrain_focus_for_goal(goal: &XcEventGoal) -> String {
 }
 
 fn overall_readiness_status(gates: &[XcReadinessGateResponse]) -> XcReadinessStatus {
-    if gates
-        .iter()
-        .any(|gate| gate.status == XcReadinessStatus::FallingBehind)
-    {
+    if gates.iter().any(|gate| gate.status == XcReadinessStatus::FallingBehind) {
         return XcReadinessStatus::FallingBehind;
     }
-    if gates
-        .iter()
-        .any(|gate| gate.status == XcReadinessStatus::Watch)
-    {
+    if gates.iter().any(|gate| gate.status == XcReadinessStatus::Watch) {
         return XcReadinessStatus::Watch;
     }
     let core_gates = gates
@@ -1624,21 +1524,14 @@ fn readiness_reason(
                 format!("{} is the biggest limiter right now.", deficit.title)
             }
             XcReadinessStatus::Watch => {
-                format!(
-                    "{} needs attention before it becomes the limiter.",
-                    deficit.title
-                )
+                format!("{} needs attention before it becomes the limiter.", deficit.title)
             }
             _ => "The key event-specific gates are currently covered.".to_string(),
         };
     }
 
-    if gates
-        .iter()
-        .any(|gate| gate.status == XcReadinessStatus::MissingData)
-    {
-        return "Some readiness signals are missing, but the available gates are not alarming."
-            .to_string();
+    if gates.iter().any(|gate| gate.status == XcReadinessStatus::MissingData) {
+        return "Some readiness signals are missing, but the available gates are not alarming.".to_string();
     }
 
     "The key event-specific gates are currently covered.".to_string()
@@ -1668,8 +1561,7 @@ fn classify_xc_training_purpose(
         0.0
     };
     let climbing_meters = effective_climbing_elevation_gain_meters(ride).unwrap_or_default();
-    let ride_density =
-        climb_density_meters_per_kilometer(Some(climbing_meters), ride.distance_meters);
+    let ride_density = climb_density_meters_per_kilometer(Some(climbing_meters), ride.distance_meters);
     let target_density = goal.and_then(|goal| {
         climb_density_meters_per_kilometer(
             Some(readiness_goal_elevation_gain_meters(goal)),
@@ -1685,8 +1577,7 @@ fn classify_xc_training_purpose(
     if moving_time_seconds > 0 && moving_time_seconds <= 4_500 && climbing_meters < 250.0 {
         return (
             XcTrainingPurpose::Recovery,
-            "Useful for recovery or aerobic maintenance without much event-specific load."
-                .to_string(),
+            "Useful for recovery or aerobic maintenance without much event-specific load.".to_string(),
         );
     }
     if high_density || climbing_meters >= 750.0 {
@@ -1701,11 +1592,7 @@ fn classify_xc_training_purpose(
             "Useful for base endurance and long-ride durability.".to_string(),
         );
     }
-    if ride
-        .aerobic_decoupling_percent
-        .is_some_and(|value| value > 6.0)
-        && moving_time_seconds >= 7_200
-    {
+    if ride.aerobic_decoupling_percent.is_some_and(|value| value > 6.0) && moving_time_seconds >= 7_200 {
         return (
             XcTrainingPurpose::TechnicalFatigue,
             "Useful as a fatigue-resistance signal because durability faded late.".to_string(),
@@ -1730,9 +1617,7 @@ fn classify_xc_training_purpose(
     )
 }
 
-fn weighted_z2_speed_mps<'a>(
-    rides: impl IntoIterator<Item = &'a XcRideProgressResponse>,
-) -> Option<f64> {
+fn weighted_z2_speed_mps<'a>(rides: impl IntoIterator<Item = &'a XcRideProgressResponse>) -> Option<f64> {
     let mut distance_meters = 0.0;
     let mut time_seconds = 0;
 
@@ -1803,18 +1688,11 @@ fn build_xc_race_results(rides: &[XcRideProgressResponse]) -> Vec<XcRaceResultRe
         .collect()
 }
 
-fn build_xc_race_result(
-    race: &XcRideProgressResponse,
-    rides: &[XcRideProgressResponse],
-) -> XcRaceResultResponse {
+fn build_xc_race_result(race: &XcRideProgressResponse, rides: &[XcRideProgressResponse]) -> XcRaceResultResponse {
     let prior_training = xc_race_prior_training(race, rides);
     let race_elevation_gain_meters = effective_climbing_elevation_gain_meters(race);
-    let distance_percent =
-        relative_percent(race.distance_meters, prior_training.best_distance_meters);
-    let elevation_percent = relative_percent(
-        race_elevation_gain_meters,
-        prior_training.best_elevation_gain_meters,
-    );
+    let distance_percent = relative_percent(race.distance_meters, prior_training.best_distance_meters);
+    let elevation_percent = relative_percent(race_elevation_gain_meters, prior_training.best_elevation_gain_meters);
     let (insight_title, insight_detail) = race_insight(
         prior_training.window_ride_count,
         prior_training.z2_time_seconds,
@@ -1843,9 +1721,7 @@ fn build_xc_race_result(
         aerobic_decoupling_percent: race.aerobic_decoupling_percent.map(round_metric),
         prior_training_ride_count: prior_training.window_ride_count as i32,
         prior_training_z2_time_seconds: prior_training.z2_time_seconds,
-        prior_training_climbing_elevation_gain_meters: round_metric(
-            prior_training.climbing_elevation_gain_meters,
-        ),
+        prior_training_climbing_elevation_gain_meters: round_metric(prior_training.climbing_elevation_gain_meters),
         prior_training_average_z2_speed_mps: prior_training.average_z2_speed_mps.map(round_metric),
         prior_training_average_aerobic_decoupling_percent: prior_training
             .average_aerobic_decoupling_percent
@@ -1857,10 +1733,7 @@ fn build_xc_race_result(
     }
 }
 
-fn xc_race_prior_training(
-    race: &XcRideProgressResponse,
-    rides: &[XcRideProgressResponse],
-) -> XcRacePriorTraining {
+fn xc_race_prior_training(race: &XcRideProgressResponse, rides: &[XcRideProgressResponse]) -> XcRacePriorTraining {
     let prior_window_start = race.started_at - Duration::days(XC_RECENT_WINDOW_DAYS);
     let prior_training_rides = rides
         .iter()
@@ -1874,19 +1747,12 @@ fn xc_race_prior_training(
 
     XcRacePriorTraining {
         window_ride_count: prior_window_rides.len(),
-        z2_time_seconds: prior_window_rides
-            .iter()
-            .map(|ride| ride.z2_time_seconds)
-            .sum(),
+        z2_time_seconds: prior_window_rides.iter().map(|ride| ride.z2_time_seconds).sum(),
         climbing_elevation_gain_meters: prior_window_rides
             .iter()
             .filter_map(|ride| effective_climbing_elevation_gain_meters(ride))
             .sum(),
-        average_z2_speed_mps: average_f64(
-            prior_window_rides
-                .iter()
-                .filter_map(|ride| ride.z2_average_speed_mps),
-        ),
+        average_z2_speed_mps: average_f64(prior_window_rides.iter().filter_map(|ride| ride.z2_average_speed_mps)),
         average_aerobic_decoupling_percent: average_f64(
             prior_window_rides
                 .iter()
@@ -1980,11 +1846,7 @@ fn build_dh_goal_progress_response(
             .iter()
             .filter_map(|session| session.average_repeat_fade_percent),
     );
-    let average_top_3_gap_percent = average_f64(
-        segments
-            .iter()
-            .filter_map(|segment| segment.top_3_pr_gap_percent),
-    );
+    let average_top_3_gap_percent = average_f64(segments.iter().filter_map(|segment| segment.top_3_pr_gap_percent));
 
     let summary = DhProgressSummaryResponse {
         segment_count: segment_models.len() as i32,
@@ -2045,18 +1907,13 @@ fn build_dh_segment_progress(
 ) -> Vec<DhSegmentProgressResponse> {
     let mut efforts_by_segment_id = HashMap::<i32, Vec<DhEffortSource>>::new();
     for effort in efforts.iter().cloned() {
-        efforts_by_segment_id
-            .entry(effort.segment_id)
-            .or_default()
-            .push(effort);
+        efforts_by_segment_id.entry(effort.segment_id).or_default().push(effort);
     }
 
     segment_models
         .iter()
         .map(|segment| {
-            let mut segment_efforts = efforts_by_segment_id
-                .remove(&segment.id)
-                .unwrap_or_default();
+            let mut segment_efforts = efforts_by_segment_id.remove(&segment.id).unwrap_or_default();
             segment_efforts.sort_by(|left, right| {
                 right
                     .started_at
@@ -2064,10 +1921,7 @@ fn build_dh_segment_progress(
                     .then_with(|| right.effort_index.cmp(&left.effort_index))
             });
 
-            let personal_record_duration_seconds = segment_efforts
-                .iter()
-                .map(|effort| effort.duration_seconds)
-                .min();
+            let personal_record_duration_seconds = segment_efforts.iter().map(|effort| effort.duration_seconds).min();
             let recent_best_duration_seconds = segment_efforts
                 .iter()
                 .take(DH_RECENT_EFFORT_LIMIT)
@@ -2100,8 +1954,7 @@ fn build_dh_segment_progress(
                 effort_count: segment_efforts.len() as i32,
                 personal_record_duration_seconds,
                 recent_best_duration_seconds,
-                rolling_top_3_average_duration_seconds: rolling_top_3_average_duration_seconds
-                    .map(round_metric),
+                rolling_top_3_average_duration_seconds: rolling_top_3_average_duration_seconds.map(round_metric),
                 top_3_pr_gap_percent: top_3_pr_gap_percent.map(round_metric),
                 repeat_fade_percent: repeat_fade_percent.map(round_metric),
                 latest_activity_id: latest_effort.map(|effort| effort.activity_id),
@@ -2128,10 +1981,7 @@ fn build_dh_session_progress(efforts: &[DhEffortSource]) -> Vec<DhSessionSummary
             let first_effort = session_efforts.first()?;
             let mut efforts_by_segment_id = HashMap::<i32, Vec<DhEffortSource>>::new();
             for effort in session_efforts.iter().cloned() {
-                efforts_by_segment_id
-                    .entry(effort.segment_id)
-                    .or_default()
-                    .push(effort);
+                efforts_by_segment_id.entry(effort.segment_id).or_default().push(effort);
             }
             let average_repeat_fade_percent = average_f64(
                 efforts_by_segment_id
@@ -2149,10 +1999,7 @@ fn build_dh_session_progress(efforts: &[DhEffortSource]) -> Vec<DhSessionSummary
                     .collect::<std::collections::HashSet<_>>()
                     .len() as i32,
                 effort_count: session_efforts.len() as i32,
-                fastest_effort_duration_seconds: session_efforts
-                    .iter()
-                    .map(|effort| effort.duration_seconds)
-                    .min(),
+                fastest_effort_duration_seconds: session_efforts.iter().map(|effort| effort.duration_seconds).min(),
                 average_repeat_fade_percent: average_repeat_fade_percent.map(round_metric),
             })
         })
@@ -2196,9 +2043,8 @@ fn session_repeat_fade_percent(efforts: &[DhEffortSource]) -> Option<f64> {
     let first_duration_seconds = f64::from(ordered_efforts.first()?.duration_seconds);
     let last_duration_seconds = f64::from(ordered_efforts.last()?.duration_seconds);
 
-    (first_duration_seconds > 0.0).then_some(
-        ((last_duration_seconds - first_duration_seconds) / first_duration_seconds) * 100.0,
-    )
+    (first_duration_seconds > 0.0)
+        .then_some(((last_duration_seconds - first_duration_seconds) / first_duration_seconds) * 100.0)
 }
 
 fn build_xc_weekly_progress(
@@ -2234,14 +2080,8 @@ fn build_xc_weekly_progress(
             .iter()
             .filter(|ride| ride.aerobic_decoupling_percent.is_some())
             .count() as i32;
-        let z2_time_seconds = week_rides
-            .iter()
-            .map(|ride| ride.z2_time_seconds)
-            .sum::<i32>();
-        let distance_meters = week_rides
-            .iter()
-            .filter_map(|ride| ride.distance_meters)
-            .sum::<f64>();
+        let z2_time_seconds = week_rides.iter().map(|ride| ride.z2_time_seconds).sum::<i32>();
+        let distance_meters = week_rides.iter().filter_map(|ride| ride.distance_meters).sum::<f64>();
         let z2_distance_meters = week_rides
             .iter()
             .filter_map(|ride| ride.z2_distance_meters)
@@ -2267,16 +2107,11 @@ fn build_xc_weekly_progress(
                 .map(round_metric),
             climbing_time_seconds,
             climbing_elevation_gain_meters: round_metric(climbing_elevation_gain_meters),
-            climbing_vertical_rate_meters_per_hour: (climbing_time_seconds > 0
-                && climbing_elevation_gain_meters > 0.0)
-                .then_some(
-                    (climbing_elevation_gain_meters / f64::from(climbing_time_seconds)) * 3600.0,
-                )
+            climbing_vertical_rate_meters_per_hour: (climbing_time_seconds > 0 && climbing_elevation_gain_meters > 0.0)
+                .then_some((climbing_elevation_gain_meters / f64::from(climbing_time_seconds)) * 3600.0)
                 .map(round_metric),
             average_aerobic_decoupling_percent: average_f64(
-                week_rides
-                    .iter()
-                    .filter_map(|ride| ride.aerobic_decoupling_percent),
+                week_rides.iter().filter_map(|ride| ride.aerobic_decoupling_percent),
             )
             .map(round_metric),
             z1_seconds: week_rides.iter().map(|ride| ride.z1_seconds).sum(),
@@ -2293,8 +2128,7 @@ fn build_xc_weekly_progress(
 }
 
 fn effective_climbing_elevation_gain_meters(ride: &XcRideProgressResponse) -> Option<f64> {
-    ride.climbing_elevation_gain_meters
-        .or(ride.elevation_gain_meters)
+    ride.climbing_elevation_gain_meters.or(ride.elevation_gain_meters)
 }
 
 fn effective_vertical_rate_time_seconds(ride: &XcRideProgressResponse) -> Option<i32> {
@@ -2309,19 +2143,14 @@ fn average_speed_for_ride(ride: &XcRideProgressResponse) -> Option<f64> {
     let distance_meters = ride.distance_meters?;
     let moving_time_seconds = ride.moving_time_seconds?;
 
-    (distance_meters > 0.0 && moving_time_seconds > 0)
-        .then_some(distance_meters / f64::from(moving_time_seconds))
+    (distance_meters > 0.0 && moving_time_seconds > 0).then_some(distance_meters / f64::from(moving_time_seconds))
 }
 
-fn climb_density_meters_per_kilometer(
-    elevation_gain_meters: Option<f64>,
-    distance_meters: Option<f64>,
-) -> Option<f64> {
+fn climb_density_meters_per_kilometer(elevation_gain_meters: Option<f64>, distance_meters: Option<f64>) -> Option<f64> {
     let elevation_gain_meters = elevation_gain_meters?;
     let distance_meters = distance_meters?;
 
-    (elevation_gain_meters > 0.0 && distance_meters > 0.0)
-        .then_some(elevation_gain_meters / (distance_meters / 1000.0))
+    (elevation_gain_meters > 0.0 && distance_meters > 0.0).then_some(elevation_gain_meters / (distance_meters / 1000.0))
 }
 
 fn relative_percent(value: Option<f64>, baseline: Option<f64>) -> Option<f64> {
@@ -2350,9 +2179,8 @@ fn build_xc_recommendations(
 
     let mut recommendations = Vec::new();
     let needs_recovery = freshness.is_some_and(freshness_needs_recovery);
-    let ready_for_quality = freshness.is_some_and(|snapshot| {
-        freshness_is_ready_for_quality(snapshot, XC_READY_FITNESS_THRESHOLD)
-    });
+    let ready_for_quality =
+        freshness.is_some_and(|snapshot| freshness_is_ready_for_quality(snapshot, XC_READY_FITNESS_THRESHOLD));
 
     if needs_recovery {
         recommendations.push(basic_training_recommendation(
@@ -2372,8 +2200,7 @@ fn build_xc_recommendations(
         ));
     }
     if !needs_recovery
-        && recent_decoupling_average
-            .is_some_and(|value| value > XC_AEROBIC_DECOUPLING_GOAL_PERCENT + 1.0)
+        && recent_decoupling_average.is_some_and(|value| value > XC_AEROBIC_DECOUPLING_GOAL_PERCENT + 1.0)
     {
         recommendations.push(basic_training_recommendation(
             TrainingRecommendationKey::HoldSteadyEndurance,
@@ -2430,11 +2257,7 @@ fn build_xc_event_recommendations(
     freshness: Option<FitnessFreshnessSnapshot>,
 ) -> Vec<TrainingRecommendationResponse> {
     if !deficits.is_empty() {
-        return deficits
-            .iter()
-            .take(3)
-            .map(recommendation_from_deficit)
-            .collect();
+        return deficits.iter().take(3).map(recommendation_from_deficit).collect();
     }
 
     build_xc_recommendations(
@@ -2447,9 +2270,7 @@ fn build_xc_event_recommendations(
     )
 }
 
-fn recommendation_from_deficit(
-    deficit: &XcTrainingDeficitResponse,
-) -> TrainingRecommendationResponse {
+fn recommendation_from_deficit(deficit: &XcTrainingDeficitResponse) -> TrainingRecommendationResponse {
     TrainingRecommendationResponse {
         key: recommendation_key_for_deficit(deficit.key),
         priority: deficit.priority,
@@ -2470,9 +2291,7 @@ fn recommendation_key_for_deficit(key: XcTrainingDeficitKey) -> TrainingRecommen
             TrainingRecommendationKey::AddClimbingEndurance
         }
         XcTrainingDeficitKey::AerobicDurability => TrainingRecommendationKey::HoldSteadyEndurance,
-        XcTrainingDeficitKey::FinishPace => {
-            TrainingRecommendationKey::UsePositiveFormForXcBenchmark
-        }
+        XcTrainingDeficitKey::FinishPace => TrainingRecommendationKey::UsePositiveFormForXcBenchmark,
         XcTrainingDeficitKey::LongRide => TrainingRecommendationKey::IncreaseEnduranceVolume,
     }
 }
@@ -2534,9 +2353,8 @@ fn build_dh_recommendations(
 
     let mut recommendations = Vec::new();
     let needs_recovery = freshness.is_some_and(freshness_needs_recovery);
-    let ready_for_quality = freshness.is_some_and(|snapshot| {
-        freshness_is_ready_for_quality(snapshot, DH_READY_FITNESS_THRESHOLD)
-    });
+    let ready_for_quality =
+        freshness.is_some_and(|snapshot| freshness_is_ready_for_quality(snapshot, DH_READY_FITNESS_THRESHOLD));
 
     if needs_recovery {
         recommendations.push(basic_training_recommendation(
@@ -2547,8 +2365,7 @@ fn build_dh_recommendations(
         ));
     }
 
-    if !needs_recovery && average_efforts_per_session.unwrap_or_default() < DH_LAPS_PER_SESSION_GOAL
-    {
+    if !needs_recovery && average_efforts_per_session.unwrap_or_default() < DH_LAPS_PER_SESSION_GOAL {
         recommendations.push(basic_training_recommendation(
             TrainingRecommendationKey::AddDhRepeats,
             TrainingRecommendationPriority::Medium,
@@ -2556,9 +2373,7 @@ fn build_dh_recommendations(
             "The DH screen gets stronger with three or more laps per session because that makes repeat fade and rolling averages more meaningful.",
         ));
     }
-    if !needs_recovery
-        && average_repeat_fade_percent.unwrap_or_default() > DH_REPEAT_FADE_GOAL_PERCENT
-    {
+    if !needs_recovery && average_repeat_fade_percent.unwrap_or_default() > DH_REPEAT_FADE_GOAL_PERCENT {
         recommendations.push(basic_training_recommendation(
             TrainingRecommendationKey::ReduceDhFade,
             TrainingRecommendationPriority::High,
@@ -2601,10 +2416,7 @@ fn freshness_needs_recovery(snapshot: FitnessFreshnessSnapshot) -> bool {
         || snapshot.fatigue >= snapshot.fitness + FRESHNESS_RECOVERY_FATIGUE_MARGIN
 }
 
-fn freshness_is_ready_for_quality(
-    snapshot: FitnessFreshnessSnapshot,
-    minimum_fitness: f64,
-) -> bool {
+fn freshness_is_ready_for_quality(snapshot: FitnessFreshnessSnapshot, minimum_fitness: f64) -> bool {
     snapshot.form >= FRESHNESS_READY_FORM_THRESHOLD
         && snapshot.fitness >= minimum_fitness
         && snapshot.fatigue <= snapshot.fitness + FRESHNESS_READY_FATIGUE_MARGIN
@@ -2625,8 +2437,7 @@ fn build_goal_metric(
         direction,
         current_value: current_value.map(round_metric),
         target_value: round_metric(target_value),
-        progress_percent: goal_progress_percent(current_value, target_value, direction)
-            .map(round_metric),
+        progress_percent: goal_progress_percent(current_value, target_value, direction).map(round_metric),
     }
 }
 
@@ -2641,9 +2452,7 @@ fn goal_progress_percent(
     }
 
     Some(match direction {
-        TrainingGoalDirection::AtLeast => {
-            ((current_value / target_value) * 100.0).clamp(0.0, 100.0)
-        }
+        TrainingGoalDirection::AtLeast => ((current_value / target_value) * 100.0).clamp(0.0, 100.0),
         TrainingGoalDirection::AtMost => {
             if current_value <= target_value {
                 100.0
@@ -2698,8 +2507,7 @@ mod tests {
             elevation_gain_meters: Some(750.0),
             moving_time_seconds: Some(5_400),
             z2_time_seconds,
-            z2_distance_meters: z2_average_speed_mps
-                .map(|speed| speed * f64::from(z2_time_seconds)),
+            z2_distance_meters: z2_average_speed_mps.map(|speed| speed * f64::from(z2_time_seconds)),
             z2_average_speed_mps,
             climbing_time_seconds: 1_200,
             climbing_elevation_gain_meters,
@@ -2800,22 +2608,13 @@ mod tests {
         assert_eq!(response.summary.recent_ride_count, 2);
         assert_eq!(response.summary.comparable_ride_count, 1);
         assert_eq!(response.summary.total_z2_time_seconds, 10_800);
-        assert_eq!(
-            response.weekly_progress.len(),
-            XC_WEEKLY_PROGRESS_WEEKS as usize
-        );
-        let latest_week = response
-            .weekly_progress
-            .last()
-            .expect("weekly point present");
+        assert_eq!(response.weekly_progress.len(), XC_WEEKLY_PROGRESS_WEEKS as usize);
+        let latest_week = response.weekly_progress.last().expect("weekly point present");
         assert_eq!(latest_week.distance_meters, 32_000.0);
         assert_eq!(latest_week.z2_zone_seconds, 7_200);
         assert_eq!(latest_week.z3_seconds, 300);
         assert_eq!(latest_week.average_z2_speed_mps, Some(3.2));
-        assert_eq!(
-            latest_week.climbing_vertical_rate_meters_per_hour,
-            Some(2700.0)
-        );
+        assert_eq!(latest_week.climbing_vertical_rate_meters_per_hour, Some(2700.0));
         assert_eq!(response.goals[0].key, TrainingGoalKey::WeeklyZ2Average);
         assert_eq!(
             response.recommendations[0].key,
@@ -3019,11 +2818,7 @@ mod tests {
         );
 
         let readiness = response.readiness.as_ref().expect("readiness present");
-        let gate_keys = readiness
-            .gates
-            .iter()
-            .map(|gate| gate.key)
-            .collect::<Vec<_>>();
+        let gate_keys = readiness.gates.iter().map(|gate| gate.key).collect::<Vec<_>>();
         assert!(gate_keys.contains(&XcReadinessGateKey::LongRideDistance));
         assert!(gate_keys.contains(&XcReadinessGateKey::BigClimbDay));
 
@@ -3107,10 +2902,7 @@ mod tests {
             vec![1, 2, 3]
         );
         assert_eq!(
-            response
-                .weekly_progress
-                .first()
-                .map(|point| point.week_start.as_str()),
+            response.weekly_progress.first().map(|point| point.week_start.as_str()),
             Some("2026-01-26")
         );
         assert!(response.weekly_progress.len() > XC_WEEKLY_PROGRESS_WEEKS as usize);

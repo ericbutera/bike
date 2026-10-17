@@ -34,10 +34,7 @@ impl OAuthProviderService {
         };
 
         if provider == provider_settings::PROVIDER_DEV {
-            return truthy_env(&format!(
-                "{}ENABLED",
-                provider_settings::env_prefix(&provider)
-            ));
+            return truthy_env(&format!("{}ENABLED", provider_settings::env_prefix(&provider)));
         }
 
         has_credentials(&provider) && has_provider_endpoints(&provider)
@@ -136,10 +133,7 @@ fn button_label(provider: &str) -> String {
             .map(|part| {
                 let mut chars = part.chars();
                 match chars.next() {
-                    Some(first) => {
-                        first.to_uppercase().collect::<String>()
-                            + &chars.as_str().to_ascii_lowercase()
-                    }
+                    Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_ascii_lowercase(),
                     None => String::new(),
                 }
             })
@@ -163,12 +157,7 @@ fn env_string(name: &str) -> Option<String> {
 
 fn truthy_env(name: &str) -> bool {
     env::var(name)
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
+        .map(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(false)
 }
 
@@ -263,14 +252,8 @@ mod tests {
             env::set_var("OAUTH_ACME_ISSUER_URL", "https://idp.example.com");
             env::set_var("OAUTH_DEV_ENABLED", "true");
             env::set_var("OAUTH_INTERNAL_AUTH_URL", "https://login.example.com/auth");
-            env::set_var(
-                "OAUTH_INTERNAL_TOKEN_URL",
-                "https://login.example.com/token",
-            );
-            env::set_var(
-                "OAUTH_INTERNAL_USERINFO_URL",
-                "https://login.example.com/userinfo",
-            );
+            env::set_var("OAUTH_INTERNAL_TOKEN_URL", "https://login.example.com/token");
+            env::set_var("OAUTH_INTERNAL_USERINFO_URL", "https://login.example.com/userinfo");
             env::set_var("OAUTH_INTERNAL_CLIENT_ID", "internal-client");
             env::set_var("OAUTH_INTERNAL_CLIENT_SECRET", "internal-secret");
 

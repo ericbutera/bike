@@ -53,9 +53,7 @@ where
                 client,
                 _phantom: PhantomData,
             }),
-            Some(AuthIdentity::User(_)) => {
-                Err(AuthError::unauthorized("API client token required"))
-            }
+            Some(AuthIdentity::User(_)) => Err(AuthError::unauthorized("API client token required")),
             None => Err(AuthError::unauthorized("Missing authentication")),
         }
     }
@@ -82,9 +80,7 @@ where
 
         let user_pid = match auth.identity {
             Some(AuthIdentity::User(identity)) => identity.user_pid,
-            Some(AuthIdentity::ApiClient(_)) => {
-                return Err(AuthError::unauthorized("User token required"))
-            }
+            Some(AuthIdentity::ApiClient(_)) => return Err(AuthError::unauthorized("User token required")),
             None => return Err(AuthError::unauthorized("Missing authentication")),
         };
 
@@ -122,9 +118,7 @@ where
 
         let user_pid = match auth.identity {
             Some(AuthIdentity::User(identity)) => identity.user_pid,
-            Some(AuthIdentity::ApiClient(_)) => {
-                return Err(AuthError::unauthorized("User token required"))
-            }
+            Some(AuthIdentity::ApiClient(_)) => return Err(AuthError::unauthorized("User token required")),
             None => return Err(AuthError::unauthorized("Missing authentication")),
         };
 
@@ -166,9 +160,7 @@ where
 
         let user_pid = match auth.identity {
             Some(AuthIdentity::User(identity)) => identity.user_pid,
-            Some(AuthIdentity::ApiClient(_)) => {
-                return Err(AuthError::unauthorized("User token required"))
-            }
+            Some(AuthIdentity::ApiClient(_)) => return Err(AuthError::unauthorized("User token required")),
             None => return Err(AuthError::unauthorized("Missing authentication")),
         };
 

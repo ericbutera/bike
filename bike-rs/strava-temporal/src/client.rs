@@ -4,8 +4,7 @@ use bike_core::strava::events::{StravaEvent, StravaOperation};
 use sea_orm::DatabaseConnection;
 use std::time::Duration;
 use temporalio_client::{
-    Client, ClientOptions, Connection, ConnectionOptions, WorkflowIdReusePolicy,
-    WorkflowStartOptions,
+    Client, ClientOptions, Connection, ConnectionOptions, WorkflowIdReusePolicy, WorkflowStartOptions,
 };
 use temporalio_common::search_attributes::{SearchAttributeKey, SearchAttributes};
 use temporalio_sdk::{Runtime, Worker, WorkerOptions};
@@ -46,10 +45,7 @@ pub(crate) fn connection_options(config: &TemporalConfig) -> Result<ConnectionOp
     )
 }
 
-pub(crate) async fn connect_with_options(
-    options: ConnectionOptions,
-    namespace: &str,
-) -> Result<Client, Error> {
+pub(crate) async fn connect_with_options(options: ConnectionOptions, namespace: &str) -> Result<Client, Error> {
     Ok(Client::new(
         Connection::connect(options).await?,
         ClientOptions::new(namespace.to_owned()).build(),
@@ -58,8 +54,7 @@ pub(crate) async fn connect_with_options(
 
 pub async fn ensure_schedule(client: &Client, config: &TemporalConfig) -> Result<(), Error> {
     use temporalio_client::schedules::{
-        CreateScheduleOptions, ScheduleAction, ScheduleError, ScheduleIntervalSpec,
-        ScheduleOverlapPolicy, ScheduleSpec,
+        CreateScheduleOptions, ScheduleAction, ScheduleError, ScheduleIntervalSpec, ScheduleOverlapPolicy, ScheduleSpec,
     };
     let options = CreateScheduleOptions::builder()
         .action(ScheduleAction::start_workflow(
@@ -70,9 +65,7 @@ pub async fn ensure_schedule(client: &Client, config: &TemporalConfig) -> Result
         ))
         .spec(
             ScheduleSpec::builder()
-                .intervals(vec![ScheduleIntervalSpec::from(Duration::from_secs(
-                    6 * 3600,
-                ))])
+                .intervals(vec![ScheduleIntervalSpec::from(Duration::from_secs(6 * 3600))])
                 .build(),
         )
         .overlap_policy(ScheduleOverlapPolicy::Skip)
@@ -107,21 +100,14 @@ pub fn worker(
 
 pub fn search_attributes(event: &StravaEvent) -> SearchAttributes {
     let mut values = vec![
-        SearchAttributeKey::<String>::keyword("BikeCustomerId")
-            .value_set(event.bike_customer_id.to_string()),
-        SearchAttributeKey::<String>::keyword("BikeUserId")
-            .value_set(event.bike_user_id.to_string()),
-        SearchAttributeKey::<String>::keyword("StravaAthleteId")
-            .value_set(event.strava_athlete_id.to_string()),
-        SearchAttributeKey::<String>::keyword("StravaEventId")
-            .value_set(event.strava_event_id.to_string()),
-        SearchAttributeKey::<String>::keyword("CorrelationId")
-            .value_set(event.correlation_id.to_string()),
+        SearchAttributeKey::<String>::keyword("BikeCustomerId").value_set(event.bike_customer_id.to_string()),
+        SearchAttributeKey::<String>::keyword("BikeUserId").value_set(event.bike_user_id.to_string()),
+        SearchAttributeKey::<String>::keyword("StravaAthleteId").value_set(event.strava_athlete_id.to_string()),
+        SearchAttributeKey::<String>::keyword("StravaEventId").value_set(event.strava_event_id.to_string()),
+        SearchAttributeKey::<String>::keyword("CorrelationId").value_set(event.correlation_id.to_string()),
     ];
     if let Some(id) = event.strava_activity_id {
-        values.push(
-            SearchAttributeKey::<String>::keyword("StravaActivityId").value_set(id.to_string()),
-        );
+        values.push(SearchAttributeKey::<String>::keyword("StravaActivityId").value_set(id.to_string()));
     }
     SearchAttributes::new(values)
 }
@@ -171,19 +157,12 @@ pub async fn start_event(
             .map(|handle| handle.run_id().map(str::to_owned)),
     };
     match result {
-        Ok(run_id)
-        | Err(temporalio_client::errors::WorkflowStartError::AlreadyStarted { run_id, .. }) => {
-            Ok(run_id)
-        }
+        Ok(run_id) | Err(temporalio_client::errors::WorkflowStartError::AlreadyStarted { run_id, .. }) => Ok(run_id),
         Err(error) => Err(error.into()),
     }
 }
 
-pub async fn dispatch_events(
-    client: Client,
-    config: TemporalConfig,
-    db: DatabaseConnection,
-) -> Result<(), Error> {
+pub async fn dispatch_events(client: Client, config: TemporalConfig, db: DatabaseConnection) -> Result<(), Error> {
     let metrics = crate::handoff_metrics::HandoffMetrics::new(prometheus::default_registry())?;
     let mut next_sample = tokio::time::Instant::now();
     loop {
@@ -198,11 +177,7 @@ pub async fn dispatch_events(
     }
 }
 
-async fn dispatch_pending(
-    client: &Client,
-    config: &TemporalConfig,
-    db: &DatabaseConnection,
-) -> Result<(), Error> {
+async fn dispatch_pending(client: &Client, config: &TemporalConfig, db: &DatabaseConnection) -> Result<(), Error> {
     for row in bike_core::entities::strava_events::Model::pending(db).await? {
         dispatch_event(client, config, db, row).await?;
     }
@@ -237,10 +212,7 @@ async fn dispatch_event(
     .await
 }
 
-pub(crate) fn handoff_span(
-    row: &bike_core::entities::strava_events::Model,
-    config: &TemporalConfig,
-) -> tracing::Span {
+pub(crate) fn handoff_span(row: &bike_core::entities::strava_events::Model, config: &TemporalConfig) -> tracing::Span {
     tracing::info_span!("strava.handoff", strava_event_id = row.id,
         correlation_id = row.correlation_id, bike_customer_id = %row.customer_id,
         bike_user_id = row.user_id, strava_athlete_id = row.athlete_id,

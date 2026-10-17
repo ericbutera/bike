@@ -33,11 +33,7 @@ pub enum Relation {}
 crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
-    pub async fn latest_before_day<C>(
-        db: &C,
-        user_id: i32,
-        day: NaiveDate,
-    ) -> Result<Option<Model>, DbErr>
+    pub async fn latest_before_day<C>(db: &C, user_id: i32, day: NaiveDate) -> Result<Option<Model>, DbErr>
     where
         C: ConnectionTrait,
     {

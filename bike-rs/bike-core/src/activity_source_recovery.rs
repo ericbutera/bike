@@ -77,9 +77,7 @@ pub async fn register_archive_source(
         || source.checksum_sha256.len() != 64
         || !matches_provider_id(&activity, &id)
     {
-        return Err(AppError::bad_request(
-            "Archive source identity or format mismatch",
-        ));
+        return Err(AppError::bad_request("Archive source identity or format mismatch"));
     }
     let derived = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
     let artifact = activity_import_artifacts::Model {
@@ -127,19 +125,11 @@ async fn store_archive_source(
     let mut enriched = deserialize_derived_activity_data(current.derived_data_json.as_ref());
     let previous = enriched.recording.clone();
     if let Some(label) = label {
-        enriched
-            .recording
-            .observe("strava_archive.activity_type", label);
+        enriched.recording.observe("strava_archive.activity_type", label);
     }
     if enriched.recording != previous
-        && !activities::Model::store_recording(
-            &transaction,
-            current.id,
-            current.user_id,
-            current.updated_at,
-            &enriched,
-        )
-        .await?
+        && !activities::Model::store_recording(&transaction, current.id, current.user_id, current.updated_at, &enriched)
+            .await?
     {
         return Err(AppError::conflict("Archive recovery activity changed"));
     }
@@ -182,10 +172,7 @@ fn verify_archive_route(
         source_quality: &source.artifact.source_quality,
         bytes: &source.bytes,
     })?;
-    if (parsed.draft.started_at - activity.started_at)
-        .num_seconds()
-        .abs()
-        > 5
+    if (parsed.draft.started_at - activity.started_at).num_seconds().abs() > 5
         || (!derived.route_points.is_empty()
             && !routes_match(
                 activity.started_at,
@@ -194,9 +181,7 @@ fn verify_archive_route(
                 &parsed.derived_data.route_points,
             ))
     {
-        return Err(AppError::bad_request(
-            "Archive GPS/time does not match the activity",
-        ));
+        return Err(AppError::bad_request("Archive GPS/time does not match the activity"));
     }
     Ok(())
 }
@@ -241,18 +226,9 @@ pub async fn refresh_retained_recording(
         return Ok(false);
     }
     if apply
-        && !activities::Model::store_recording(
-            db,
-            activity.id,
-            activity.user_id,
-            activity.updated_at,
-            &derived,
-        )
-        .await?
+        && !activities::Model::store_recording(db, activity.id, activity.user_id, activity.updated_at, &derived).await?
     {
-        return Err(AppError::conflict(
-            "Recording source changed; inspect again",
-        ));
+        return Err(AppError::conflict("Recording source changed; inspect again"));
     }
     Ok(true)
 }
@@ -270,9 +246,7 @@ pub async fn plan_recovery(
         .await?
         .ok_or_else(|| AppError::not_found("Owned recovery activity was not found"))?;
     if activity.activity_import_id != Some(import.id) || import.source != "strava_sync" {
-        return Err(AppError::bad_request(
-            "Import is not the activity's Strava source",
-        ));
+        return Err(AppError::bad_request("Import is not the activity's Strava source"));
     }
     let own = activity_import_artifacts::Entity::for_import(db, import.user_id, import.id).await?;
     let mut plan = RecoveryPlan {
@@ -300,11 +274,7 @@ pub async fn plan_recovery(
     if let Some(source) = archive_sources.into_iter().next() {
         plan.outcome = RecoveryOutcome::ArchiveOriginal;
         plan.source = Some(source);
-    } else if let Some(artifact) = own
-        .into_iter()
-        .filter(accepted_source)
-        .max_by_key(source_priority)
-    {
+    } else if let Some(artifact) = own.into_iter().filter(accepted_source).max_by_key(source_priority) {
         let outcome = if artifact.artifact_kind == "original" {
             RecoveryOutcome::ArchiveOriginal
         } else {
@@ -344,23 +314,13 @@ async fn matching_archive_sources(
 ) -> Result<Vec<RecoverySource>, AppError> {
     let derived = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
     let mut sources: Vec<RecoverySource> = Vec::new();
-    for import in
-        activity_imports::Entity::archive_sources_for_activity(db, activity.user_id, activity.id)
-            .await?
-    {
-        if let Some(source) =
-            original_source_for_import(db, uploads_dir, activity, import.id).await?
-        {
+    for import in activity_imports::Entity::archive_sources_for_activity(db, activity.user_id, activity.id).await? {
+        if let Some(source) = original_source_for_import(db, uploads_dir, activity, import.id).await? {
             remember_source(&mut sources, source);
         }
     }
-    for candidate in activities::Model::recording_counterparts(
-        db,
-        activity.user_id,
-        activity.id,
-        activity.started_at,
-    )
-    .await?
+    for candidate in
+        activities::Model::recording_counterparts(db, activity.user_id, activity.id, activity.started_at).await?
     {
         if candidate.source != "archive_url_import" {
             continue;
@@ -374,9 +334,7 @@ async fn matching_archive_sources(
         ) {
             continue;
         }
-        let Some(original) =
-            activities::Model::find_owned(db, candidate.id, activity.user_id).await?
-        else {
+        let Some(original) = activities::Model::find_owned(db, candidate.id, activity.user_id).await? else {
             continue;
         };
         if !original.is_bike_activity() {
@@ -385,20 +343,14 @@ async fn matching_archive_sources(
         let Some(import_id) = original.activity_import_id else {
             continue;
         };
-        if let Some(source) =
-            original_source_for_import(db, uploads_dir, activity, import_id).await?
-        {
+        if let Some(source) = original_source_for_import(db, uploads_dir, activity, import_id).await? {
             remember_source(&mut sources, source);
         }
         if sources.len() == 2 && source_priority(&sources[0].artifact) == 4 {
             break;
         }
     }
-    if let Some(best) = sources
-        .iter()
-        .map(|source| source_priority(&source.artifact))
-        .max()
-    {
+    if let Some(best) = sources.iter().map(|source| source_priority(&source.artifact)).max() {
         sources.retain(|source| source_priority(&source.artifact) == best);
     }
     Ok(sources)
@@ -410,16 +362,13 @@ async fn original_source_for_import(
     activity: &activities::Model,
     import_id: i32,
 ) -> Result<Option<RecoverySource>, AppError> {
-    let artifacts =
-        activity_import_artifacts::Entity::for_import(db, activity.user_id, import_id).await?;
+    let artifacts = activity_import_artifacts::Entity::for_import(db, activity.user_id, import_id).await?;
     match artifacts
         .into_iter()
         .filter(|a| a.artifact_kind == "original" && accepted_source(a))
         .max_by_key(source_priority)
     {
-        Some(artifact) => Ok(Some(
-            load_verified_source(uploads_dir, artifact, activity).await?,
-        )),
+        Some(artifact) => Ok(Some(load_verified_source(uploads_dir, artifact, activity).await?)),
         None => Ok(None),
     }
 }
@@ -451,33 +400,23 @@ async fn load_verified_source(
     let relative = Path::new(&artifact.storage_path);
     if artifact.user_id != activity.user_id
         || relative.is_absolute()
-        || relative
-            .components()
-            .any(|part| matches!(part, Component::ParentDir))
+        || relative.components().any(|part| matches!(part, Component::ParentDir))
     {
-        return Err(AppError::bad_request(
-            "Invalid recovery source ownership or path",
-        ));
+        return Err(AppError::bad_request("Invalid recovery source ownership or path"));
     }
     const MAX_SOURCE_BYTES: u64 = 100 * 1024 * 1024;
     let file = tokio::fs::File::open(Path::new(uploads_dir).join(relative)).await?;
     let mut bytes = Vec::new();
-    file.take(MAX_SOURCE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .await?;
+    file.take(MAX_SOURCE_BYTES + 1).read_to_end(&mut bytes).await?;
     if bytes.len() as u64 > MAX_SOURCE_BYTES {
-        return Err(AppError::bad_request(
-            "Recovery source exceeds 100 MiB limit",
-        ));
+        return Err(AppError::bad_request("Recovery source exceeds 100 MiB limit"));
     }
     let checksum = hex::encode(Sha256::digest(&bytes));
     if !artifact.checksum_sha256.is_empty() && artifact.checksum_sha256 != checksum {
         return Err(AppError::bad_request("Recovery source checksum mismatch"));
     }
     verify_provider_identity(&artifact, &bytes, activity)?;
-    if !activity.is_bike_activity()
-        && artifact.activity_import_id == activity.activity_import_id.unwrap_or(0)
-    {
+    if !activity.is_bike_activity() && artifact.activity_import_id == activity.activity_import_id.unwrap_or(0) {
         artifact.checksum_sha256 = checksum;
         return Ok(RecoverySource { artifact, bytes });
     }
@@ -512,12 +451,10 @@ fn verify_provider_identity(
 ) -> Result<(), AppError> {
     if artifact.artifact_kind == "provider_payload" {
         let payload: crate::strava::provider_payload::StoredStravaProviderPayload =
-            serde_json::from_slice(bytes)
-                .map_err(|_| AppError::bad_request("Invalid retained provider source"))?;
+            serde_json::from_slice(bytes).map_err(|_| AppError::bad_request("Invalid retained provider source"))?;
         let id = payload.activity.id.to_string();
         let correlation = activity.source_correlation_id.as_deref();
-        if (correlation != Some(id.as_str())
-            && correlation != Some(format!("strava:{id}").as_str()))
+        if (correlation != Some(id.as_str()) && correlation != Some(format!("strava:{id}").as_str()))
             || payload
                 .provider_activity_id
                 .is_some_and(|provider_id| provider_id != payload.activity.id)
@@ -547,11 +484,7 @@ pub async fn apply_recovery(
             .ok_or_else(|| AppError::bad_request("Recovery import has no source directory"))?
             .join(format!("recovered_{}.{}", Uuid::new_v4(), artifact.format));
         let path = Path::new(uploads_dir).join(&relative);
-        if relative.is_absolute()
-            || relative
-                .components()
-                .any(|part| matches!(part, Component::ParentDir))
-        {
+        if relative.is_absolute() || relative.components().any(|part| matches!(part, Component::ParentDir)) {
             return Err(AppError::bad_request("Invalid recovery destination"));
         }
         if let Some(parent) = path.parent() {
@@ -576,21 +509,15 @@ pub async fn apply_recovery(
     result
 }
 
-pub async fn withhold_unrecovered_source(
-    db: &DatabaseConnection,
-    plan: &RecoveryPlan,
-) -> Result<bool, AppError> {
+pub async fn withhold_unrecovered_source(db: &DatabaseConnection, plan: &RecoveryPlan) -> Result<bool, AppError> {
     if plan.outcome != RecoveryOutcome::ArchiveRequired || plan.source.is_some() {
         return Ok(false);
     }
     let transaction = db.begin().await?;
-    let current =
-        activities::Model::lock_owned(&transaction, plan.activity_id, plan.import.user_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("Owned activity was not found"))?;
-    let import =
-        activity_imports::Entity::find_owned(&transaction, plan.import.user_id, plan.import_id)
-            .await?;
+    let current = activities::Model::lock_owned(&transaction, plan.activity_id, plan.import.user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Owned activity was not found"))?;
+    let import = activity_imports::Entity::find_owned(&transaction, plan.import.user_id, plan.import_id).await?;
     if current.updated_at != plan.activity_updated_at || import.as_ref() != Some(&plan.import) {
         return Err(AppError::conflict("Source recovery changed; inspect again"));
     }
@@ -599,12 +526,7 @@ pub async fn withhold_unrecovered_source(
     }
     let changed = current.withhold_unavailable_source(&transaction).await?;
     if changed {
-        crate::heatmaps::projection::Projection::invalidate_owned(
-            &transaction,
-            current.id,
-            current.user_id,
-        )
-        .await?;
+        crate::heatmaps::projection::Projection::invalidate_owned(&transaction, current.id, current.user_id).await?;
     }
     transaction.commit().await?;
     Ok(changed)
@@ -616,29 +538,18 @@ async fn commit_recovery(
     mut artifact: activity_import_artifacts::Model,
 ) -> Result<bool, AppError> {
     let transaction = db.begin().await?;
-    let current =
-        activities::Model::lock_owned(&transaction, plan.activity_id, plan.import.user_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("Recovery activity no longer exists"))?;
-    if current.updated_at != plan.activity_updated_at
-        || current.activity_import_id != Some(plan.import_id)
-    {
-        return Err(AppError::bad_request(
-            "Recovery activity changed; plan it again",
-        ));
+    let current = activities::Model::lock_owned(&transaction, plan.activity_id, plan.import.user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Recovery activity no longer exists"))?;
+    if current.updated_at != plan.activity_updated_at || current.activity_import_id != Some(plan.import_id) {
+        return Err(AppError::bad_request("Recovery activity changed; plan it again"));
     }
     if artifact.activity_import_id != plan.import_id {
-        artifact = artifact
-            .copy_to_import(&transaction, plan.import_id)
-            .await?;
+        artifact = artifact.copy_to_import(&transaction, plan.import_id).await?;
     }
-    current
-        .adopt_source_metadata(&transaction, &artifact)
-        .await?;
+    current.adopt_source_metadata(&transaction, &artifact).await?;
     if !plan.import.promote_source(&transaction, &artifact).await? {
-        return Err(AppError::bad_request(
-            "Recovery import changed; plan it again",
-        ));
+        return Err(AppError::bad_request("Recovery import changed; plan it again"));
     }
     transaction.commit().await?;
     Ok(true)
@@ -652,13 +563,9 @@ pub async fn retire_generated_artifact(
     apply: bool,
 ) -> Result<bool, AppError> {
     if artifact.artifact_kind != "generated_export" || artifact.source_quality != "generated_tcx" {
-        return Err(AppError::bad_request(
-            "Artifact is not a retired generated file",
-        ));
+        return Err(AppError::bad_request("Artifact is not a retired generated file"));
     }
-    let Some(import) =
-        activity_imports::Entity::find_owned(db, artifact.user_id, artifact.activity_import_id)
-            .await?
+    let Some(import) = activity_imports::Entity::find_owned(db, artifact.user_id, artifact.activity_import_id).await?
     else {
         return Err(AppError::not_found("Owned import was not found"));
     };
@@ -680,11 +587,7 @@ pub async fn retire_generated_artifact(
     };
     load_verified_source(uploads_dir, primary, &activity).await?;
     let relative = Path::new(&artifact.storage_path);
-    if relative.is_absolute()
-        || relative
-            .components()
-            .any(|part| matches!(part, Component::ParentDir))
-    {
+    if relative.is_absolute() || relative.components().any(|part| matches!(part, Component::ParentDir)) {
         return Err(AppError::bad_request("Invalid generated artifact path"));
     }
     if !apply {
@@ -694,22 +597,15 @@ pub async fn retire_generated_artifact(
     let current = activities::Model::lock_owned(&transaction, activity_id, artifact.user_id)
         .await?
         .ok_or_else(|| AppError::not_found("Owned activity was not found"))?;
-    let current_import =
-        activity_imports::Entity::find_owned(&transaction, import.user_id, import.id).await?;
+    let current_import = activity_imports::Entity::find_owned(&transaction, import.user_id, import.id).await?;
     if current.updated_at != activity.updated_at || current_import.as_ref() != Some(&import) {
-        return Err(AppError::conflict(
-            "Recovery changed; inspect cleanup again",
-        ));
+        return Err(AppError::conflict("Recovery changed; inspect cleanup again"));
     }
     if activity_imports::Entity::references_path(&transaction, &artifact.storage_path).await? {
-        return Err(AppError::conflict(
-            "Generated path is still an import source",
-        ));
+        return Err(AppError::conflict("Generated path is still an import source"));
     }
     if activity_import_artifacts::Entity::shares_path(&transaction, &artifact).await? {
-        return Err(AppError::conflict(
-            "Generated path is shared by another artifact",
-        ));
+        return Err(AppError::conflict("Generated path is shared by another artifact"));
     }
     match tokio::fs::remove_file(Path::new(uploads_dir).join(relative)).await {
         Ok(()) => (),
@@ -730,10 +626,7 @@ mod tests {
         let now = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
         assert!(recent_activity(now - Duration::days(30), now));
         assert!(recent_activity(now, now));
-        assert!(!recent_activity(
-            now - Duration::days(30) - Duration::seconds(1),
-            now
-        ));
+        assert!(!recent_activity(now - Duration::days(30) - Duration::seconds(1), now));
         assert!(!recent_activity(now + Duration::seconds(1), now));
     }
 }

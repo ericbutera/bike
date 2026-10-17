@@ -27,12 +27,7 @@ impl Model {
         hex::encode(Sha256::digest(state.as_bytes()))
     }
 
-    pub async fn save(
-        db: &DatabaseConnection,
-        provider: &str,
-        state: &str,
-        nonce: &str,
-    ) -> Result<(), AuthError> {
+    pub async fn save(db: &DatabaseConnection, provider: &str, state: &str, nonce: &str) -> Result<(), AuthError> {
         Entity::delete_many()
             .filter(Column::ExpiresAt.lte(Utc::now()))
             .exec(db)
@@ -49,11 +44,7 @@ impl Model {
         Ok(())
     }
 
-    pub async fn consume(
-        db: &DatabaseConnection,
-        provider: &str,
-        state: &str,
-    ) -> Result<String, AuthError> {
+    pub async fn consume(db: &DatabaseConnection, provider: &str, state: &str) -> Result<String, AuthError> {
         let invalid = || AuthError::bad_request("OAuth state is invalid or expired");
         if state.is_empty() {
             return Err(invalid());

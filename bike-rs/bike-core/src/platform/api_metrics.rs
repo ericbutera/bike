@@ -29,9 +29,7 @@ use axum::http::header::CONTENT_TYPE;
 use axum::http::Request;
 use axum::middleware::Next;
 use axum::response::Response;
-use prometheus::{
-    Encoder, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, Opts, Registry, TextEncoder,
-};
+use prometheus::{Encoder, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, Opts, Registry, TextEncoder};
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -60,27 +58,19 @@ pub fn registry() -> &'static Registry {
 }
 
 pub fn login_counter() -> &'static IntCounter {
-    LOGIN_COUNTER
-        .get()
-        .expect("Bike api_metrics not initialized")
+    LOGIN_COUNTER.get().expect("Bike api_metrics not initialized")
 }
 
 pub fn failed_login_counter() -> &'static IntCounter {
-    FAILED_LOGIN_COUNTER
-        .get()
-        .expect("Bike api_metrics not initialized")
+    FAILED_LOGIN_COUNTER.get().expect("Bike api_metrics not initialized")
 }
 
 pub fn logout_counter() -> &'static IntCounter {
-    LOGOUT_COUNTER
-        .get()
-        .expect("Bike api_metrics not initialized")
+    LOGOUT_COUNTER.get().expect("Bike api_metrics not initialized")
 }
 
 pub fn token_refresh_counter() -> &'static IntCounter {
-    TOKEN_REFRESH_COUNTER
-        .get()
-        .expect("Bike api_metrics not initialized")
+    TOKEN_REFRESH_COUNTER.get().expect("Bike api_metrics not initialized")
 }
 
 pub fn api_client_login_counter() -> &'static IntCounter {
@@ -90,9 +80,7 @@ pub fn api_client_login_counter() -> &'static IntCounter {
 }
 
 pub fn tasks_enqueued() -> &'static IntCounterVec {
-    TASKS_ENQUEUED
-        .get()
-        .expect("Bike api_metrics not initialized")
+    TASKS_ENQUEUED.get().expect("Bike api_metrics not initialized")
 }
 
 /// Initialize the shared API metrics registry with the given namespace prefix.
@@ -106,13 +94,12 @@ pub fn init_api_metrics(namespace: &str) {
         return;
     }
 
-    let registry = Registry::new_custom(Some(namespace.to_string()), None)
-        .expect("failed to create api metrics registry");
+    let registry =
+        Registry::new_custom(Some(namespace.to_string()), None).expect("failed to create api metrics registry");
 
     macro_rules! reg_counter {
         ($static:ident, $name:expr, $help:expr) => {{
-            let c = IntCounter::new($name, $help)
-                .unwrap_or_else(|e| panic!("failed to create {}: {}", $name, e));
+            let c = IntCounter::new($name, $help).unwrap_or_else(|e| panic!("failed to create {}: {}", $name, e));
             registry
                 .register(Box::new(c.clone()))
                 .unwrap_or_else(|e| panic!("failed to register {}: {}", $name, e));
@@ -131,11 +118,7 @@ pub fn init_api_metrics(namespace: &str) {
         }};
     }
 
-    reg_counter!(
-        LOGIN_COUNTER,
-        "logins_total",
-        "Number of successful user logins"
-    );
+    reg_counter!(LOGIN_COUNTER, "logins_total", "Number of successful user logins");
     reg_counter!(
         FAILED_LOGIN_COUNTER,
         "failed_logins_total",
@@ -152,11 +135,7 @@ pub fn init_api_metrics(namespace: &str) {
         "api_client_logins_total",
         "Number of successful API client logins"
     );
-    reg_counter!(
-        APP_ERRORS,
-        "app_errors_total",
-        "Number of application errors (5xx)"
-    );
+    reg_counter!(APP_ERRORS, "app_errors_total", "Number of application errors (5xx)");
     reg_counter!(
         SUCCESS_REQUESTS,
         "success_requests_total",
@@ -184,15 +163,9 @@ pub fn init_api_metrics(namespace: &str) {
 }
 
 fn register_request_duration(registry: &Registry) {
-    let opts = HistogramOpts::new(
-        "request_duration_seconds",
-        "HTTP request latencies in seconds",
-    )
-    .buckets(vec![
-        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
-    ]);
-    let v = HistogramVec::new(opts, &["method", "path", "status"])
-        .expect("failed to create request_duration_seconds");
+    let opts = HistogramOpts::new("request_duration_seconds", "HTTP request latencies in seconds")
+        .buckets(vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]);
+    let v = HistogramVec::new(opts, &["method", "path", "status"]).expect("failed to create request_duration_seconds");
     registry
         .register(Box::new(v.clone()))
         .expect("failed to register request_duration_seconds");
@@ -284,9 +257,7 @@ pub async fn metrics_route() -> Response {
     let encoder = TextEncoder::new();
     let metric_families = expect_init().gather();
     let mut buffer = Vec::new();
-    encoder
-        .encode(&metric_families, &mut buffer)
-        .unwrap_or_default();
+    encoder.encode(&metric_families, &mut buffer).unwrap_or_default();
     let body = String::from_utf8(buffer).unwrap_or_default();
     Response::builder()
         .header(CONTENT_TYPE, encoder.format_type())

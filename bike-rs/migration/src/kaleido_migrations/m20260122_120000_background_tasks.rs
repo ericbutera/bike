@@ -18,16 +18,8 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(BackgroundTasks::TaskType)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(BackgroundTasks::Payload)
-                            .json_binary()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(BackgroundTasks::TaskType).string().not_null())
+                    .col(ColumnDef::new(BackgroundTasks::Payload).json_binary().not_null())
                     .col(ColumnDef::new(BackgroundTasks::Status).string().not_null())
                     .col(
                         ColumnDef::new(BackgroundTasks::Attempts)

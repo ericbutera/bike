@@ -2,9 +2,9 @@ use sea_orm::DatabaseConnection;
 
 pub use bike_core::jobs::{
     ActivityArchiveImportTask, BackfillUserXcTrainingTask, Job as Task, JobQueue as TaskQueue,
-    ProcessActivityImportTask, QueuedJobReference as QueuedTaskReference,
-    RebuildFitnessFreshnessTask, RebuildSegmentAnalyticsTask, RegenerateSegmentEffortsTask,
-    RegenerateUserSegmentsTask, ReprocessActivityImportTask, ReprocessUserActivityImportsTask,
+    ProcessActivityImportTask, QueuedJobReference as QueuedTaskReference, RebuildFitnessFreshnessTask,
+    RebuildSegmentAnalyticsTask, RegenerateSegmentEffortsTask, RegenerateUserSegmentsTask, ReprocessActivityImportTask,
+    ReprocessUserActivityImportsTask,
 };
 
 pub use bike_core::auth::SessionService as AppSessionService;

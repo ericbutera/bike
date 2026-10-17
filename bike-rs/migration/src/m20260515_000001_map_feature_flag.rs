@@ -21,11 +21,7 @@ impl MigrationTrait for Migration {
                 false.into(),
                 FLAG_DESCRIPTION.into(),
             ])
-            .on_conflict(
-                OnConflict::column(FeatureFlags::FeatureKey)
-                    .do_nothing()
-                    .to_owned(),
-            )
+            .on_conflict(OnConflict::column(FeatureFlags::FeatureKey).do_nothing().to_owned())
             .to_owned();
 
         manager.exec_stmt(insert).await

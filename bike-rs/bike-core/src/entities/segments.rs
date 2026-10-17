@@ -3,8 +3,7 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, QueryFilter, QueryOrder, QuerySelect,
-    TransactionSession,
+    ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, TransactionSession,
 };
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
@@ -53,21 +52,14 @@ pub struct SegmentTitle {
 }
 
 impl Model {
-    pub async fn find_owned(
-        db: &impl ConnectionTrait,
-        segment_id: i32,
-        user_id: i32,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn find_owned(db: &impl ConnectionTrait, segment_id: i32, user_id: i32) -> Result<Option<Self>, DbErr> {
         Entity::find_by_id(segment_id)
             .filter(Column::UserId.eq(user_id))
             .one(db)
             .await
     }
 
-    pub async fn find_by_id(
-        db: &impl ConnectionTrait,
-        segment_id: i32,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn find_by_id(db: &impl ConnectionTrait, segment_id: i32) -> Result<Option<Self>, DbErr> {
         Entity::find_by_id(segment_id).one(db).await
     }
 
@@ -75,8 +67,7 @@ impl Model {
         &self,
         db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     ) -> Result<(), DbErr> {
-        let activity_ids =
-            super::segment_efforts::Model::activity_ids_for_segment(db, self.id).await?;
+        let activity_ids = super::segment_efforts::Model::activity_ids_for_segment(db, self.id).await?;
         let txn = db.begin().await?;
         super::activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
         super::segment_user_summaries::Entity::delete_for_segment(&txn, self.id).await?;
@@ -96,19 +87,10 @@ impl Model {
         db: &DatabaseConnection,
         now: DateTime<Utc>,
     ) -> Result<crate::platform::aggregator::StoredRecordCounts, DbErr> {
-        crate::platform::aggregator::Aggregator::stored_records::<Entity>(
-            db,
-            Column::CreatedAt,
-            now,
-        )
-        .await
+        crate::platform::aggregator::Aggregator::stored_records::<Entity>(db, Column::CreatedAt, now).await
     }
 
-    pub async fn mark_activity_changes<C>(
-        db: &C,
-        segment_ids: &[i32],
-        changed_at: DateTime<Utc>,
-    ) -> Result<(), DbErr>
+    pub async fn mark_activity_changes<C>(db: &C, segment_ids: &[i32], changed_at: DateTime<Utc>) -> Result<(), DbErr>
     where
         C: ConnectionTrait,
     {
@@ -141,11 +123,7 @@ impl Model {
             .await
     }
 
-    pub async fn matching_routes_page<C>(
-        db: &C,
-        after_id: i32,
-        limit: u64,
-    ) -> Result<Vec<SegmentMatchingRoute>, DbErr>
+    pub async fn matching_routes_page<C>(db: &C, after_id: i32, limit: u64) -> Result<Vec<SegmentMatchingRoute>, DbErr>
     where
         C: ConnectionTrait,
     {
@@ -180,20 +158,14 @@ mod access;
 pub use access::SegmentListRow;
 
 impl Model {
-    pub async fn downhill_for_user(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-    ) -> Result<Vec<Self>, DbErr> {
+    pub async fn downhill_for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<Self>, DbErr> {
         Entity::find()
             .filter(Column::UserId.eq(user_id))
             .filter(Column::Mode.eq("dh"))
             .all(db)
             .await
     }
-    pub async fn downhill_by_ids(
-        db: &impl ConnectionTrait,
-        segment_ids: &[i32],
-    ) -> Result<Vec<Self>, DbErr> {
+    pub async fn downhill_by_ids(db: &impl ConnectionTrait, segment_ids: &[i32]) -> Result<Vec<Self>, DbErr> {
         Entity::find()
             .filter(Column::Id.is_in(segment_ids.iter().copied()))
             .filter(Column::Mode.eq("dh"))
@@ -208,20 +180,12 @@ impl Model {
             .all(db)
             .await
     }
-    pub async fn lock_for_analytics(
-        db: &impl ConnectionTrait,
-        segment_id: i32,
-    ) -> Result<Option<Self>, DbErr> {
-        Entity::find_by_id(segment_id)
-            .lock_exclusive()
-            .one(db)
-            .await
+    pub async fn lock_for_analytics(db: &impl ConnectionTrait, segment_id: i32) -> Result<Option<Self>, DbErr> {
+        Entity::find_by_id(segment_id).lock_exclusive().one(db).await
     }
 }
 
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[schema(example = "xc")]
 pub enum SegmentMode {
@@ -246,6 +210,4 @@ impl SegmentMode {
 }
 
 mod mutations;
-pub use mutations::{
-    normalize_segment_title, slice_builder_route_points, ActivitySegmentSource, SegmentImport,
-};
+pub use mutations::{normalize_segment_title, slice_builder_route_points, ActivitySegmentSource, SegmentImport};

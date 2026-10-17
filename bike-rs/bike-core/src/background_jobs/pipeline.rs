@@ -60,9 +60,9 @@ impl PipelineContext {
             return Ok(());
         };
         context.trace_context = inject_current_trace_context().or(context.trace_context);
-        let object = payload.as_object_mut().ok_or_else(|| {
-            serde_json::Error::custom("Queued pipeline payload must be a JSON object")
-        })?;
+        let object = payload
+            .as_object_mut()
+            .ok_or_else(|| serde_json::Error::custom("Queued pipeline payload must be a JSON object"))?;
         object.insert(PAYLOAD_KEY.into(), serde_json::to_value(context)?);
         Ok(())
     }
@@ -119,14 +119,9 @@ mod tests {
         })
         .await;
         assert_eq!(
-            PipelineContext::from_payload(&payload)
-                .unwrap()
-                .unwrap()
-                .run_id,
+            PipelineContext::from_payload(&payload).unwrap().unwrap().run_id,
             expected
         );
-        assert!(PipelineContext::from_payload(&json!({"data": {}}))
-            .unwrap()
-            .is_none());
+        assert!(PipelineContext::from_payload(&json!({"data": {}})).unwrap().is_none());
     }
 }

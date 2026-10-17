@@ -61,11 +61,7 @@ struct TcxPointSummary {
     max_speed_mps: Option<f64>,
 }
 
-pub fn summarize_activity_upload(
-    filename: &str,
-    format: &str,
-    bytes: &[u8],
-) -> Result<ActivityDraft, AppError> {
+pub fn summarize_activity_upload(filename: &str, format: &str, bytes: &[u8]) -> Result<ActivityDraft, AppError> {
     let result = match format {
         "gpx" => parse_gpx_activity(filename, bytes),
         "tcx" => parse_tcx_activity(filename, bytes),
@@ -114,14 +110,9 @@ fn parse_gpx_activity(filename: &str, bytes: &[u8]) -> Result<ActivityDraft, Str
         .iter()
         .filter_map(|point| point.heart_rate_bpm)
         .collect::<Vec<_>>();
-    let cadences = points
-        .iter()
-        .filter_map(|point| point.cadence_rpm)
-        .collect::<Vec<_>>();
+    let cadences = points.iter().filter_map(|point| point.cadence_rpm).collect::<Vec<_>>();
     let average_speed_mps = match (distance_meters, total_time_seconds) {
-        (Some(distance), Some(total_seconds)) if total_seconds > 0 => {
-            Some(distance / f64::from(total_seconds))
-        }
+        (Some(distance), Some(total_seconds)) if total_seconds > 0 => Some(distance / f64::from(total_seconds)),
         _ => None,
     };
     let title = child_text(track, "name")
@@ -160,12 +151,7 @@ fn parse_tcx_activity(filename: &str, bytes: &[u8]) -> Result<ActivityDraft, Str
     }
 
     let lap_summary = summarize_tcx_laps(&laps);
-    Ok(build_tcx_activity_draft(
-        filename,
-        activity,
-        &points,
-        &lap_summary,
-    ))
+    Ok(build_tcx_activity_draft(filename, activity, &points, &lap_summary))
 }
 
 fn tcx_activity_node<'a>(document: &'a Document<'a>) -> Result<Node<'a, 'a>, String> {
@@ -182,9 +168,7 @@ fn tcx_lap_nodes<'a>(activity: Node<'a, 'a>) -> Vec<Node<'a, 'a>> {
         .collect()
 }
 
-fn parse_tcx_activity_track_points(
-    activity: Node<'_, '_>,
-) -> Result<Vec<TrackPointSample>, String> {
+fn parse_tcx_activity_track_points(activity: Node<'_, '_>) -> Result<Vec<TrackPointSample>, String> {
     activity
         .descendants()
         .filter(|node| is_element_named(*node, "Trackpoint"))
@@ -254,20 +238,12 @@ fn build_tcx_activity_draft(
         .and_then(parse_datetime)
         .or_else(|| points.iter().find_map(|point| point.time))
         .unwrap_or_else(Utc::now);
-    let ended_at = points
-        .iter()
-        .rev()
-        .find_map(|point| point.time)
-        .or_else(|| {
-            seconds_from_f64(lap_summary.total_seconds)
-                .map(|seconds| started_at + Duration::seconds(i64::from(seconds)))
-        });
+    let ended_at = points.iter().rev().find_map(|point| point.time).or_else(|| {
+        seconds_from_f64(lap_summary.total_seconds).map(|seconds| started_at + Duration::seconds(i64::from(seconds)))
+    });
     let total_time_seconds = seconds_from_f64(lap_summary.total_seconds)
         .or_else(|| ended_at.and_then(|end| seconds_between(started_at, end)));
-    let fallback_distance_meters = points
-        .iter()
-        .filter_map(|point| point.distance_meters)
-        .reduce(f64::max);
+    let fallback_distance_meters = points.iter().filter_map(|point| point.distance_meters).reduce(f64::max);
     let distance_meters = metric_from_f64(if lap_summary.total_distance_meters > 0.0 {
         Some(lap_summary.total_distance_meters)
     } else {
@@ -275,9 +251,7 @@ fn build_tcx_activity_draft(
     });
     let point_summary = summarize_tcx_points(points, lap_summary);
     let average_speed_mps = match (distance_meters, total_time_seconds) {
-        (Some(distance), Some(total_seconds)) if total_seconds > 0 => {
-            Some(distance / f64::from(total_seconds))
-        }
+        (Some(distance), Some(total_seconds)) if total_seconds > 0 => Some(distance / f64::from(total_seconds)),
         _ => None,
     };
     let calories = if lap_summary.calories_found {
@@ -299,29 +273,20 @@ fn build_tcx_activity_draft(
         average_speed_mps,
         max_speed_mps: merge_max(point_summary.max_speed_mps, lap_summary.max_speed_mps),
         average_heart_rate_bpm: point_summary.average_heart_rate_bpm,
-        max_heart_rate_bpm: merge_max(
-            point_summary.max_heart_rate_bpm,
-            lap_summary.max_heart_rate_bpm,
-        ),
+        max_heart_rate_bpm: merge_max(point_summary.max_heart_rate_bpm, lap_summary.max_heart_rate_bpm),
         average_cadence_rpm: point_summary.average_cadence_rpm,
         max_cadence_rpm: point_summary.max_cadence_rpm,
         calories,
     }
 }
 
-fn summarize_tcx_points(
-    points: &[TrackPointSample],
-    lap_summary: &TcxLapSummary,
-) -> TcxPointSummary {
+fn summarize_tcx_points(points: &[TrackPointSample], lap_summary: &TcxLapSummary) -> TcxPointSummary {
     let (elevation_gain_meters, elevation_loss_meters) = summarize_elevation(points);
     let heart_rates = points
         .iter()
         .filter_map(|point| point.heart_rate_bpm)
         .collect::<Vec<_>>();
-    let cadences = points
-        .iter()
-        .filter_map(|point| point.cadence_rpm)
-        .collect::<Vec<_>>();
+    let cadences = points.iter().filter_map(|point| point.cadence_rpm).collect::<Vec<_>>();
 
     TcxPointSummary {
         elevation_gain_meters,
@@ -333,12 +298,8 @@ fn summarize_tcx_points(
             )
         }),
         max_heart_rate_bpm: max_metric(&heart_rates).or(lap_summary.max_heart_rate_bpm),
-        average_cadence_rpm: average_metric(&cadences).or_else(|| {
-            weighted_average_i32(
-                lap_summary.weighted_cadence_sum,
-                lap_summary.weighted_cadence_seconds,
-            )
-        }),
+        average_cadence_rpm: average_metric(&cadences)
+            .or_else(|| weighted_average_i32(lap_summary.weighted_cadence_sum, lap_summary.weighted_cadence_seconds)),
         max_cadence_rpm: max_metric(&cadences),
         max_speed_mps: summarize_distance_samples(points),
     }
@@ -349,8 +310,7 @@ fn weighted_average_i32(weighted_sum: f64, weight: f64) -> Option<i32> {
 }
 
 fn parse_xml_document<'a>(bytes: &'a [u8], format_name: &str) -> Result<Document<'a>, String> {
-    let xml = std::str::from_utf8(bytes)
-        .map_err(|_| format!("{format_name} uploads must be UTF-8 XML files"))?;
+    let xml = std::str::from_utf8(bytes).map_err(|_| format!("{format_name} uploads must be UTF-8 XML files"))?;
     let xml = xml
         .strip_prefix('\u{feff}')
         .unwrap_or(xml)
@@ -389,11 +349,9 @@ fn parse_tcx_track_point(node: Node<'_, '_>) -> Result<TrackPointSample, String>
         heart_rate_bpm: child_element(node, "HeartRateBpm")
             .and_then(|heart_rate| child_text(heart_rate, "Value"))
             .and_then(parse_i32),
-        cadence_rpm: child_text(node, "Cadence").and_then(parse_i32).or_else(|| {
-            descendant_text(node, "RunCadence")
-                .as_deref()
-                .and_then(parse_i32)
-        }),
+        cadence_rpm: child_text(node, "Cadence")
+            .and_then(parse_i32)
+            .or_else(|| descendant_text(node, "RunCadence").as_deref().and_then(parse_i32)),
     })
 }
 
@@ -424,10 +382,7 @@ fn summarize_geospatial_distance(points: &[TrackPointSample]) -> (Option<f64>, O
         }
     }
 
-    (
-        metric_from_f64(Some(distance_meters)),
-        metric_from_f64(max_speed_mps),
-    )
+    (metric_from_f64(Some(distance_meters)), metric_from_f64(max_speed_mps))
 }
 
 fn summarize_distance_samples(points: &[TrackPointSample]) -> Option<f64> {
@@ -462,9 +417,7 @@ fn summarize_elevation(points: &[TrackPointSample]) -> (Option<f64>, Option<f64>
     let mut loss_meters = 0.0;
 
     for window in points.windows(2) {
-        if let (Some(previous), Some(current)) =
-            (window[0].elevation_meters, window[1].elevation_meters)
-        {
+        if let (Some(previous), Some(current)) = (window[0].elevation_meters, window[1].elevation_meters) {
             let delta = current - previous;
             if delta > 0.0 {
                 gain_meters += delta;
@@ -474,10 +427,7 @@ fn summarize_elevation(points: &[TrackPointSample]) -> (Option<f64>, Option<f64>
         }
     }
 
-    (
-        metric_from_f64(Some(gain_meters)),
-        metric_from_f64(Some(loss_meters)),
-    )
+    (metric_from_f64(Some(gain_meters)), metric_from_f64(Some(loss_meters)))
 }
 
 fn average_metric(values: &[i32]) -> Option<i32> {
@@ -485,10 +435,7 @@ fn average_metric(values: &[i32]) -> Option<i32> {
         return None;
     }
 
-    Some(
-        (values.iter().copied().map(i64::from).sum::<i64>() as f64 / values.len() as f64).round()
-            as i32,
-    )
+    Some((values.iter().copied().map(i64::from).sum::<i64>() as f64 / values.len() as f64).round() as i32)
 }
 
 fn max_metric(values: &[i32]) -> Option<i32> {
@@ -496,9 +443,7 @@ fn max_metric(values: &[i32]) -> Option<i32> {
 }
 
 fn metric_from_f64(value: Option<f64>) -> Option<f64> {
-    value
-        .filter(|metric| metric.is_finite())
-        .filter(|metric| *metric > 0.0)
+    value.filter(|metric| metric.is_finite()).filter(|metric| *metric > 0.0)
 }
 
 fn seconds_from_f64(value: f64) -> Option<i32> {
@@ -538,8 +483,9 @@ fn anchor_time_to_metadata(
     last_time: Option<DateTime<Utc>>,
 ) -> Option<DateTime<Utc>> {
     match (first_time, last_time) {
-        (Some(first_time), Some(last_time)) => seconds_between(first_time, last_time)
-            .map(|seconds| metadata_time + Duration::seconds(i64::from(seconds))),
+        (Some(first_time), Some(last_time)) => {
+            seconds_between(first_time, last_time).map(|seconds| metadata_time + Duration::seconds(i64::from(seconds)))
+        }
         _ => None,
     }
 }
@@ -565,9 +511,7 @@ fn title_case_words(value: &str) -> String {
         .map(|word| {
             let mut chars = word.chars();
             match chars.next() {
-                Some(first) => {
-                    first.to_uppercase().collect::<String>() + &chars.as_str().to_ascii_lowercase()
-                }
+                Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_ascii_lowercase(),
                 None => String::new(),
             }
         })
@@ -579,21 +523,14 @@ fn normalize_sport(value: Option<&str>) -> String {
     normalize_activity_sport(value.unwrap_or("activity"))
 }
 
-fn haversine_distance_meters(
-    start_latitude: f64,
-    start_longitude: f64,
-    end_latitude: f64,
-    end_longitude: f64,
-) -> f64 {
+fn haversine_distance_meters(start_latitude: f64, start_longitude: f64, end_latitude: f64, end_longitude: f64) -> f64 {
     let earth_radius_meters = 6_371_000.0;
     let latitude_delta = (end_latitude - start_latitude).to_radians();
     let longitude_delta = (end_longitude - start_longitude).to_radians();
     let start_latitude_radians = start_latitude.to_radians();
     let end_latitude_radians = end_latitude.to_radians();
     let a = (latitude_delta / 2.0).sin().powi(2)
-        + start_latitude_radians.cos()
-            * end_latitude_radians.cos()
-            * (longitude_delta / 2.0).sin().powi(2);
+        + start_latitude_radians.cos() * end_latitude_radians.cos() * (longitude_delta / 2.0).sin().powi(2);
     let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
 
     earth_radius_meters * c
@@ -693,8 +630,7 @@ mod tests {
             </gpx>
         "#;
 
-        let summary = summarize_activity_upload("evening-ride.gpx", "gpx", gpx.as_bytes())
-            .expect("gpx summary");
+        let summary = summarize_activity_upload("evening-ride.gpx", "gpx", gpx.as_bytes()).expect("gpx summary");
 
         assert_eq!(summary.title, "Evening Ride");
         assert_eq!(summary.sport, "road_ride");
@@ -734,8 +670,7 @@ mod tests {
                         </gpx>
                 "#;
 
-        let summary = summarize_activity_upload("123456789.gpx", "gpx", gpx.as_bytes())
-            .expect("strava gpx summary");
+        let summary = summarize_activity_upload("123456789.gpx", "gpx", gpx.as_bytes()).expect("strava gpx summary");
 
         assert_eq!(summary.title, "Afternoon Ride");
         assert_eq!(summary.sport, "road_ride");
@@ -804,8 +739,7 @@ mod tests {
             </TrainingCenterDatabase>
         "#;
 
-        let summary = summarize_activity_upload("lunch-ride.tcx", "tcx", tcx.as_bytes())
-            .expect("tcx summary");
+        let summary = summarize_activity_upload("lunch-ride.tcx", "tcx", tcx.as_bytes()).expect("tcx summary");
 
         assert_eq!(summary.title, "Lunch Ride");
         assert_eq!(summary.sport, "road_ride");

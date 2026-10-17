@@ -1,7 +1,5 @@
 //! Temporal's supported Prometheus exporter; identifiers stay in logs and history.
-use temporalio_common::telemetry::{
-    start_prometheus_metric_exporter, PrometheusExporterOptions, TelemetryOptions,
-};
+use temporalio_common::telemetry::{start_prometheus_metric_exporter, PrometheusExporterOptions, TelemetryOptions};
 use temporalio_sdk::runtime::RuntimeOptions;
 pub struct MetricsServer {
     pub bound_addr: std::net::SocketAddr,

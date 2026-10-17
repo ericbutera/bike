@@ -41,10 +41,7 @@ impl ObjectStore {
         self.bytes.read(object).await
     }
 
-    pub async fn read_json<T: serde::de::DeserializeOwned>(
-        &self,
-        object: &ObjectRef,
-    ) -> Result<T, WorkflowError> {
+    pub async fn read_json<T: serde::de::DeserializeOwned>(&self, object: &ObjectRef) -> Result<T, WorkflowError> {
         self.bytes.read_json(object).await
     }
 
@@ -56,11 +53,7 @@ impl ObjectStore {
         self.bytes.reference(key).await
     }
 
-    pub async fn save_reference(
-        &self,
-        key: &str,
-        reference: &ObjectRef,
-    ) -> Result<(), WorkflowError> {
+    pub async fn save_reference(&self, key: &str, reference: &ObjectRef) -> Result<(), WorkflowError> {
         self.bytes.save_reference(key, reference).await
     }
 
@@ -120,32 +113,22 @@ impl ObjectStore {
             body_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
             encrypted,
         };
-        let capture = self
-            .bytes
-            .create_json(&format!("{key}/capture.json"), &capture)
-            .await?;
+        let capture = self.bytes.create_json(&format!("{key}/capture.json"), &capture).await?;
         self.materialize(key, capture).await
     }
 
-    pub async fn response_bytes(
-        &self,
-        response: &ResponseObject,
-    ) -> Result<Vec<u8>, WorkflowError> {
+    pub async fn response_bytes(&self, response: &ResponseObject) -> Result<Vec<u8>, WorkflowError> {
         let bytes = self.read(&response.body).await?;
         if response.encrypted {
-            let ciphertext = String::from_utf8(bytes)
-                .map_err(|_| WorkflowError::internal("Invalid encrypted Strava response"))?;
+            let ciphertext =
+                String::from_utf8(bytes).map_err(|_| WorkflowError::internal("Invalid encrypted Strava response"))?;
             crate::strava::credentials::open(&ciphertext).map(String::into_bytes)
         } else {
             Ok(bytes)
         }
     }
 
-    async fn materialize(
-        &self,
-        key: &str,
-        capture: Capture,
-    ) -> Result<ResponseObject, WorkflowError> {
+    async fn materialize(&self, key: &str, capture: Capture) -> Result<ResponseObject, WorkflowError> {
         use base64::Engine;
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(capture.body_base64)
@@ -165,11 +148,7 @@ impl ObjectStore {
         Ok(response)
     }
 
-    pub async fn transform<T: Serialize>(
-        &self,
-        prefix: &str,
-        value: &T,
-    ) -> Result<ObjectRef, WorkflowError> {
+    pub async fn transform<T: Serialize>(&self, prefix: &str, value: &T) -> Result<ObjectRef, WorkflowError> {
         self.bytes.transform(prefix, value).await
     }
 

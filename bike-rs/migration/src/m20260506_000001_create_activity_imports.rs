@@ -38,21 +38,9 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(ActivityImports::Source).string().not_null())
                     .col(ColumnDef::new(ActivityImports::Format).string().not_null())
                     .col(ColumnDef::new(ActivityImports::Status).string().not_null())
-                    .col(
-                        ColumnDef::new(ActivityImports::OriginalFilename)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ActivityImports::StoragePath)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ActivityImports::SizeBytes)
-                            .big_integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityImports::OriginalFilename).string().not_null())
+                    .col(ColumnDef::new(ActivityImports::StoragePath).string().not_null())
+                    .col(ColumnDef::new(ActivityImports::SizeBytes).big_integer().not_null())
                     .col(ColumnDef::new(ActivityImports::MimeType).string().null())
                     .col(
                         ColumnDef::new(ActivityImports::CreatedAt)

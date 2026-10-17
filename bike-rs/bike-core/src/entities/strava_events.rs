@@ -39,8 +39,8 @@ impl ActivityMutation {
     }
 }
 use sea_orm::{
-    entity::prelude::*, sea_query::OnConflict, FromQueryResult, QueryOrder, QuerySelect, Set,
-    Statement, TransactionTrait,
+    entity::prelude::*, sea_query::OnConflict, FromQueryResult, QueryOrder, QuerySelect, Set, Statement,
+    TransactionTrait,
 };
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -116,16 +116,11 @@ impl Model {
         ))?;
         Ok((counts.applied, counts.other))
     }
-    pub async fn accept(
-        db: &DatabaseConnection,
-        event: &crate::strava::events::StravaEvent,
-    ) -> Result<Self, DbErr> {
+    pub async fn accept(db: &DatabaseConnection, event: &crate::strava::events::StravaEvent) -> Result<Self, DbErr> {
         let txn = db.begin().await?;
         let id = event.strava_event_id.to_string();
         let key = if event.webhook.is_some() {
-            event
-                .webhook_key()
-                .map_err(|error| DbErr::Custom(error.to_string()))?
+            event.webhook_key().map_err(|error| DbErr::Custom(error.to_string()))?
         } else {
             id.clone()
         };
@@ -139,9 +134,7 @@ impl Model {
             athlete_id: Set(event.strava_athlete_id),
             activity_id: Set(event.strava_activity_id),
             workflow_id: Set(event.workflow_id()),
-            event: Set(
-                serde_json::to_value(event).map_err(|error| DbErr::Custom(error.to_string()))?
-            ),
+            event: Set(serde_json::to_value(event).map_err(|error| DbErr::Custom(error.to_string()))?),
             mutation: Set(None),
             status: Set(ActivityStatus::Pending),
             accepted_at: Set(chrono::Utc::now()),
@@ -201,11 +194,7 @@ impl Model {
         Ok(())
     }
 
-    pub async fn retry_handoff(
-        self,
-        db: &impl ConnectionTrait,
-        error: String,
-    ) -> Result<(), DbErr> {
+    pub async fn retry_handoff(self, db: &impl ConnectionTrait, error: String) -> Result<(), DbErr> {
         let mut active: ActiveModel = self.into();
         active.next_attempt_at = Set(chrono::Utc::now() + chrono::Duration::seconds(30));
         active.handoff_error = Set(Some(error));
@@ -220,16 +209,14 @@ impl Model {
         let row = Entity::find_by_id(event.strava_event_id.to_string())
             .one(db)
             .await?
-            .ok_or(DbErr::RecordNotFound(
-                "Strava event was not accepted".into(),
-            ))?;
+            .ok_or(DbErr::RecordNotFound("Strava event was not accepted".into()))?;
         if !row.belongs_to(event) {
             return Err(DbErr::Custom(
                 "Strava event identity does not match stored acceptance".into(),
             ));
         }
-        let stored: crate::strava::events::StravaEvent = serde_json::from_value(row.event.clone())
-            .map_err(|error| DbErr::Custom(error.to_string()))?;
+        let stored: crate::strava::events::StravaEvent =
+            serde_json::from_value(row.event.clone()).map_err(|error| DbErr::Custom(error.to_string()))?;
         if !stored.has_same_request(event) {
             return Err(DbErr::Custom(
                 "Strava event contract does not match stored acceptance".into(),
@@ -237,8 +224,7 @@ impl Model {
         }
         row.mutation
             .map(|value| {
-                serde_json::from_value::<ActivityMutation>(value)
-                    .map(|mutation| mutation.into_change(row.status))
+                serde_json::from_value::<ActivityMutation>(value).map(|mutation| mutation.into_change(row.status))
             })
             .transpose()
             .map_err(|error| DbErr::Custom(error.to_string()))
@@ -263,8 +249,8 @@ impl Model {
         if let Some(id) = change.bike_activity_id {
             super::integration_events::Entity::associate_activity(db, &change.event, id).await?;
         }
-        let value = serde_json::to_value(ActivityMutation::from(change))
-            .map_err(|error| DbErr::Custom(error.to_string()))?;
+        let value =
+            serde_json::to_value(ActivityMutation::from(change)).map_err(|error| DbErr::Custom(error.to_string()))?;
         Entity::update_many()
             .set(ActiveModel {
                 mutation: Set(Some(value)),

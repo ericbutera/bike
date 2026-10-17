@@ -29,13 +29,7 @@ pub struct StoredHeartRateZoneBounds(pub Vec<i32>);
 pub struct StoredActivityHeartRateZones(pub Vec<StoredActivityHeartRateZoneSummary>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StoredActivityHeartRateZoneSummary(
-    pub i32,
-    pub Option<i32>,
-    pub Option<i32>,
-    pub i32,
-    pub i32,
-);
+pub struct StoredActivityHeartRateZoneSummary(pub i32, pub Option<i32>, pub Option<i32>, pub i32, pub i32);
 
 impl From<&ActivityHeartRateZoneSummary> for StoredActivityHeartRateZoneSummary {
     fn from(value: &ActivityHeartRateZoneSummary) -> Self {
@@ -65,14 +59,8 @@ impl From<StoredActivityHeartRateZoneSummary> for ActivityHeartRateZoneSummary {
 pub fn serialize_activity_heart_rate_zones(
     zones: &[ActivityHeartRateZoneSummary],
 ) -> Option<StoredActivityHeartRateZones> {
-    (!zones.is_empty()).then(|| {
-        StoredActivityHeartRateZones(
-            zones
-                .iter()
-                .map(StoredActivityHeartRateZoneSummary::from)
-                .collect(),
-        )
-    })
+    (!zones.is_empty())
+        .then(|| StoredActivityHeartRateZones(zones.iter().map(StoredActivityHeartRateZoneSummary::from).collect()))
 }
 
 pub fn deserialize_activity_heart_rate_zones(

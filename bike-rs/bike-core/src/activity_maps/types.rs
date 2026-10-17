@@ -91,12 +91,7 @@ impl RenderRequest {
         // Keep the deployed renderer's field order, revision, and JS number encoding.
         let theme = serde_json::to_string(&self.theme).expect("serialize map theme");
         let variant = serde_json::to_string(&self.variant).expect("serialize map variant");
-        let points = self
-            .points
-            .iter()
-            .map(Point::cache_json)
-            .collect::<Vec<_>>()
-            .join(",");
+        let points = self.points.iter().map(Point::cache_json).collect::<Vec<_>>().join(",");
         let data = format!("{{\"revision\":{RENDER_REVISION},\"theme\":{theme},\"variant\":{variant},\"dpr\":{},\"points\":[{points}]}}", self.dpr);
         hex::encode(Sha256::digest(data.as_bytes()))
     }
@@ -143,10 +138,6 @@ pub struct MapImage {
 impl MapImage {
     pub(super) fn new(png: Vec<u8>, cache_hit: bool) -> Self {
         let etag = format!("\"{}\"", hex::encode(Sha256::digest(&png)));
-        Self {
-            png,
-            etag,
-            cache_hit,
-        }
+        Self { png, etag, cache_hit }
     }
 }

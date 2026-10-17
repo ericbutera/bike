@@ -19,7 +19,5 @@ async fn main() {
         .expect("Failed to bind API listener");
 
     tracing::info!("api listening on http://{}", addr);
-    axum::serve(listener, app)
-        .await
-        .expect("Failed to start API server");
+    axum::serve(listener, app).await.expect("Failed to start API server");
 }

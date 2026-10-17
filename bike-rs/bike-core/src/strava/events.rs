@@ -55,11 +55,7 @@ impl StravaEvent {
             .ok_or_else(|| WorkflowError::bad_request("Strava activity ID is required"))
     }
 
-    pub fn new(
-        user: &users::Model,
-        connection: &strava_connections::Model,
-        operation: StravaOperation,
-    ) -> Self {
+    pub fn new(user: &users::Model, connection: &strava_connections::Model, operation: StravaOperation) -> Self {
         let id = Uuid::new_v4();
         Self {
             strava_event_id: id,
@@ -109,24 +105,15 @@ impl StravaEvent {
         let mut payload = serde_json::to_value((self.connection_generation, webhook))
             .map_err(|error| WorkflowError::bad_request(error.to_string()))?;
         payload.sort_all_objects();
-        let bytes = serde_json::to_vec(&payload)
-            .map_err(|error| WorkflowError::bad_request(error.to_string()))?;
+        let bytes = serde_json::to_vec(&payload).map_err(|error| WorkflowError::bad_request(error.to_string()))?;
         Ok(checksum(&bytes))
     }
 
-    pub fn validate_connection(
-        &self,
-        connection: &strava_connections::Model,
-    ) -> Result<(), WorkflowError> {
+    pub fn validate_connection(&self, connection: &strava_connections::Model) -> Result<(), WorkflowError> {
         if connection.disconnect_requested_at.is_some()
-            && !matches!(
-                self.operation,
-                StravaOperation::Delete | StravaOperation::Disconnect
-            )
+            && !matches!(self.operation, StravaOperation::Delete | StravaOperation::Disconnect)
         {
-            return Err(WorkflowError::bad_request(
-                "Strava connection is disconnecting",
-            ));
+            return Err(WorkflowError::bad_request("Strava connection is disconnecting"));
         }
         if !self.is_allowed(connection) {
             return Err(WorkflowError::bad_request(
@@ -154,8 +141,7 @@ impl StravaEvent {
     }
 
     fn has_same_parent(&self, other: &Self) -> bool {
-        self.parent_operation == other.parent_operation
-            && self.parent_event_id == other.parent_event_id
+        self.parent_operation == other.parent_operation && self.parent_event_id == other.parent_event_id
     }
 
     fn has_same_operation(&self, other: &Self) -> bool {
@@ -163,8 +149,7 @@ impl StravaEvent {
     }
 
     fn has_same_execution(&self, other: &Self) -> bool {
-        self.connection_generation == other.connection_generation
-            && self.correlation_id == other.correlation_id
+        self.connection_generation == other.connection_generation && self.correlation_id == other.correlation_id
     }
 
     pub fn validate_customer(&self, customer: &users::Model) -> Result<(), WorkflowError> {
@@ -212,15 +197,11 @@ mod tests {
         let child = parent.for_activity(42, StravaOperation::Upsert);
         assert_eq!(
             child.strava_event_id,
-            parent
-                .for_activity(42, StravaOperation::Upsert)
-                .strava_event_id
+            parent.for_activity(42, StravaOperation::Upsert).strava_event_id
         );
         assert_ne!(
             child.strava_event_id,
-            parent
-                .for_activity(43, StravaOperation::Upsert)
-                .strava_event_id
+            parent.for_activity(43, StravaOperation::Upsert).strava_event_id
         );
         assert_eq!(child.correlation_id, parent.correlation_id);
         assert_eq!(child.bike_customer_id, parent.bike_customer_id);
@@ -260,12 +241,7 @@ mod tests {
                 serde_json::json!({"authorized":false}),
                 Some(StravaOperation::Disconnect),
             ),
-            (
-                "athlete",
-                "update",
-                serde_json::json!({"name":"Changed"}),
-                None,
-            ),
+            ("athlete", "update", serde_json::json!({"name":"Changed"}), None),
             ("activity", "unknown", serde_json::json!({}), None),
         ] {
             let webhook = StravaWebhookEvent {
@@ -287,14 +263,8 @@ mod tests {
         first.webhook = Some(serde_json::from_value(serde_json::json!({"object_type":"activity","aspect_type":"update","owner_id":99,"object_id":42,"event_time":1,"subscription_id":2,"updates":{}})).unwrap());
         let mut duplicate = first.clone();
         duplicate.strava_event_id = Uuid::new_v4();
-        assert_eq!(
-            first.webhook_key().unwrap(),
-            duplicate.webhook_key().unwrap()
-        );
+        assert_eq!(first.webhook_key().unwrap(), duplicate.webhook_key().unwrap());
         duplicate.connection_generation += chrono::Duration::seconds(1);
-        assert_ne!(
-            first.webhook_key().unwrap(),
-            duplicate.webhook_key().unwrap()
-        );
+        assert_ne!(first.webhook_key().unwrap(), duplicate.webhook_key().unwrap());
     }
 }

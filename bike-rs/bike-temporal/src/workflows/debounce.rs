@@ -5,8 +5,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use temporalio_sdk::{
-    ApplicationFailure, CancellableFuture, ContinueAsNewOptions, SyncWorkflowContext,
-    WorkflowContext, WorkflowResult,
+    ApplicationFailure, CancellableFuture, ContinueAsNewOptions, SyncWorkflowContext, WorkflowContext, WorkflowResult,
 };
 
 pub trait RebuildRequest: Clone + PartialEq + Serialize + 'static {
@@ -85,12 +84,7 @@ impl Default for DebouncePolicy {
 }
 
 impl DebouncePolicy {
-    fn deadline(
-        &self,
-        priority: Priority,
-        first: DateTime<Utc>,
-        at: DateTime<Utc>,
-    ) -> WorkflowResult<DateTime<Utc>> {
+    fn deadline(&self, priority: Priority, first: DateTime<Utc>, at: DateTime<Utc>) -> WorkflowResult<DateTime<Utc>> {
         let (quiet, cap) = match priority {
             Priority::NewActivity => (self.new_activity_quiet, self.new_activity_cap),
             Priority::Background => (self.background_quiet, self.background_cap),
@@ -134,10 +128,7 @@ impl<R> RebuildInput<R> {
 impl<R: RebuildRequest> RebuildInput<R> {
     fn accept(&mut self, request: R, at: DateTime<Utc>) -> WorkflowResult<()> {
         if !self.resource.same_resource(&request) || request.revision() == 0 {
-            return Err(ApplicationFailure::new(
-                "Change needs this resource and a positive revision",
-            )
-            .into());
+            return Err(ApplicationFailure::new("Change needs this resource and a positive revision").into());
         }
         // A late notification can describe an independently committed activity.
         // A numeric watermark cannot prove that its effect was included already.
@@ -156,9 +147,7 @@ impl<R: RebuildRequest> RebuildInput<R> {
             return Ok(());
         }
         if request.priority() <= previous.priority() {
-            let deadline = self
-                .policy
-                .deadline(request.priority(), pending.first, at)?;
+            let deadline = self.policy.deadline(request.priority(), pending.first, at)?;
             pending.deadline = if request.priority() < previous.priority() {
                 deadline.min(pending.deadline)
             } else {
@@ -198,18 +187,13 @@ impl<R> Default for Signals<R> {
 
 impl<R> Signals<R> {
     pub fn push<W>(&mut self, ctx: &SyncWorkflowContext<W>, request: R) {
-        let at = ctx
-            .workflow_time()
-            .expect("Temporal activation has workflow time");
+        let at = ctx.workflow_time().expect("Temporal activation has workflow time");
         self.received.push((request, at.into()));
         self.version += 1;
     }
 }
 
-pub(super) async fn next<
-    W: temporalio_sdk::workflows::WorkflowImplementation + 'static,
-    R: RebuildRequest,
->(
+pub(super) async fn next<W: temporalio_sdk::workflows::WorkflowImplementation + 'static, R: RebuildRequest>(
     ctx: &mut WorkflowContext<W>,
     input: &mut RebuildInput<R>,
     read: fn(&W) -> &Signals<R>,
@@ -241,15 +225,11 @@ where
                 .await?;
             continue;
         };
-        let now = DateTime::<Utc>::from(
-            ctx.workflow_time()
-                .expect("Temporal activation has workflow time"),
-        );
+        let now = DateTime::<Utc>::from(ctx.workflow_time().expect("Temporal activation has workflow time"));
         if deadline <= now {
             return Ok(input.pending.take().expect("pending deadline checked"));
         }
-        let mut timer =
-            std::pin::pin!(ctx.timer((deadline - now).to_std().unwrap_or(Duration::ZERO)));
+        let mut timer = std::pin::pin!(ctx.timer((deadline - now).to_std().unwrap_or(Duration::ZERO)));
         temporalio_sdk::workflows::select! {
             _ = &mut timer => {}
             result = ctx.wait_condition(move |state: &W| read(state).version != version) => { timer.cancel(); result?; }

@@ -24,11 +24,7 @@ pub struct ProviderConfig {
 pub async fn get_provider_config(name: &str, api_url: &str) -> Result<ProviderConfig, AuthError> {
     let provider = normalize_provider_id(name)?;
     let prefix = env_prefix(&provider);
-    let redirect_url = format!(
-        "{}/api/oauth/{}/callback",
-        api_url.trim_end_matches('/'),
-        provider
-    );
+    let redirect_url = format!("{}/api/oauth/{}/callback", api_url.trim_end_matches('/'), provider);
 
     if provider == PROVIDER_DEV {
         return Err(AuthError::internal_error(
@@ -103,12 +99,7 @@ fn scopes_for_prefix(prefix: &str) -> Vec<String> {
                 .collect::<Vec<_>>()
         })
         .filter(|scopes| !scopes.is_empty())
-        .unwrap_or_else(|| {
-            DEFAULT_SCOPES
-                .iter()
-                .map(|scope| (*scope).to_string())
-                .collect()
-        })
+        .unwrap_or_else(|| DEFAULT_SCOPES.iter().map(|scope| (*scope).to_string()).collect())
 }
 
 fn required_env(name: &str) -> Result<String, AuthError> {
@@ -163,8 +154,8 @@ struct OidcDiscoveryDocument {
 }
 
 async fn discover_oidc_endpoints(issuer_url: &str) -> Result<ProviderEndpoints, AuthError> {
-    let mut url = Url::parse(issuer_url)
-        .map_err(|err| AuthError::internal_error(format!("Invalid OIDC issuer URL: {err}")))?;
+    let mut url =
+        Url::parse(issuer_url).map_err(|err| AuthError::internal_error(format!("Invalid OIDC issuer URL: {err}")))?;
     let mut path = url.path().trim_end_matches('/').to_string();
     path.push_str("/.well-known/openid-configuration");
     url.set_path(&path);
@@ -181,16 +172,12 @@ async fn discover_oidc_endpoints(issuer_url: &str) -> Result<ProviderEndpoints, 
             .get(url)
             .send()
             .await
-            .map_err(|err| {
-                AuthError::internal_error(format!("OIDC discovery request failed: {err}"))
-            })?
+            .map_err(|err| AuthError::internal_error(format!("OIDC discovery request failed: {err}")))?
             .error_for_status()
             .map_err(|err| AuthError::internal_error(format!("OIDC discovery failed: {err}")))?
             .json()
             .await
-            .map_err(|err| {
-                AuthError::internal_error(format!("Invalid OIDC discovery document: {err}"))
-            })
+            .map_err(|err| AuthError::internal_error(format!("Invalid OIDC discovery document: {err}")))
     }
     .instrument(span)
     .await?;

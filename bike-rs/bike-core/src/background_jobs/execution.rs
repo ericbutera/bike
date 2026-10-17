@@ -24,9 +24,7 @@ impl ExecutionContext {
         CURRENT.try_with(Clone::clone).ok()
     }
     pub async fn record_progress(&self, db: &impl ConnectionTrait) {
-        if let Err(error) =
-            super::entities::task_attempts::Model::progress(db, self.task_id, self.attempt).await
-        {
+        if let Err(error) = super::entities::task_attempts::Model::progress(db, self.task_id, self.attempt).await {
             tracing::error!(%error, "Failed to record meaningful worker progress");
         }
     }
@@ -52,11 +50,7 @@ pub struct WorkCounts {
 
 /// A diagnostic write failure does not undo successful business work. It is
 /// logged with the task context and stays visibly missing in durable history.
-pub async fn measured<T, E, F>(
-    db: &impl ConnectionTrait,
-    scope: WorkScope,
-    future: F,
-) -> Result<T, E>
+pub async fn measured<T, E, F>(db: &impl ConnectionTrait, scope: WorkScope, future: F) -> Result<T, E>
 where
     E: Display,
     F: Future<Output = Result<(T, WorkCounts), E>>,
@@ -88,16 +82,8 @@ where
             tracing::Span::current().record("error", error.as_str());
         }
         if let Some(context) = context {
-            if let Err(error) = work_units::Model::record(
-                db,
-                &context,
-                &scope,
-                started_at,
-                finished_at,
-                counts,
-                error,
-            )
-            .await
+            if let Err(error) =
+                work_units::Model::record(db, &context, &scope, started_at, finished_at, counts, error).await
             {
                 tracing::error!(%error, "Failed to persist inline work evidence");
             }

@@ -17,10 +17,7 @@ async fn claim_compares_the_snapshot_and_commits_the_attempt_with_the_task() {
         .append_query_results([vec![fixtures::task_attempt()]])
         .append_query_results([vec![executing()]])
         .into_connection();
-    assert_eq!(
-        fixtures::background_task().claim(&db).await.unwrap(),
-        Some(executing())
-    );
+    assert_eq!(fixtures::background_task().claim(&db).await.unwrap(), Some(executing()));
     let log = db.into_transaction_log();
     let statements = log[0].statements();
     assert_eq!(statements.first().unwrap().sql, "BEGIN");
@@ -46,11 +43,7 @@ async fn a_lost_claim_does_not_create_an_attempt_or_execute_the_task() {
     let db = fixtures::postgres_mock()
         .append_exec_results([MockExecResult::default()])
         .into_connection();
-    assert!(fixtures::background_task()
-        .claim(&db)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(fixtures::background_task().claim(&db).await.unwrap().is_none());
     let log = db.into_transaction_log();
     assert_eq!(log[0].statements().len(), 3);
     assert_eq!(log[0].statements().last().unwrap().sql, "ROLLBACK");
@@ -63,10 +56,7 @@ async fn a_failed_attempt_write_rolls_back_the_claim() {
         .append_exec_results([fixtures::written()])
         .append_query_errors([failure.clone()])
         .into_connection();
-    assert_eq!(
-        fixtures::background_task().claim(&db).await.unwrap_err(),
-        failure
-    );
+    assert_eq!(fixtures::background_task().claim(&db).await.unwrap_err(), failure);
     let log = db.into_transaction_log();
     assert_eq!(log[0].statements().last().unwrap().sql, "ROLLBACK");
 }
@@ -81,11 +71,7 @@ async fn a_canceled_or_replaced_execution_cannot_report_completion() {
         .append_exec_results([MockExecResult::default()])
         .append_query_results([vec![canceled]])
         .into_connection();
-    assert!(executing()
-        .finish_execution(&db, Ok(()))
-        .await
-        .unwrap()
-        .is_none());
+    assert!(executing().finish_execution(&db, Ok(())).await.unwrap().is_none());
     let log = db.into_transaction_log();
     assert_eq!(log[0].statements().len(), 4);
     let predicate = log[0].statements()[1].sql.split(" WHERE ").nth(1).unwrap();

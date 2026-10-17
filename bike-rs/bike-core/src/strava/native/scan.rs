@@ -14,8 +14,7 @@ impl StravaOperations {
         )
     )]
     pub async fn scan_connections(&self, request: ScanRequest) -> Result<ScanPage, WorkflowError> {
-        let connections =
-            strava_connections::Model::scan_page(&self.db, request.after_connection_id).await?;
+        let connections = strava_connections::Model::scan_page(&self.db, request.after_connection_id).await?;
         let span = tracing::Span::current();
         span.record("connections_scanned", connections.len() as i64);
         let next_connection_id = (connections.len() == 20)
@@ -26,16 +25,9 @@ impl StravaOperations {
             if !super::super::scopes_allow_activity_import(&connection.scopes) {
                 continue;
             }
-            let user =
-                crate::auth::entities::users::Model::find_by_id(&self.db, connection.user_id)
-                    .await?;
-            let mut event = StravaEvent::new(
-                &user,
-                &connection,
-                super::super::events::StravaOperation::Sync,
-            );
-            event.strava_event_id =
-                uuid::Uuid::new_v5(&request.correlation_id, &connection.id.to_be_bytes());
+            let user = crate::auth::entities::users::Model::find_by_id(&self.db, connection.user_id).await?;
+            let mut event = StravaEvent::new(&user, &connection, super::super::events::StravaOperation::Sync);
+            event.strava_event_id = uuid::Uuid::new_v5(&request.correlation_id, &connection.id.to_be_bytes());
             event.correlation_id = request.correlation_id;
             events.push(self.accept_child(event).await?);
         }

@@ -18,21 +18,13 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(UserPreferences::Table)
-                    .add_column(
-                        ColumnDef::new(UserPreferences::XcGoalEventName)
-                            .string()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(UserPreferences::XcGoalEventName).string().null())
                     .add_column(
                         ColumnDef::new(UserPreferences::XcGoalTargetFinishTimeSeconds)
                             .integer()
                             .null(),
                     )
-                    .add_column(
-                        ColumnDef::new(UserPreferences::XcGoalEventProfile)
-                            .string()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(UserPreferences::XcGoalEventProfile).string().null())
                     .to_owned(),
             )
             .await

@@ -70,9 +70,7 @@ impl PlatformError {
 
 impl IntoResponse for PlatformError {
     fn into_response(self) -> Response {
-        let body = Json(ErrorResponse {
-            error: self.message,
-        });
+        let body = Json(ErrorResponse { error: self.message });
         (self.code, body).into_response()
     }
 }

@@ -96,19 +96,12 @@ async fn supervise(
     Ok(())
 }
 
-async fn provider_metrics(
-) -> Result<([(axum::http::HeaderName, &'static str); 1], String), axum::http::StatusCode> {
+async fn provider_metrics() -> Result<([(axum::http::HeaderName, &'static str); 1], String), axum::http::StatusCode> {
     let mut body = String::new();
     prometheus::TextEncoder::new()
         .encode_utf8(&prometheus::gather(), &mut body)
         .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok((
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "text/plain; version=0.0.4",
-        )],
-        body,
-    ))
+    Ok(([(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4")], body))
 }
 
 async fn shutdown_signal() -> Result<(), std::io::Error> {
@@ -259,9 +252,7 @@ mod tests {
     #[tokio::test]
     async fn provider_endpoint_encodes_the_registered_metrics() {
         bike_core::provider_metrics::init_provider_metrics();
-        bike_core::provider_metrics::record_provider_api_request(
-            "strava", "activity", "read", "success",
-        );
+        bike_core::provider_metrics::record_provider_api_request("strava", "activity", "read", "success");
         let (headers, body) = provider_metrics().await.unwrap();
         assert_eq!(headers[0].0, axum::http::header::CONTENT_TYPE);
         assert!(body.contains("bike_rust_provider_api_requests_total"));

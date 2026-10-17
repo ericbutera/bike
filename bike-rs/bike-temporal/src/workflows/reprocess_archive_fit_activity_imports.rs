@@ -11,10 +11,7 @@ pub struct ReprocessArchiveFitActivityImports;
 #[workflow_methods]
 impl ReprocessArchiveFitActivityImports {
     #[run(name = "reprocess_archive_fit_activity_imports")]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        mut input: BatchInput,
-    ) -> WorkflowResult<BatchResult> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, mut input: BatchInput) -> WorkflowResult<BatchResult> {
         imports::prepare_reprocessing(ctx, &mut input, ReprocessScope::ArchiveFits).await?;
         let step = batches::run_children(
             ctx,

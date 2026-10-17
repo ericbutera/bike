@@ -2,9 +2,7 @@ use super::super::{events::StravaEvent, objects::ObjectRef};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize,
-)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityStatus {
@@ -53,12 +51,7 @@ pub struct ActivityChange {
     pub removed_source: Option<String>,
 }
 impl ActivityChange {
-    pub fn applied(
-        mut event: StravaEvent,
-        activity_id: i32,
-        import_id: i32,
-        dirty_from: chrono::NaiveDate,
-    ) -> Self {
+    pub fn applied(mut event: StravaEvent, activity_id: i32, import_id: i32, dirty_from: chrono::NaiveDate) -> Self {
         event.bike_activity_id = Some(activity_id);
         Self {
             event,

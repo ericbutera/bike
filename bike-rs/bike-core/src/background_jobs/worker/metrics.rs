@@ -2,15 +2,13 @@ use axum::body::Body;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::Response;
 use axum::{routing::get, Router};
-use prometheus::{
-    Encoder, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry, TextEncoder,
-};
+use prometheus::{Encoder, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry, TextEncoder};
 use std::sync::Arc;
 
 mod diagnostics;
 pub(super) const DURATION_BUCKETS: &[f64] = &[
-    0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0,
-    7200.0, 14400.0, 86400.0,
+    0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0, 7200.0, 14400.0,
+    86400.0,
 ];
 
 pub struct WorkerMetrics {
@@ -25,8 +23,8 @@ pub struct WorkerMetrics {
 
 impl WorkerMetrics {
     pub fn new(namespace: &str) -> Self {
-        let registry = Registry::new_custom(Some(namespace.to_string()), None)
-            .expect("failed to create worker metrics registry");
+        let registry =
+            Registry::new_custom(Some(namespace.to_string()), None).expect("failed to create worker metrics registry");
 
         let tasks_completed = IntCounterVec::new(
             Opts::new(
@@ -53,10 +51,7 @@ impl WorkerMetrics {
             .expect("failed to register tasks_failed metric");
 
         let task_invocations = IntCounterVec::new(
-            Opts::new(
-                "task_invocations_total",
-                "Number of task processing attempts",
-            ),
+            Opts::new("task_invocations_total", "Number of task processing attempts"),
             &["type"],
         )
         .expect("failed to create task_invocations metric");
@@ -78,11 +73,8 @@ impl WorkerMetrics {
             .expect("failed to register task_processing_lag metric");
 
         let task_duration_seconds = HistogramVec::new(
-            HistogramOpts::new(
-                "task_duration_seconds",
-                "Task execution duration in seconds",
-            )
-            .buckets(DURATION_BUCKETS.to_vec()),
+            HistogramOpts::new("task_duration_seconds", "Task execution duration in seconds")
+                .buckets(DURATION_BUCKETS.to_vec()),
             &["type"],
         )
         .expect("failed to create task_duration_seconds metric");
@@ -104,13 +96,9 @@ impl WorkerMetrics {
     pub fn warmup_task_types(&self, task_types: &[&str]) {
         self.diagnostics.warmup(task_types);
         for task_type in task_types {
-            self.tasks_completed
-                .with_label_values(&[*task_type])
-                .inc_by(0);
+            self.tasks_completed.with_label_values(&[*task_type]).inc_by(0);
             self.tasks_failed.with_label_values(&[*task_type]).inc_by(0);
-            self.task_invocations
-                .with_label_values(&[*task_type])
-                .inc_by(0);
+            self.task_invocations.with_label_values(&[*task_type]).inc_by(0);
             self.task_processing_lag.with_label_values(&[*task_type]);
             self.task_duration_seconds.with_label_values(&[*task_type]);
         }
@@ -145,9 +133,7 @@ impl WorkerMetrics {
         let mut metric_families = self.registry.gather();
         metric_families.extend(prometheus::gather());
         let mut buffer = Vec::new();
-        encoder
-            .encode(&metric_families, &mut buffer)
-            .unwrap_or_default();
+        encoder.encode(&metric_families, &mut buffer).unwrap_or_default();
         let body = String::from_utf8(buffer).unwrap_or_default();
         Response::builder()
             .header(CONTENT_TYPE, encoder.format_type())

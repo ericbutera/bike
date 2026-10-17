@@ -18,25 +18,16 @@ async fn repeated_and_concurrent_writes_return_one_immutable_reference() {
 #[tokio::test]
 async fn corrupt_missing_or_misreported_objects_cannot_be_reused() {
     let (store, backend) = test_support::object_storage(ObjectOwner::BikeTasks);
-    let object = store
-        .write("bike/tasks/7/source", b"original")
-        .await
-        .unwrap();
+    let object = store.write("bike/tasks/7/source", b"original").await.unwrap();
     let wrong_size = ObjectRef {
         bytes: object.bytes + 1,
         ..object.clone()
     };
     assert!(store.read(&wrong_size).await.is_err());
     let key = ObjectPath::parse(&object.path).unwrap();
-    backend
-        .put(&key, PutPayload::from_static(b"corrupt"))
-        .await
-        .unwrap();
+    backend.put(&key, PutPayload::from_static(b"corrupt")).await.unwrap();
     assert!(store.read(&object).await.is_err());
-    assert!(store
-        .write("bike/tasks/7/source", b"original")
-        .await
-        .is_err());
+    assert!(store.write("bike/tasks/7/source", b"original").await.is_err());
     backend.delete(&key).await.unwrap();
     assert!(store.read(&object).await.is_err());
 }
@@ -74,24 +65,15 @@ async fn retained_imports_keep_their_existing_keys_and_namespace() {
         )
         .await
         .unwrap();
-    assert_eq!(
-        imports.read(&reference).await.unwrap(),
-        test_support::REPROCESS_SOURCE
-    );
+    assert_eq!(imports.read(&reference).await.unwrap(), test_support::REPROCESS_SOURCE);
     for owner in [ObjectOwner::BikeTasks, ObjectOwner::Strava] {
         let other = ObjectStore::new(backend.clone(), owner);
-        assert_eq!(
-            other.read(&reference).await.unwrap_err().status.as_u16(),
-            400
-        );
+        assert_eq!(other.read(&reference).await.unwrap_err().status.as_u16(), 400);
         let foreign = other
             .write(&format!("{}/7/source", owner.prefix()), b"foreign")
             .await
             .unwrap();
-        assert_eq!(
-            imports.read(&foreign).await.unwrap_err().status.as_u16(),
-            400
-        );
+        assert_eq!(imports.read(&foreign).await.unwrap_err().status.as_u16(), 400);
     }
     for key in [
         "/activity-imports/source",
@@ -102,10 +84,7 @@ async fn retained_imports_keep_their_existing_keys_and_namespace() {
             path: key.into(),
             ..reference.clone()
         };
-        assert_eq!(
-            imports.read(&invalid).await.unwrap_err().status.as_u16(),
-            400
-        );
+        assert_eq!(imports.read(&invalid).await.unwrap_err().status.as_u16(), 400);
     }
 }
 
@@ -114,17 +93,10 @@ async fn references_keep_the_existing_wire_format_and_round_trip_json() {
     let (store, _) = test_support::object_storage(ObjectOwner::Strava);
     let value = serde_json::json!({"activity_id": 42});
     let object = store.transform("strava/7/parsed", &value).await.unwrap();
-    assert_eq!(
-        store.read_json::<serde_json::Value>(&object).await.unwrap(),
-        value
-    );
-    let serialized =
-        serde_json::json!({ "path": object.path, "sha256": object.sha256, "bytes": object.bytes });
+    assert_eq!(store.read_json::<serde_json::Value>(&object).await.unwrap(), value);
+    let serialized = serde_json::json!({ "path": object.path, "sha256": object.sha256, "bytes": object.bytes });
     assert_eq!(serde_json::to_value(&object).unwrap(), serialized);
-    assert_eq!(
-        serde_json::from_value::<ObjectRef>(serialized).unwrap(),
-        object
-    );
+    assert_eq!(serde_json::from_value::<ObjectRef>(serialized).unwrap(), object);
 }
 
 #[tokio::test]
@@ -146,20 +118,14 @@ async fn concurrent_named_descriptors_return_the_winning_value() {
     let key = "bike/tasks/7/import-18/manifest.json";
     let first = serde_json::json!({"revision": 1});
     let second = serde_json::json!({"revision": 2});
-    let (first, second) = tokio::join!(
-        store.create_json(key, &first),
-        store.create_json(key, &second)
-    );
+    let (first, second) = tokio::join!(store.create_json(key, &first), store.create_json(key, &second));
     assert_eq!(first.unwrap(), second.unwrap());
 }
 
 #[tokio::test]
 async fn explicit_domain_deletion_is_idempotent() {
     let (store, _) = test_support::object_storage(ObjectOwner::BikeTasks);
-    let object = store
-        .write("bike/tasks/7/source", b"original")
-        .await
-        .unwrap();
+    let object = store.write("bike/tasks/7/source", b"original").await.unwrap();
     store.remove(&object.path).await.unwrap();
     store.remove(&object.path).await.unwrap();
     assert!(store.read(&object).await.is_err());
@@ -170,8 +136,7 @@ fn storage_service_uses_its_own_owner_and_retention_configuration() {
     use retention::{ObjectLifetime, RetentionRecord};
     let (store, _) = test_support::object_storage(ObjectOwner::BikeTasks);
     let hour = chrono::TimeDelta::hours(1);
-    let store =
-        store.with_retention_policy(RetentionPolicy::new(hour, hour * 2, hour * 3).unwrap());
+    let store = store.with_retention_policy(RetentionPolicy::new(hour, hour * 2, hour * 3).unwrap());
     let at = test_support::timestamp();
     let record = RetentionRecord {
         object: ObjectRef {
@@ -180,9 +145,7 @@ fn storage_service_uses_its_own_owner_and_retention_configuration() {
             bytes: 12,
         },
         owner: ObjectOwner::BikeTasks,
-        lifetime: ObjectLifetime::Unaccepted {
-            last_attempt_at: at,
-        },
+        lifetime: ObjectLifetime::Unaccepted { last_attempt_at: at },
     };
     let inventory = ReferenceInventory {
         complete: true,
@@ -211,10 +174,7 @@ async fn filesystem_adapter_creates_its_root_and_survives_a_new_instance() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("objects");
     let store = ObjectStore::filesystem(&root, ObjectOwner::BikeTasks);
-    let object = store
-        .write("bike/tasks/7/source", b"retained")
-        .await
-        .unwrap();
+    let object = store.write("bike/tasks/7/source", b"retained").await.unwrap();
     let restarted = ObjectStore::filesystem(root, ObjectOwner::BikeTasks);
     assert_eq!(restarted.read(&object).await.unwrap(), b"retained");
 }

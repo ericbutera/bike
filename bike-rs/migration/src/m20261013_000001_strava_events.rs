@@ -10,10 +10,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Alias::new("strava_connections"))
-                    .add_column(
-                        ColumnDef::new(Alias::new("disconnect_requested_at"))
-                            .timestamp_with_time_zone(),
-                    )
+                    .add_column(ColumnDef::new(Alias::new("disconnect_requested_at")).timestamp_with_time_zone())
                     .to_owned(),
             )
             .await?;
@@ -22,25 +19,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Alias::new("strava_events"))
                     .col(ColumnDef::new(Alias::new("id")).string().primary_key())
-                    .col(
-                        ColumnDef::new(Alias::new("event_key"))
-                            .string()
-                            .not_null()
-                            .unique_key(),
-                    )
-                    .col(
-                        ColumnDef::new(Alias::new("correlation_id"))
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Alias::new("event_key")).string().not_null().unique_key())
+                    .col(ColumnDef::new(Alias::new("correlation_id")).string().not_null())
                     .col(ColumnDef::new(Alias::new("user_id")).integer().not_null())
                     .col(ColumnDef::new(Alias::new("parent_event_id")).string())
                     .col(ColumnDef::new(Alias::new("customer_id")).uuid().not_null())
-                    .col(
-                        ColumnDef::new(Alias::new("athlete_id"))
-                            .big_integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Alias::new("athlete_id")).big_integer().not_null())
                     .col(ColumnDef::new(Alias::new("activity_id")).big_integer())
                     .col(
                         ColumnDef::new(Alias::new("workflow_id"))

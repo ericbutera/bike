@@ -47,16 +47,14 @@ pub async fn get_training_reports(
     State(state): State<Arc<AppStorage>>,
     Query(query): Query<TrainingReportsQuery>,
 ) -> Result<Json<TrainingReportsResponse>, AppError> {
-    let prepared_request =
-        ReportsService::prepare_training_report_request(PreparedTrainingReportRequest {
-            user_id: user.id,
-            db: state.db.clone(),
-            query,
-            now: Utc::now(),
-        })?;
+    let prepared_request = ReportsService::prepare_training_report_request(PreparedTrainingReportRequest {
+        user_id: user.id,
+        db: state.db.clone(),
+        query,
+        now: Utc::now(),
+    })?;
 
-    let mut cooldown =
-        CooldownService::acquire(&state.db, CooldownType::ReportGeneration, user.id).await?;
+    let mut cooldown = CooldownService::acquire(&state.db, CooldownType::ReportGeneration, user.id).await?;
     let response = ReportsService::build_training_report(prepared_request).await;
     if let Err(error) = cooldown.release().await {
         tracing::error!(error = ?error, "failed to release report generation cooldown");

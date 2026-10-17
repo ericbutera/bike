@@ -176,14 +176,7 @@ struct CompactStoredActivityLapV1(
 );
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-struct CompactStoredActivityChartPointV1(
-    i32,
-    Option<i32>,
-    Option<i32>,
-    Option<i32>,
-    Option<i32>,
-    Option<i32>,
-);
+struct CompactStoredActivityChartPointV1(i32, Option<i32>, Option<i32>, Option<i32>, Option<i32>, Option<i32>);
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 struct CompactStoredActivityRoutePointV1(
@@ -236,13 +229,9 @@ impl<'de> Deserialize<'de> for StoredActivityDerivedData {
             || value.get("route_points").is_some();
 
         if is_schemaful {
-            let value = StoredActivityDerivedDataV2::deserialize(value)
-                .map_err(serde::de::Error::custom)?;
+            let value = StoredActivityDerivedDataV2::deserialize(value).map_err(serde::de::Error::custom)?;
             if value.v != STORAGE_FORMAT_VERSION {
-                tracing::warn!(
-                    version = value.v,
-                    "unsupported activity derived data format version"
-                );
+                tracing::warn!(version = value.v, "unsupported activity derived data format version");
                 return Ok(Self::default());
             }
 
@@ -255,13 +244,9 @@ impl<'de> Deserialize<'de> for StoredActivityDerivedData {
                 route_points: value.route_points,
             })
         } else {
-            let value = CompactStoredActivityDerivedDataV1::deserialize(value)
-                .map_err(serde::de::Error::custom)?;
+            let value = CompactStoredActivityDerivedDataV1::deserialize(value).map_err(serde::de::Error::custom)?;
             if value.v != 1 {
-                tracing::warn!(
-                    version = value.v,
-                    "unsupported activity derived data format version"
-                );
+                tracing::warn!(version = value.v, "unsupported activity derived data format version");
                 return Ok(Self::default());
             }
 
@@ -286,9 +271,9 @@ impl<'de> Deserialize<'de> for StoredRoutePointSeries {
     {
         match StoredRoutePointSeriesRepr::deserialize(deserializer)? {
             StoredRoutePointSeriesRepr::V2(value) => Ok(Self(value)),
-            StoredRoutePointSeriesRepr::V1(value) => Ok(Self(
-                value.into_iter().map(ActivityRoutePoint::from).collect(),
-            )),
+            StoredRoutePointSeriesRepr::V1(value) => {
+                Ok(Self(value.into_iter().map(ActivityRoutePoint::from).collect()))
+            }
         }
     }
 }
@@ -324,16 +309,8 @@ impl From<CompactStoredActivityDerivedDataV1> for StoredActivityDerivedData {
             source_metadata: None,
             recording: value.recording,
             laps: value.laps.into_iter().map(ActivityLap::from).collect(),
-            chart_points: value
-                .chart_points
-                .into_iter()
-                .map(ActivityChartPoint::from)
-                .collect(),
-            route_points: value
-                .route_points
-                .into_iter()
-                .map(ActivityRoutePoint::from)
-                .collect(),
+            chart_points: value.chart_points.into_iter().map(ActivityChartPoint::from).collect(),
+            route_points: value.route_points.into_iter().map(ActivityRoutePoint::from).collect(),
         }
     }
 }
@@ -404,21 +381,15 @@ pub fn serialize_derived_activity_data(data: &ActivityDerivedData) -> StoredActi
     StoredActivityDerivedData::from(data)
 }
 
-pub fn deserialize_derived_activity_data(
-    raw: Option<&StoredActivityDerivedData>,
-) -> ActivityDerivedData {
-    raw.cloned()
-        .map(ActivityDerivedData::from)
-        .unwrap_or_default()
+pub fn deserialize_derived_activity_data(raw: Option<&StoredActivityDerivedData>) -> ActivityDerivedData {
+    raw.cloned().map(ActivityDerivedData::from).unwrap_or_default()
 }
 
 pub fn serialize_route_point_series(route_points: &[ActivityRoutePoint]) -> StoredRoutePointSeries {
     StoredRoutePointSeries(route_points.to_vec())
 }
 
-pub fn deserialize_route_point_series(
-    raw: Option<&StoredRoutePointSeries>,
-) -> Vec<ActivityRoutePoint> {
+pub fn deserialize_route_point_series(raw: Option<&StoredRoutePointSeries>) -> Vec<ActivityRoutePoint> {
     raw.map(|series| series.0.clone()).unwrap_or_default()
 }
 
@@ -445,10 +416,7 @@ mod recording_tests {
         };
         let json = serde_json::to_value(serialize_derived_activity_data(&derived)).unwrap();
         let stored: StoredActivityDerivedData = serde_json::from_value(json).unwrap();
-        assert_eq!(
-            deserialize_derived_activity_data(Some(&stored)).recording,
-            context
-        );
+        assert_eq!(deserialize_derived_activity_data(Some(&stored)).recording, context);
         let legacy: StoredActivityDerivedData =
             serde_json::from_value(serde_json::json!({"v":1,"recording":context,"r":[]})).unwrap();
         let upgraded = serde_json::to_value(legacy).unwrap();

@@ -16,16 +16,8 @@ impl MigrationTrait for Migration {
                 FeatureFlags::Enabled,
                 FeatureFlags::Description,
             ])
-            .values_panic([
-                FLAG_ENHANCED_MAPS.into(),
-                false.into(),
-                FLAG_DESCRIPTION.into(),
-            ])
-            .on_conflict(
-                OnConflict::column(FeatureFlags::FeatureKey)
-                    .do_nothing()
-                    .to_owned(),
-            )
+            .values_panic([FLAG_ENHANCED_MAPS.into(), false.into(), FLAG_DESCRIPTION.into()])
+            .on_conflict(OnConflict::column(FeatureFlags::FeatureKey).do_nothing().to_owned())
             .to_owned();
 
         manager.exec_stmt(insert).await

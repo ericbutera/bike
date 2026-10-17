@@ -131,15 +131,9 @@ impl From<std::io::Error> for WorkflowError {
 impl From<crate::activity_import_lock::ActivityImportLockError> for WorkflowError {
     fn from(error: crate::activity_import_lock::ActivityImportLockError) -> Self {
         match error {
-            crate::activity_import_lock::ActivityImportLockError::Conflict(message) => {
-                Self::conflict(message)
-            }
-            crate::activity_import_lock::ActivityImportLockError::Internal(message) => {
-                Self::internal(message)
-            }
-            crate::activity_import_lock::ActivityImportLockError::Database(error) => {
-                Self::from(error)
-            }
+            crate::activity_import_lock::ActivityImportLockError::Conflict(message) => Self::conflict(message),
+            crate::activity_import_lock::ActivityImportLockError::Internal(message) => Self::internal(message),
+            crate::activity_import_lock::ActivityImportLockError::Database(error) => Self::from(error),
         }
     }
 }

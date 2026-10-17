@@ -35,27 +35,18 @@ async fn fitness_invalidations_merge_first_duplicate_and_out_of_order_changes_in
             .unwrap();
     }
     let transactions = db.into_transaction_log();
-    let statements = transactions
-        .iter()
-        .flat_map(|txn| txn.statements())
-        .collect::<Vec<_>>();
+    let statements = transactions.iter().flat_map(|txn| txn.statements()).collect::<Vec<_>>();
     assert_eq!(statements.len(), requests.len());
     for (statement, (dirty_from, changed_at)) in statements.iter().zip(requests) {
         let update = statement.sql.split_once("DO UPDATE SET").unwrap().1;
         assert!(statement.sql.contains("ON CONFLICT (\"user_id\")"));
-        assert!(
-            update.contains("LEAST(COALESCE(\"analytics_user_states\".\"fitness_dirty_from_day\"")
-        );
+        assert!(update.contains("LEAST(COALESCE(\"analytics_user_states\".\"fitness_dirty_from_day\""));
         assert!(update.contains("GREATEST(\"analytics_user_states\".\"last_activity_change_at\""));
         assert!(update.contains("\"updated_at\" = \"excluded\".\"updated_at\""));
         assert!(!update.contains("created_at"));
         assert!(!update.contains("last_fitness_rebuild_at"));
         let values = &statement.values.as_ref().unwrap().0;
-        for expected in [
-            Value::from(state.user_id),
-            dirty_from.into(),
-            changed_at.into(),
-        ] {
+        for expected in [Value::from(state.user_id), dirty_from.into(), changed_at.into()] {
             assert!(values.contains(&expected));
         }
     }
@@ -68,14 +59,9 @@ async fn fitness_invalidation_advances_its_write_fence_even_for_an_old_source_ti
         .append_exec_results([written(1)])
         .into_connection();
     let started_at = Utc::now();
-    Model::mark_dirty(
-        &db,
-        state.user_id,
-        state.updated_at.date_naive(),
-        state.updated_at,
-    )
-    .await
-    .unwrap();
+    Model::mark_dirty(&db, state.user_id, state.updated_at.date_naive(), state.updated_at)
+        .await
+        .unwrap();
     let finished_at = Utc::now();
     let log = db.into_transaction_log();
     let values = &log[0].statements()[0].values.as_ref().unwrap().0;
@@ -115,13 +101,8 @@ async fn fitness_invalidation_returns_database_failure() {
     let db = MockDatabase::new(DbBackend::Postgres)
         .append_exec_errors([DbErr::Custom("fixture write failed".into())])
         .into_connection();
-    let error = Model::mark_dirty(
-        &db,
-        state.user_id,
-        state.updated_at.date_naive(),
-        state.updated_at,
-    )
-    .await
-    .unwrap_err();
+    let error = Model::mark_dirty(&db, state.user_id, state.updated_at.date_naive(), state.updated_at)
+        .await
+        .unwrap_err();
     assert!(error.to_string().contains("fixture write failed"));
 }

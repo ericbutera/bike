@@ -9,8 +9,7 @@ use crate::workflow_error::WorkflowError;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set,
+    ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use std::collections::HashMap;
 mod history;
@@ -44,10 +43,7 @@ pub struct AdminListRow {
 }
 
 impl Model {
-    pub async fn find_by_id(
-        db: &impl ConnectionTrait,
-        activity_id: i32,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn find_by_id(db: &impl ConnectionTrait, activity_id: i32) -> Result<Option<Self>, DbErr> {
         Entity::find_by_id(activity_id).one(db).await
     }
 
@@ -57,12 +53,7 @@ impl Model {
     ) -> Result<Vec<EffortActivityRow>, DbErr> {
         Entity::find()
             .select_only()
-            .columns([
-                Column::Id,
-                Column::Title,
-                Column::StartedAt,
-                Column::DerivedDataJson,
-            ])
+            .columns([Column::Id, Column::Title, Column::StartedAt, Column::DerivedDataJson])
             .filter(Column::Id.is_in(activity_ids.iter().copied()))
             .into_model::<EffortActivityRow>()
             .all(db)
@@ -123,9 +114,7 @@ impl Model {
             .filter_map(|import| import.activity_id.map(|id| (id, import.id)))
             .collect::<HashMap<_, _>>();
         if !imports_by_activity_id.is_empty() {
-            for activity in
-                Self::list_owned_by_ids(db, user_id, imports_by_activity_id.keys().copied()).await?
-            {
+            for activity in Self::list_owned_by_ids(db, user_id, imports_by_activity_id.keys().copied()).await? {
                 if let Some(import_id) = imports_by_activity_id.get(&activity.id) {
                     linked.insert(*import_id, activity);
                 }
@@ -149,18 +138,12 @@ impl Model {
     fn normalize_title(raw_title: &str) -> Result<String, WorkflowError> {
         let title = raw_title.trim();
         if title.is_empty() {
-            return Err(WorkflowError::validation_field(
-                "title",
-                "Activity title is required",
-            ));
+            return Err(WorkflowError::validation_field("title", "Activity title is required"));
         }
         Ok(title.to_string())
     }
 
-    pub async fn native_strava_ids(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-    ) -> Result<Vec<i64>, DbErr> {
+    pub async fn native_strava_ids(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<i64>, DbErr> {
         let values = Entity::find()
             .select_only()
             .column(Column::SourceCorrelationId)
@@ -174,11 +157,7 @@ impl Model {
         values
             .into_iter()
             .flatten()
-            .map(|value| {
-                value
-                    .parse::<i64>()
-                    .map_err(|error| DbErr::Custom(error.to_string()))
-            })
+            .map(|value| value.parse::<i64>().map_err(|error| DbErr::Custom(error.to_string())))
             .collect()
     }
     pub async fn admin_page(
@@ -214,18 +193,10 @@ impl Model {
         use sea_orm::sea_query::{Expr, Func};
         use sea_orm::{Condition, ExprTrait};
         let mut query = Entity::find();
-        if let Some(term) = filters
-            .q
-            .as_deref()
-            .map(str::trim)
-            .filter(|term| !term.is_empty())
-        {
+        if let Some(term) = filters.q.as_deref().map(str::trim).filter(|term| !term.is_empty()) {
             query = query.filter(
                 Condition::any()
-                    .add(
-                        Expr::expr(Func::lower(Column::Title.into_expr()))
-                            .like(format!("%{}%", term.to_lowercase())),
-                    )
+                    .add(Expr::expr(Func::lower(Column::Title.into_expr())).like(format!("%{}%", term.to_lowercase())))
                     .add_option(term.parse::<i32>().ok().map(|id| Column::Id.eq(id))),
             );
         }
@@ -239,18 +210,12 @@ impl Model {
                         .filter(|value| !value.is_empty())
                         .map(|source| Column::Source.eq(source)),
                 )
-                .add_option(
-                    filters
-                        .sport
-                        .as_deref()
-                        .filter(|value| !value.is_empty())
-                        .map(|sport| {
-                            crate::activity_sport::activity_sport_from_stored(sport).map_or_else(
-                                || Column::Sport.eq(sport),
-                                |sport| Column::Sport.is_in(sport.stored_values().iter().copied()),
-                            )
-                        }),
-                ),
+                .add_option(filters.sport.as_deref().filter(|value| !value.is_empty()).map(|sport| {
+                    crate::activity_sport::activity_sport_from_stored(sport).map_or_else(
+                        || Column::Sport.eq(sport),
+                        |sport| Column::Sport.is_in(sport.stored_values().iter().copied()),
+                    )
+                })),
         )
     }
 }
@@ -260,18 +225,10 @@ impl Model {
         db: &DatabaseConnection,
         now: DateTime<Utc>,
     ) -> Result<crate::platform::aggregator::StoredRecordCounts, DbErr> {
-        crate::platform::aggregator::Aggregator::stored_records::<Entity>(
-            db,
-            Column::CreatedAt,
-            now,
-        )
-        .await
+        crate::platform::aggregator::Aggregator::stored_records::<Entity>(db, Column::CreatedAt, now).await
     }
 
-    pub async fn owned_strava_activities(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-    ) -> Result<Vec<Self>, DbErr> {
+    pub async fn owned_strava_activities(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<Self>, DbErr> {
         Entity::find()
             .filter(Column::UserId.eq(user_id))
             .filter(Column::Source.eq("strava_sync"))
@@ -292,10 +249,7 @@ impl Model {
         user_id: i32,
         vendor_id: i64,
     ) -> Result<Option<Self>, DbErr> {
-        Self::strava_identity(user_id, vendor_id)
-            .lock_exclusive()
-            .one(db)
-            .await
+        Self::strava_identity(user_id, vendor_id).lock_exclusive().one(db).await
     }
 
     fn strava_identity(user_id: i32, vendor_id: i64) -> sea_orm::Select<Entity> {
@@ -304,11 +258,7 @@ impl Model {
             .filter(Column::Source.eq("strava_sync"))
             .filter(Column::SourceCorrelationId.eq(vendor_id.to_string()))
     }
-    pub async fn cycling_ids_page(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-        after: i32,
-    ) -> Result<Vec<i32>, DbErr> {
+    pub async fn cycling_ids_page(db: &impl ConnectionTrait, user_id: i32, after: i32) -> Result<Vec<i32>, DbErr> {
         Entity::find()
             .select_only()
             .column(Column::Id)
@@ -405,11 +355,7 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
-    pub async fn delete_by_user(
-        db: &impl ConnectionTrait,
-        activity_id: i32,
-        user_id: i32,
-    ) -> Result<(), DbErr> {
+    pub async fn delete_by_user(db: &impl ConnectionTrait, activity_id: i32, user_id: i32) -> Result<(), DbErr> {
         Self::delete_by_id(activity_id)
             .filter(Column::UserId.eq(user_id))
             .exec(db)
@@ -471,10 +417,7 @@ impl Model {
             .all(db)
             .await
     }
-    pub async fn withhold_unavailable_source(
-        &self,
-        db: &impl ConnectionTrait,
-    ) -> Result<bool, DbErr> {
+    pub async fn withhold_unavailable_source(&self, db: &impl ConnectionTrait) -> Result<bool, DbErr> {
         Ok(Entity::update_many()
             .set(ActiveModel {
                 format: Set(Some("unavailable".into())),
@@ -491,10 +434,8 @@ impl Model {
             == 1)
     }
     pub fn recording_context(&self) -> crate::activity_recording::RecordingContext {
-        let mut context = crate::activity_data::deserialize_derived_activity_data(
-            self.derived_data_json.as_ref(),
-        )
-        .recording;
+        let mut context =
+            crate::activity_data::deserialize_derived_activity_data(self.derived_data_json.as_ref()).recording;
         context.merge(crate::activity_recording::RecordingContext::legacy(
             &self.sport,
             &self.source,
@@ -542,9 +483,7 @@ impl Model {
     ) -> Result<bool, DbErr> {
         Ok(Entity::update_many()
             .set(ActiveModel {
-                derived_data_json: Set(Some(
-                    crate::activity_data::serialize_derived_activity_data(derived),
-                )),
+                derived_data_json: Set(Some(crate::activity_data::serialize_derived_activity_data(derived))),
                 updated_at: Set(Utc::now()),
                 ..Default::default()
             })
@@ -557,22 +496,14 @@ impl Model {
             == 1)
     }
 
-    pub async fn find_owned(
-        db: &impl ConnectionTrait,
-        activity_id: i32,
-        user_id: i32,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn find_owned(db: &impl ConnectionTrait, activity_id: i32, user_id: i32) -> Result<Option<Self>, DbErr> {
         Entity::find_by_id(activity_id)
             .filter(Column::UserId.eq(user_id))
             .one(db)
             .await
     }
 
-    pub async fn lock_owned(
-        db: &impl ConnectionTrait,
-        activity_id: i32,
-        user_id: i32,
-    ) -> Result<Option<Self>, DbErr> {
+    pub async fn lock_owned(db: &impl ConnectionTrait, activity_id: i32, user_id: i32) -> Result<Option<Self>, DbErr> {
         Entity::find_by_id(activity_id)
             .filter(Column::UserId.eq(user_id))
             .lock_exclusive()
@@ -582,10 +513,7 @@ impl Model {
 
     /// Serialize shared projections even when their output row does not exist yet.
     /// Lock the authoritative activities in a consistent order before reading inputs.
-    pub(crate) async fn lock_for_analytics(
-        db: &impl ConnectionTrait,
-        activity_ids: &[i32],
-    ) -> Result<(), DbErr> {
+    pub(crate) async fn lock_for_analytics(db: &impl ConnectionTrait, activity_ids: &[i32]) -> Result<(), DbErr> {
         if activity_ids.is_empty() {
             return Ok(());
         }
@@ -610,10 +538,7 @@ impl Model {
         sea_orm::Condition::all()
             .add(Column::Sport.is_in(BIKE_ACTIVITY_SPORT_VALUES.iter().copied()))
             .add(Func::coalesce([Column::Format.into_expr(), Expr::val("")]).ne("unavailable"))
-            .add(
-                Func::coalesce([environment, Expr::val("unknown")])
-                    .is_not_in(["indoor", "virtual"]),
-            )
+            .add(Func::coalesce([environment, Expr::val("unknown")]).is_not_in(["indoor", "virtual"]))
             .add(Self::eligible_recording_token(Column::Sport))
             .add(Self::eligible_recording_token(Column::Source))
             .add(Column::Title.into_expr().not_ilike("%zwift%"))
@@ -632,11 +557,9 @@ impl Model {
         ]);
         sea_orm::Condition::all()
             .add(
-                token.clone().is_not_in(
-                    crate::activity_recording::INDOOR_RECORDING_TOKENS
-                        .iter()
-                        .copied(),
-                ),
+                token
+                    .clone()
+                    .is_not_in(crate::activity_recording::INDOOR_RECORDING_TOKENS.iter().copied()),
             )
             .add(token.clone().not_ilike("%virtual%"))
             .add(token.not_ilike("%zwift%"))
@@ -656,10 +579,7 @@ impl Model {
             .await
     }
 
-    pub async fn bike_for_training_analysis<C>(
-        db: &C,
-        activity_id: i32,
-    ) -> Result<Option<Model>, DbErr>
+    pub async fn bike_for_training_analysis<C>(db: &C, activity_id: i32) -> Result<Option<Model>, DbErr>
     where
         C: ConnectionTrait,
     {
@@ -708,9 +628,7 @@ impl Model {
 
         if let Some(rebuild_from_day) = rebuild_from_day {
             let start_bound = DateTime::<Utc>::from_naive_utc_and_offset(
-                rebuild_from_day
-                    .and_hms_opt(0, 0, 0)
-                    .expect("valid start of day"),
+                rebuild_from_day.and_hms_opt(0, 0, 0).expect("valid start of day"),
                 Utc,
             );
             query = query.filter(Column::StartedAt.gte(start_bound));
@@ -729,10 +647,7 @@ impl Model {
             .await
     }
 
-    pub async fn started_at_by_ids<C>(
-        db: &C,
-        activity_ids: &[i32],
-    ) -> Result<HashMap<i32, DateTime<Utc>>, DbErr>
+    pub async fn started_at_by_ids<C>(db: &C, activity_ids: &[i32]) -> Result<HashMap<i32, DateTime<Utc>>, DbErr>
     where
         C: ConnectionTrait,
     {
@@ -790,10 +705,7 @@ pub use training::ActivitySummaryRow;
 
 impl Model {
     pub async fn for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<Self>, DbErr> {
-        Entity::find()
-            .filter(Column::UserId.eq(user_id))
-            .all(db)
-            .await
+        Entity::find().filter(Column::UserId.eq(user_id)).all(db).await
     }
     pub async fn owned_import_activity(
         db: &impl ConnectionTrait,

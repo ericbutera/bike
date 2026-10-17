@@ -1,10 +1,7 @@
 use crate::background_jobs::pipeline::PipelineContext;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{
-    Condition, DatabaseConnection, DbErr, ExprTrait, QueryFilter, QueryOrder, QuerySelect,
-    QueryTrait,
-};
+use sea_orm::{Condition, DatabaseConnection, DbErr, ExprTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait};
 use sea_orm::{Set, TransactionSession, TransactionTrait};
 use serde::{Deserialize, Serialize};
 
@@ -140,27 +137,21 @@ impl Model {
             ]))
             .all(db)
             .await?;
-        Ok(tasks
-            .iter()
-            .any(|task| task.targets_activity_import(import)))
+        Ok(tasks.iter().any(|task| task.targets_activity_import(import)))
     }
 
     fn targets_activity_import(&self, import: &crate::entities::activity_imports::Model) -> bool {
         let data = self.payload.get("data").unwrap_or(&self.payload);
         let user_matches = data["user_id"].as_i64() == Some(i64::from(import.user_id));
         match self.task_type.as_str() {
-            "process_activity_import" => {
-                user_matches && data["import_id"].as_i64() == Some(i64::from(import.id))
-            }
+            "process_activity_import" => user_matches && data["import_id"].as_i64() == Some(i64::from(import.id)),
             "activity_archive_import" => import
                 .archive_job_id
                 .is_some_and(|id| data["job_id"].as_i64() == Some(i64::from(id))),
             "reprocess_activity_import" => import
                 .activity_id
                 .is_some_and(|id| data["activity_id"].as_i64() == Some(i64::from(id))),
-            "reprocess_user_activity_imports" | "reprocess_archive_fit_activity_imports" => {
-                user_matches
-            }
+            "reprocess_user_activity_imports" | "reprocess_archive_fit_activity_imports" => user_matches,
             _ => false,
         }
     }
@@ -170,8 +161,7 @@ impl Model {
         Entity::find()
             .filter(Column::Status.eq(TaskStatus::Pending.as_str()))
             .filter(
-                sea_orm::sea_query::Expr::col(Column::Attempts)
-                    .lt(sea_orm::sea_query::Expr::col(Column::MaxAttempts)),
+                sea_orm::sea_query::Expr::col(Column::Attempts).lt(sea_orm::sea_query::Expr::col(Column::MaxAttempts)),
             )
             .filter(
                 Condition::any()
@@ -213,8 +203,7 @@ impl Model {
         if let Some(batch_id) = crate::background_jobs::batches::current() {
             payload["_batch_id"] = batch_id.into();
         }
-        let context = PipelineContext::from_payload(&payload)
-            .map_err(|error| DbErr::Custom(error.to_string()))?;
+        let context = PipelineContext::from_payload(&payload).map_err(|error| DbErr::Custom(error.to_string()))?;
         let transaction = db.begin().await?;
         let task = ActiveModel {
             task_type: Set(task_type),
@@ -226,12 +215,8 @@ impl Model {
         .insert(&transaction)
         .await?;
         if let Some(context) = context {
-            crate::background_jobs::entities::pipeline_runs::Model::record_task(
-                &transaction,
-                &context,
-                task.id,
-            )
-            .await?;
+            crate::background_jobs::entities::pipeline_runs::Model::record_task(&transaction, &context, task.id)
+                .await?;
             crate::background_jobs::entities::pipeline_subjects::Model::from_task(
                 &transaction,
                 &context.run_id,

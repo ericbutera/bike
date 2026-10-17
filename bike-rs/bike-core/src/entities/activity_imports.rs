@@ -70,16 +70,10 @@ impl Model {
 }
 
 impl Entity {
-    pub async fn recent_manual_uploads(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-    ) -> Result<Vec<Model>, DbErr> {
+    pub async fn recent_manual_uploads(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<Model>, DbErr> {
         Self::find()
             .filter(Column::UserId.eq(user_id))
-            .filter(
-                Column::Source
-                    .eq(crate::activity_import_lock::ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD),
-            )
+            .filter(Column::Source.eq(crate::activity_import_lock::ACTIVITY_IMPORT_LOCK_SOURCE_MANUAL_UPLOAD))
             .order_by_desc(Column::CreatedAt)
             .limit(25)
             .all(db)
@@ -96,13 +90,8 @@ impl Entity {
         let active = Self::active_for_strava(db, event.bike_user_id, existing_import_id).await?;
         let active = active.with_strava_source(object, upload);
         let import = active.save(db).await?.try_into_model()?;
-        super::activity_import_artifacts::Entity::store_strava_payload(
-            db,
-            &import,
-            object.path.clone(),
-            upload,
-        )
-        .await?;
+        super::activity_import_artifacts::Entity::store_strava_payload(db, &import, object.path.clone(), upload)
+            .await?;
         Ok(import)
     }
 
@@ -133,18 +122,10 @@ impl Entity {
         db: &DatabaseConnection,
         now: DateTime<Utc>,
     ) -> Result<crate::platform::aggregator::StoredRecordCounts, DbErr> {
-        crate::platform::aggregator::Aggregator::stored_records::<Entity>(
-            db,
-            Column::CreatedAt,
-            now,
-        )
-        .await
+        crate::platform::aggregator::Aggregator::stored_records::<Entity>(db, Column::CreatedAt, now).await
     }
 
-    pub async fn find_for_administration(
-        db: &impl ConnectionTrait,
-        import_id: i32,
-    ) -> Result<Option<Model>, DbErr> {
+    pub async fn find_for_administration(db: &impl ConnectionTrait, import_id: i32) -> Result<Option<Model>, DbErr> {
         Self::find_by_id(import_id).one(db).await
     }
 
@@ -209,28 +190,16 @@ impl Entity {
         Ok(())
     }
     pub async fn references_path(db: &impl ConnectionTrait, path: &str) -> Result<bool, DbErr> {
-        Ok(Self::find()
-            .filter(Column::StoragePath.eq(path))
-            .count(db)
-            .await?
-            > 0)
+        Ok(Self::find().filter(Column::StoragePath.eq(path)).count(db).await? > 0)
     }
-    pub async fn find_owned(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-        import_id: i32,
-    ) -> Result<Option<Model>, DbErr> {
+    pub async fn find_owned(db: &impl ConnectionTrait, user_id: i32, import_id: i32) -> Result<Option<Model>, DbErr> {
         Self::find_by_id(import_id)
             .filter(Column::UserId.eq(user_id))
             .one(db)
             .await
     }
 
-    pub async fn delete_by_user(
-        db: &impl ConnectionTrait,
-        import_id: i32,
-        user_id: i32,
-    ) -> Result<(), DbErr> {
+    pub async fn delete_by_user(db: &impl ConnectionTrait, import_id: i32, user_id: i32) -> Result<(), DbErr> {
         Self::delete_by_id(import_id)
             .filter(Column::UserId.eq(user_id))
             .exec(db)
@@ -271,10 +240,7 @@ impl Entity {
     }
 
     pub async fn failed_count<C: ConnectionTrait>(db: &C) -> Result<u64, DbErr> {
-        Self::find()
-            .filter(Column::Status.eq("failed"))
-            .count(db)
-            .await
+        Self::find().filter(Column::Status.eq("failed")).count(db).await
     }
 }
 
@@ -328,9 +294,7 @@ impl ActiveModel {
             source: Set(STRAVA_SOURCE.into()),
             format: Set(upload.format.clone()),
             status: Set(crate::activity_import_lifecycle::ACTIVITY_IMPORT_STATUS_PROCESSING.into()),
-            processing_stage: Set(
-                crate::activity_import_lifecycle::ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED.into(),
-            ),
+            processing_stage: Set(crate::activity_import_lifecycle::ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED.into()),
             processing_error: Set(None),
             original_filename: Set(upload.original_filename.clone()),
             storage_path: Set(object.path.clone()),
@@ -348,15 +312,9 @@ impl Entity {
         db: &impl ConnectionTrait,
         import_ids: impl IntoIterator<Item = i32>,
     ) -> Result<Vec<Model>, DbErr> {
-        Self::find()
-            .filter(Column::Id.is_in(import_ids))
-            .all(db)
-            .await
+        Self::find().filter(Column::Id.is_in(import_ids)).all(db).await
     }
-    pub async fn resumable_for_user(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-    ) -> Result<Vec<Model>, DbErr> {
+    pub async fn resumable_for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<Model>, DbErr> {
         Self::find()
             .filter(Column::UserId.eq(user_id))
             .filter(Column::Source.ne(STRAVA_SOURCE))
@@ -380,10 +338,7 @@ impl Entity {
             .all(db)
             .await
     }
-    pub async fn processing_owner_ids(
-        db: &impl ConnectionTrait,
-        source: Option<&str>,
-    ) -> Result<Vec<i32>, DbErr> {
+    pub async fn processing_owner_ids(db: &impl ConnectionTrait, source: Option<&str>) -> Result<Vec<i32>, DbErr> {
         let mut query = Self::find()
             .select_only()
             .column(Column::UserId)
@@ -395,10 +350,7 @@ impl Entity {
         }
         query.into_tuple().all(db).await
     }
-    pub async fn archive_statuses(
-        db: &impl ConnectionTrait,
-        job_id: i32,
-    ) -> Result<Vec<String>, DbErr> {
+    pub async fn archive_statuses(db: &impl ConnectionTrait, job_id: i32) -> Result<Vec<String>, DbErr> {
         Self::find()
             .filter(Column::ArchiveJobId.eq(job_id))
             .select_only()

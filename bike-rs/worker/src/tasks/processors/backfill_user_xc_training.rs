@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use bike_core::activity_import_lock::{
-    acquire_user_activity_import_lock, load_user_activity_import_lock,
-    release_user_activity_import_lock, ActivityImportLockError,
-    ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
+    acquire_user_activity_import_lock, load_user_activity_import_lock, release_user_activity_import_lock,
+    ActivityImportLockError, ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL, ACTIVITY_IMPORT_LOCK_STAGE_QUEUED,
 };
 use bike_core::activity_training_analysis::backfill_user_activity_training_analysis_cache;
 use bike_core::background_jobs::worker::TaskProcessor;
@@ -10,8 +9,7 @@ use bike_core::jobs::JobType;
 use bike_core::jobs::{BackfillUserXcTrainingTask, JobQueue};
 use bike_core::xc_goal_backfill::{
     mark_user_xc_goal_backfill_completed, set_user_xc_goal_backfill_state, XcGoalBackfillError,
-    XC_GOAL_BACKFILL_STATUS_FAILED, XC_GOAL_BACKFILL_STATUS_RUNNING,
-    XC_GOAL_BACKFILL_STATUS_WAITING,
+    XC_GOAL_BACKFILL_STATUS_FAILED, XC_GOAL_BACKFILL_STATUS_RUNNING, XC_GOAL_BACKFILL_STATUS_WAITING,
 };
 use chrono::{Duration, Utc};
 use sea_orm::{DatabaseConnection, DbErr};
@@ -50,11 +48,8 @@ impl TaskProcessor for BackfillUserXcTraining {
 
         self.mark_running(task.user_id).await?;
 
-        let backfill_result =
-            backfill_user_activity_training_analysis_cache(&self.db, task.user_id).await;
-        let status_result = self
-            .record_backfill_status(task.user_id, &backfill_result)
-            .await;
+        let backfill_result = backfill_user_activity_training_analysis_cache(&self.db, task.user_id).await;
+        let status_result = self.record_backfill_status(task.user_id, &backfill_result).await;
         let release_result = self.release_backfill_lock(task.user_id).await;
 
         finish_backfill_task(backfill_result, status_result, release_result)
@@ -62,10 +57,7 @@ impl TaskProcessor for BackfillUserXcTraining {
 }
 
 impl BackfillUserXcTraining {
-    async fn ensure_backfill_lock_or_requeue(
-        &self,
-        task: &BackfillUserXcTrainingTask,
-    ) -> WorkerResult<bool> {
+    async fn ensure_backfill_lock_or_requeue(&self, task: &BackfillUserXcTrainingTask) -> WorkerResult<bool> {
         if let Some(lock) = load_user_activity_import_lock(&self.db, task.user_id)
             .await
             .map_err(worker_activity_import_lock_error)?
@@ -90,14 +82,9 @@ impl BackfillUserXcTraining {
     }
 
     async fn mark_waiting_and_requeue(&self, user_id: i32) -> WorkerResult<()> {
-        set_user_xc_goal_backfill_state(
-            &self.db,
-            user_id,
-            Some(XC_GOAL_BACKFILL_STATUS_WAITING),
-            None,
-        )
-        .await
-        .map_err(worker_xc_goal_backfill_error)?;
+        set_user_xc_goal_backfill_state(&self.db, user_id, Some(XC_GOAL_BACKFILL_STATUS_WAITING), None)
+            .await
+            .map_err(worker_xc_goal_backfill_error)?;
         self.tasks
             .backfill_user_xc_training_with_options(
                 user_id,
@@ -111,14 +98,9 @@ impl BackfillUserXcTraining {
     }
 
     async fn mark_running(&self, user_id: i32) -> WorkerResult<()> {
-        set_user_xc_goal_backfill_state(
-            &self.db,
-            user_id,
-            Some(XC_GOAL_BACKFILL_STATUS_RUNNING),
-            None,
-        )
-        .await
-        .map_err(worker_xc_goal_backfill_error)
+        set_user_xc_goal_backfill_state(&self.db, user_id, Some(XC_GOAL_BACKFILL_STATUS_RUNNING), None)
+            .await
+            .map_err(worker_xc_goal_backfill_error)
     }
 
     async fn record_backfill_status(
@@ -140,27 +122,18 @@ impl BackfillUserXcTraining {
             Err(error) => {
                 tracing::error!(error = ?error, "database request failed");
                 let error_message = "Database request failed";
-                set_user_xc_goal_backfill_state(
-                    &self.db,
-                    user_id,
-                    Some(XC_GOAL_BACKFILL_STATUS_FAILED),
-                    None,
-                )
-                .await
-                .map_err(status_xc_goal_backfill_error)?;
+                set_user_xc_goal_backfill_state(&self.db, user_id, Some(XC_GOAL_BACKFILL_STATUS_FAILED), None)
+                    .await
+                    .map_err(status_xc_goal_backfill_error)?;
                 Err(std::io::Error::other(error_message))
             }
         }
     }
 
     async fn release_backfill_lock(&self, user_id: i32) -> Result<(), std::io::Error> {
-        release_user_activity_import_lock(
-            &self.db,
-            user_id,
-            ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL,
-        )
-        .await
-        .map_err(status_activity_import_lock_error)
+        release_user_activity_import_lock(&self.db, user_id, ACTIVITY_IMPORT_LOCK_SOURCE_XC_TRAINING_BACKFILL)
+            .await
+            .map_err(status_activity_import_lock_error)
     }
 }
 
@@ -182,9 +155,7 @@ fn worker_activity_training_analysis_error(error: DbErr) -> Box<dyn Error + Send
     std::io::Error::other("Database request failed").into()
 }
 
-fn worker_activity_import_lock_error(
-    error: ActivityImportLockError,
-) -> Box<dyn Error + Send + Sync> {
+fn worker_activity_import_lock_error(error: ActivityImportLockError) -> Box<dyn Error + Send + Sync> {
     activity_import_lock_io_error(error).into()
 }
 

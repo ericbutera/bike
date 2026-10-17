@@ -42,61 +42,29 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Users::Pid).uuid().not_null())
-                    .col(
-                        ColumnDef::new(Users::Email)
-                            .string()
-                            .not_null()
-                            .unique_key(),
-                    )
+                    .col(ColumnDef::new(Users::Email).string().not_null().unique_key())
                     // allow password to be null for OAuth-only users
                     .col(ColumnDef::new(Users::Password).string().null())
-                    .col(
-                        ColumnDef::new(Users::ApiKey)
-                            .string()
-                            .not_null()
-                            .unique_key(),
-                    )
+                    .col(ColumnDef::new(Users::ApiKey).string().not_null().unique_key())
                     .col(ColumnDef::new(Users::Name).string().not_null())
                     .col(ColumnDef::new(Users::ResetToken).string().null())
-                    .col(
-                        ColumnDef::new(Users::ResetSentAt)
-                            .timestamp_with_time_zone()
-                            .null(),
-                    )
-                    .col(
-                        ColumnDef::new(Users::EmailVerificationToken)
-                            .string()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(Users::ResetSentAt).timestamp_with_time_zone().null())
+                    .col(ColumnDef::new(Users::EmailVerificationToken).string().null())
                     .col(
                         ColumnDef::new(Users::EmailVerificationSentAt)
                             .timestamp_with_time_zone()
                             .null(),
                     )
-                    .col(
-                        ColumnDef::new(Users::EmailVerifiedAt)
-                            .timestamp_with_time_zone()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(Users::EmailVerifiedAt).timestamp_with_time_zone().null())
                     .col(ColumnDef::new(Users::MagicLinkToken).string().null())
                     .col(
                         ColumnDef::new(Users::MagicLinkExpiration)
                             .timestamp_with_time_zone()
                             .null(),
                     )
-                    .col(
-                        ColumnDef::new(Users::IsAdmin)
-                            .boolean()
-                            .not_null()
-                            .default(false),
-                    )
+                    .col(ColumnDef::new(Users::IsAdmin).boolean().not_null().default(false))
                     // oauth fields
-                    .col(
-                        ColumnDef::new(Users::OauthSubject)
-                            .string()
-                            .null()
-                            .unique_key(),
-                    )
+                    .col(ColumnDef::new(Users::OauthSubject).string().null().unique_key())
                     .col(ColumnDef::new(Users::OauthProvider).string().null())
                     .col(
                         ColumnDef::new(Users::CreatedAt)
@@ -118,9 +86,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_table(Table::drop().table(Users::Table).to_owned())
-            .await?;
+        manager.drop_table(Table::drop().table(Users::Table).to_owned()).await?;
         Ok(())
     }
 }

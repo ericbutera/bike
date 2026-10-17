@@ -52,12 +52,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Activities::Table)
-                    .add_column(
-                        ColumnDef::new(Activities::IsRace)
-                            .boolean()
-                            .not_null()
-                            .default(false),
-                    )
+                    .add_column(ColumnDef::new(Activities::IsRace).boolean().not_null().default(false))
                     .to_owned(),
             )
             .await?;

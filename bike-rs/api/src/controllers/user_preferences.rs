@@ -82,13 +82,7 @@ pub async fn update_preferences(
     State(state): State<Arc<AppStorage>>,
     Json(payload): Json<UpdateUserPreferencesRequest>,
 ) -> Result<Json<UserPreferencesResponse>, AppError> {
-    let model = bike_core::services::preferences::update_preferences(
-        &state.db,
-        &state.tasks,
-        user.id,
-        payload,
-    )
-    .await?;
+    let model = bike_core::services::preferences::update_preferences(&state.db, &state.tasks, user.id, payload).await?;
     Ok(Json(response_from_model(Some(&model))))
 }
 
@@ -107,19 +101,15 @@ fn response_from_model(model: Option<&user_preferences::Model>) -> UserPreferenc
         xc_goal_target_date: model
             .and_then(|preferences| preferences.xc_goal_target_date)
             .map(|value| value.format("%Y-%m-%d").to_string()),
-        xc_goal_target_distance_meters: model
-            .and_then(|preferences| preferences.xc_goal_target_distance_meters),
+        xc_goal_target_distance_meters: model.and_then(|preferences| preferences.xc_goal_target_distance_meters),
         xc_goal_target_elevation_gain_meters: model
             .and_then(|preferences| preferences.xc_goal_target_elevation_gain_meters),
         xc_goal_event_name: model.and_then(|preferences| preferences.xc_goal_event_name.clone()),
         xc_goal_target_finish_time_seconds: model
             .and_then(|preferences| preferences.xc_goal_target_finish_time_seconds),
-        xc_goal_event_profile: model
-            .and_then(|preferences| preferences.xc_goal_event_profile.clone()),
-        xc_goal_backfill_status: model
-            .and_then(|preferences| preferences.xc_goal_backfill_status.clone()),
-        xc_goal_backfill_completed_at: model
-            .and_then(|preferences| preferences.xc_goal_backfill_completed_at),
+        xc_goal_event_profile: model.and_then(|preferences| preferences.xc_goal_event_profile.clone()),
+        xc_goal_backfill_status: model.and_then(|preferences| preferences.xc_goal_backfill_status.clone()),
+        xc_goal_backfill_completed_at: model.and_then(|preferences| preferences.xc_goal_backfill_completed_at),
     }
 }
 
@@ -137,9 +127,9 @@ mod tests {
             user_id: 3,
             unit_system: "mixed".to_string(),
             estimated_ftp_watts: Some(265),
-            heart_rate_zone_bounds_json: Some(
-                bike_core::training_profile::StoredHeartRateZoneBounds(vec![120, 140, 155, 170]),
-            ),
+            heart_rate_zone_bounds_json: Some(bike_core::training_profile::StoredHeartRateZoneBounds(vec![
+                120, 140, 155, 170,
+            ])),
             xc_goal_start_date: Some(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
             xc_goal_target_date: Some(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
             xc_goal_target_distance_meters: Some(160_934.4),
@@ -154,27 +144,15 @@ mod tests {
         }));
 
         assert_eq!(response.estimated_ftp_watts, Some(265));
-        assert_eq!(
-            response.heart_rate_zone_bounds_bpm,
-            Some(vec![120, 140, 155, 170])
-        );
+        assert_eq!(response.heart_rate_zone_bounds_bpm, Some(vec![120, 140, 155, 170]));
         assert_eq!(response.xc_goal_start_date.as_deref(), Some("2026-06-01"));
         assert_eq!(response.xc_goal_target_date.as_deref(), Some("2026-09-20"));
         assert_eq!(response.xc_goal_target_distance_meters, Some(160_934.4));
         assert_eq!(response.xc_goal_target_elevation_gain_meters, Some(3_962.4));
-        assert_eq!(
-            response.xc_goal_event_name.as_deref(),
-            Some("Marji Gesick MG100")
-        );
+        assert_eq!(response.xc_goal_event_name.as_deref(), Some("Marji Gesick MG100"));
         assert_eq!(response.xc_goal_target_finish_time_seconds, Some(43_200));
-        assert_eq!(
-            response.xc_goal_event_profile.as_deref(),
-            Some("technical_singletrack")
-        );
-        assert_eq!(
-            response.xc_goal_backfill_status.as_deref(),
-            Some("completed")
-        );
+        assert_eq!(response.xc_goal_event_profile.as_deref(), Some("technical_singletrack"));
+        assert_eq!(response.xc_goal_backfill_status.as_deref(), Some("completed"));
         assert_eq!(response.xc_goal_backfill_completed_at, Some(now));
     }
 }

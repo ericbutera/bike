@@ -1,11 +1,7 @@
-use crate::activity_data::{
-    deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint,
-};
+use crate::activity_data::{deserialize_derived_activity_data, ActivityChartPoint, ActivityRoutePoint};
 use crate::activity_training_analysis::plausible_aerobic_decoupling_percent;
 use crate::activity_type::ActivityType;
-use crate::entities::{
-    activities, activity_training_analyses, fitness_freshness_daily, user_preferences,
-};
+use crate::entities::{activities, activity_training_analyses, fitness_freshness_daily, user_preferences};
 use crate::errors::BikeCoreError;
 use crate::training_data::deserialize_activity_heart_rate_zones;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Timelike, Utc};
@@ -618,12 +614,7 @@ impl RideSummaryAccumulator {
         self.add_heart_rate_zones(activity);
     }
 
-    fn add_heart_rate(
-        &mut self,
-        activity: &activities::Model,
-        moving_seconds: i32,
-        elapsed_seconds: i32,
-    ) {
+    fn add_heart_rate(&mut self, activity: &activities::Model, moving_seconds: i32, elapsed_seconds: i32) {
         if let Some(avg_hr) = activity.average_heart_rate_bpm {
             let weight = moving_seconds.max(elapsed_seconds).max(1);
             self.weighted_hr_sum += f64::from(avg_hr) * f64::from(weight);
@@ -661,18 +652,8 @@ impl RideSummaryAccumulator {
             activity_count,
             "elevation",
         );
-        push_missing_flag(
-            &mut data_quality_flags,
-            self.missing_time,
-            activity_count,
-            "time",
-        );
-        push_missing_flag(
-            &mut data_quality_flags,
-            self.missing_hr,
-            activity_count,
-            "heart rate",
-        );
+        push_missing_flag(&mut data_quality_flags, self.missing_time, activity_count, "time");
+        push_missing_flag(&mut data_quality_flags, self.missing_hr, activity_count, "heart rate");
         data_quality_flags
     }
 
@@ -683,9 +664,7 @@ impl RideSummaryAccumulator {
             total_distance_meters: round_metric(self.total_distance_meters),
             total_distance_miles: round_metric(self.total_distance_meters / 1609.344),
             total_elevation_gain_meters: round_metric(self.total_elevation_gain_meters),
-            total_elevation_gain_feet: round_metric(
-                self.total_elevation_gain_meters * FEET_PER_METER,
-            ),
+            total_elevation_gain_feet: round_metric(self.total_elevation_gain_meters * FEET_PER_METER),
             total_elapsed_seconds: self.total_elapsed_seconds,
             total_moving_seconds: self.total_moving_seconds,
             total_stopped_seconds: self.total_stopped_seconds,
@@ -704,9 +683,8 @@ impl RideSummaryAccumulator {
     }
 
     fn average_speed_mps(&self) -> Option<f64> {
-        (self.total_moving_seconds > 0 && self.total_distance_meters > 0.0).then(|| {
-            round_metric(self.total_distance_meters / f64::from(self.total_moving_seconds))
-        })
+        (self.total_moving_seconds > 0 && self.total_distance_meters > 0.0)
+            .then(|| round_metric(self.total_distance_meters / f64::from(self.total_moving_seconds)))
     }
 
     fn climbing_density_feet_per_hour(&self) -> Option<f64> {
@@ -730,11 +708,7 @@ fn activity_elapsed_seconds_from_summary(activity: &activities::Model, moving_se
 }
 
 impl BucketAccumulator {
-    fn add_activity(
-        &mut self,
-        activity: &activities::Model,
-        analysis: Option<&activity_training_analyses::Model>,
-    ) {
+    fn add_activity(&mut self, activity: &activities::Model, analysis: Option<&activity_training_analyses::Model>) {
         let standalone_analysis = compare_analysis_from_activity(activity);
 
         if let Some(speed_mps) = analysis
@@ -787,13 +761,8 @@ impl BucketAccumulator {
         }
     }
 
-    fn into_point(
-        self,
-        bucket_start: DateTime<Utc>,
-        bucket_end: DateTime<Utc>,
-    ) -> TrainingReportPointResponse {
-        let day_span =
-            ((bucket_end - bucket_start).num_seconds() as f64 / 86_400.0).max(1.0 / 24.0);
+    fn into_point(self, bucket_start: DateTime<Utc>, bucket_end: DateTime<Utc>) -> TrainingReportPointResponse {
+        let day_span = ((bucket_end - bucket_start).num_seconds() as f64 / 86_400.0).max(1.0 / 24.0);
 
         TrainingReportPointResponse {
             bucket_start: bucket_start.to_rfc3339(),
@@ -801,16 +770,10 @@ impl BucketAccumulator {
             distance_meters: round_metric(self.distance_meters_total),
             distance_miles: round_metric(self.distance_meters_total / 1609.344),
             z2_average_speed_mps: average_or_none(self.z2_speed_sum, self.z2_speed_count),
-            average_aerobic_decoupling_percent: average_or_none(
-                self.decoupling_sum,
-                self.decoupling_count,
-            ),
+            average_aerobic_decoupling_percent: average_or_none(self.decoupling_sum, self.decoupling_count),
             climbing_pace_feet_per_week: (self.climbing_feet_total > 0.0)
                 .then(|| round_metric(self.climbing_feet_total * 7.0 / day_span)),
-            climbing_vertical_rate_feet_per_hour: average_or_none(
-                self.climb_rate_sum,
-                self.climb_rate_count,
-            ),
+            climbing_vertical_rate_feet_per_hour: average_or_none(self.climb_rate_sum, self.climb_rate_count),
             z1_seconds: self.zone_seconds[0],
             z2_seconds: self.zone_seconds[1],
             z3_seconds: self.zone_seconds[2],
@@ -892,14 +855,9 @@ async fn build_training_reports(
         ReportId::Endurance => Ok(endurance_response(envelope, &activity_models)),
         ReportId::Climbing => Ok(climbing_response(envelope, &activity_models)),
         ReportId::Fatigue => Ok(fatigue_response(envelope, &activity_models)),
-        ReportId::CompareRides => {
-            compare_rides_response(envelope, &context, &query, &activity_models).await
-        }
+        ReportId::CompareRides => compare_rides_response(envelope, &context, &query, &activity_models).await,
         ReportId::Reassessment => reassessment_response(&context, &query).await,
-        ReportId::Distance
-        | ReportId::Elevation
-        | ReportId::ActivityTypeTime
-        | ReportId::AggregateTrends => {
+        ReportId::Distance | ReportId::Elevation | ReportId::ActivityTypeTime | ReportId::AggregateTrends => {
             unreachable!("aggregate reports return before standalone reports")
         }
     }
@@ -927,28 +885,19 @@ fn ride_summary_response(
     response
 }
 
-fn endurance_response(
-    envelope: TrainingReportEnvelope,
-    activities: &[activities::Model],
-) -> TrainingReportsResponse {
+fn endurance_response(envelope: TrainingReportEnvelope, activities: &[activities::Model]) -> TrainingReportsResponse {
     let mut response = envelope.response();
     response.endurance = Some(build_endurance_report(activities));
     response
 }
 
-fn climbing_response(
-    envelope: TrainingReportEnvelope,
-    activities: &[activities::Model],
-) -> TrainingReportsResponse {
+fn climbing_response(envelope: TrainingReportEnvelope, activities: &[activities::Model]) -> TrainingReportsResponse {
     let mut response = envelope.response();
     response.climbing = Some(build_climbing_report(activities));
     response
 }
 
-fn fatigue_response(
-    envelope: TrainingReportEnvelope,
-    activities: &[activities::Model],
-) -> TrainingReportsResponse {
+fn fatigue_response(envelope: TrainingReportEnvelope, activities: &[activities::Model]) -> TrainingReportsResponse {
     let mut response = envelope.response();
     response.fatigue = Some(build_fatigue_report(activities));
     response
@@ -1025,14 +974,7 @@ fn reassessment_analysis_range(
         59,
     )?;
     let reassessment_start = match preferences.and_then(|model| model.xc_goal_start_date) {
-        Some(start_date) => make_utc_datetime(
-            start_date.year(),
-            start_date.month(),
-            start_date.day(),
-            0,
-            0,
-            0,
-        )?,
+        Some(start_date) => make_utc_datetime(start_date.year(), start_date.month(), start_date.day(), 0, 0, 0)?,
         None => context.range_start,
     };
     let spring_start = spring_baseline_start(reassessment_end.date_naive())?;
@@ -1140,23 +1082,18 @@ async fn load_report_training_analysis(
     context: &TrainingReportBuildContext,
     activities: &[activities::Model],
 ) -> Result<HashMap<i32, activity_training_analyses::Model>, BikeCoreError> {
-    let activity_ids = activities
-        .iter()
-        .map(|activity| activity.id)
-        .collect::<Vec<_>>();
+    let activity_ids = activities.iter().map(|activity| activity.id).collect::<Vec<_>>();
     if activity_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
-    Ok(activity_training_analyses::Model::for_owned_activity_ids(
-        &context.db,
-        context.user_id,
-        &activity_ids,
+    Ok(
+        activity_training_analyses::Model::for_owned_activity_ids(&context.db, context.user_id, &activity_ids)
+            .await?
+            .into_iter()
+            .map(|analysis| (analysis.activity_id, analysis))
+            .collect(),
     )
-    .await?
-    .into_iter()
-    .map(|analysis| (analysis.activity_id, analysis))
-    .collect())
 }
 
 fn aggregate_report_buckets(
@@ -1181,10 +1118,7 @@ fn aggregate_effective_range_start(
     query: &TrainingReportsQuery,
     activities: &[activities::Model],
 ) -> DateTime<Utc> {
-    if context.boundary == ReportBoundary::All
-        && query.start_date.is_none()
-        && !activities.is_empty()
-    {
+    if context.boundary == ReportBoundary::All && query.start_date.is_none() && !activities.is_empty() {
         activities
             .iter()
             .map(|activity| activity.started_at)
@@ -1271,12 +1205,7 @@ fn ride_summary_definition() -> TrainingReportDefinitionResponse {
         required_data_quality: vec!["distance", "elevation", "time", "heart_rate"],
         result_sections: vec!["summary_cards", "heart_rate_zones", "data_quality"],
         metrics: vec![
-            metric_definition(
-                "distance",
-                "Distance",
-                Some("mi"),
-                ReportMetricDirection::Neutral,
-            ),
+            metric_definition("distance", "Distance", Some("mi"), ReportMetricDirection::Neutral),
             metric_definition(
                 "elevation_gain",
                 "Elevation",
@@ -1394,24 +1323,14 @@ fn fatigue_definition() -> TrainingReportDefinitionResponse {
                 Some("m/s"),
                 ReportMetricDirection::Neutral,
             ),
-            metric_definition(
-                "average_hr",
-                "Hourly HR",
-                Some("bpm"),
-                ReportMetricDirection::Neutral,
-            ),
+            metric_definition("average_hr", "Hourly HR", Some("bpm"), ReportMetricDirection::Neutral),
             metric_definition(
                 "stop_count",
                 "Stop Frequency",
                 Some("stops/hour"),
                 ReportMetricDirection::Lower,
             ),
-            metric_definition(
-                "climb_rate",
-                "Climb Rate",
-                Some("m/h"),
-                ReportMetricDirection::Higher,
-            ),
+            metric_definition("climb_rate", "Climb Rate", Some("m/h"), ReportMetricDirection::Higher),
             metric_definition(
                 "efficiency",
                 "Efficiency",
@@ -1482,12 +1401,7 @@ fn compare_ride_metric_definitions() -> Vec<TrainingReportMetricDefinitionRespon
             Some("mph"),
             ReportMetricDirection::Higher,
         ),
-        metric_definition(
-            "z2_time",
-            "Z2 Time",
-            Some("hours"),
-            ReportMetricDirection::Neutral,
-        ),
+        metric_definition("z2_time", "Z2 Time", Some("hours"), ReportMetricDirection::Neutral),
     ]
 }
 
@@ -1615,12 +1529,7 @@ fn aggregate_trends_definition() -> TrainingReportDefinitionResponse {
         required_data_quality: vec!["distance", "elevation", "heart_rate_zones"],
         result_sections: vec!["bucket_charts"],
         metrics: vec![
-            metric_definition(
-                "z2_speed",
-                "Z2 Speed",
-                Some("m/s"),
-                ReportMetricDirection::Neutral,
-            ),
+            metric_definition("z2_speed", "Z2 Speed", Some("m/s"), ReportMetricDirection::Neutral),
             metric_definition(
                 "aerobic_decoupling_percent",
                 "Decoupling",
@@ -1674,10 +1583,7 @@ fn parse_report_id(raw: Option<&str>) -> Result<ReportId, BikeCoreError> {
 }
 
 fn validate_report_filters(query: &TrainingReportsQuery) -> Result<(), BikeCoreError> {
-    if query
-        .min_duration_seconds
-        .is_some_and(|seconds| seconds < 0)
-    {
+    if query.min_duration_seconds.is_some_and(|seconds| seconds < 0) {
         return Err(BikeCoreError::bad_request(
             "min_duration_seconds must be greater than or equal to zero",
         ));
@@ -1700,18 +1606,12 @@ fn parse_activity_ids(raw: Option<&str>) -> Result<Vec<i32>, BikeCoreError> {
         return Ok(Vec::new());
     };
     let mut ids = Vec::new();
-    for part in raw
-        .split(',')
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-    {
-        let id = part.parse::<i32>().map_err(|_| {
-            BikeCoreError::bad_request("activity_ids must be comma-separated integers")
-        })?;
+    for part in raw.split(',').map(str::trim).filter(|part| !part.is_empty()) {
+        let id = part
+            .parse::<i32>()
+            .map_err(|_| BikeCoreError::bad_request("activity_ids must be comma-separated integers"))?;
         if id <= 0 {
-            return Err(BikeCoreError::bad_request(
-                "activity_ids must be positive integers",
-            ));
+            return Err(BikeCoreError::bad_request("activity_ids must be positive integers"));
         }
         ids.push(id);
     }
@@ -1720,16 +1620,11 @@ fn parse_activity_ids(raw: Option<&str>) -> Result<Vec<i32>, BikeCoreError> {
     Ok(ids)
 }
 
-fn activity_type_time_rows(
-    activity_type_seconds: &HashMap<String, i32>,
-) -> Vec<ActivityTypeTimeResponse> {
+fn activity_type_time_rows(activity_type_seconds: &HashMap<String, i32>) -> Vec<ActivityTypeTimeResponse> {
     [ActivityType::Training, ActivityType::Race]
         .into_iter()
         .map(|activity_type| ActivityTypeTimeResponse {
-            seconds: activity_type_seconds
-                .get(activity_type.as_str())
-                .copied()
-                .unwrap_or(0),
+            seconds: activity_type_seconds.get(activity_type.as_str()).copied().unwrap_or(0),
             activity_type,
         })
         .collect()
@@ -1751,9 +1646,7 @@ fn report_range(
     };
 
     if range_start > range_end {
-        return Err(BikeCoreError::bad_request(
-            "start_date must be before end_date",
-        ));
+        return Err(BikeCoreError::bad_request("start_date must be before end_date"));
     }
 
     Ok((range_start, range_end))
@@ -1813,14 +1706,10 @@ fn build_endurance_report(activities: &[activities::Model]) -> EnduranceReportRe
         )
         .map(round_metric),
         median_late_speed_change_percent: median(
-            rides
-                .iter()
-                .filter_map(|ride| ride.late_speed_change_percent)
-                .collect(),
+            rides.iter().filter_map(|ride| ride.late_speed_change_percent).collect(),
         )
         .map(round_metric),
-        median_fatigue_index: median(rides.iter().filter_map(|ride| ride.fatigue_index).collect())
-            .map(round_metric),
+        median_fatigue_index: median(rides.iter().filter_map(|ride| ride.fatigue_index).collect()).map(round_metric),
         rides,
     }
 }
@@ -1883,9 +1772,7 @@ fn build_climbing_report(activities: &[activities::Model]) -> ClimbingReportResp
         fastest_vertical_rate: max_by_metric(&climbs, |climb| climb.vertical_rate_meters_per_hour),
         median_climb: percentile_by_metric(&climbs, 0.50, |climb| climb.gain_meters),
         percentile_95_climb: percentile_by_metric(&climbs, 0.95, |climb| climb.gain_meters),
-        first_half_median: percentile_by_metric(&first_half_climbs, 0.50, |climb| {
-            climb.vertical_rate_meters_per_hour
-        }),
+        first_half_median: percentile_by_metric(&first_half_climbs, 0.50, |climb| climb.vertical_rate_meters_per_hour),
         second_half_median: percentile_by_metric(&second_half_climbs, 0.50, |climb| {
             climb.vertical_rate_meters_per_hour
         }),
@@ -1924,18 +1811,14 @@ fn selected_rides_by_start(selected: &[activities::Model]) -> Vec<&activities::M
     selected_sorted
 }
 
-fn compare_selected_ride_columns(
-    selected_sorted: &[&activities::Model],
-) -> Vec<CompareRideColumnResponse> {
+fn compare_selected_ride_columns(selected_sorted: &[&activities::Model]) -> Vec<CompareRideColumnResponse> {
     selected_sorted
         .iter()
         .map(|activity| compare_column_from_activity(activity))
         .collect()
 }
 
-fn compare_analyses_for_selected(
-    selected_sorted: &[&activities::Model],
-) -> Vec<CompareRideAnalysis> {
+fn compare_analyses_for_selected(selected_sorted: &[&activities::Model]) -> Vec<CompareRideAnalysis> {
     selected_sorted
         .iter()
         .map(|activity| compare_analysis_from_activity(activity))
@@ -1965,11 +1848,7 @@ fn compare_volume_metrics(analyses: &[CompareRideAnalysis]) -> Vec<CompareRideMe
             Some("ft"),
             "neutral",
             analyses,
-            |analysis| {
-                analysis
-                    .elevation_gain_meters
-                    .map(|value| value * FEET_PER_METER)
-            },
+            |analysis| analysis.elevation_gain_meters.map(|value| value * FEET_PER_METER),
         ),
         compare_metric(
             "elapsed_hours",
@@ -1985,11 +1864,7 @@ fn compare_volume_metrics(analyses: &[CompareRideAnalysis]) -> Vec<CompareRideMe
             Some("h"),
             "neutral",
             analyses,
-            |analysis| {
-                analysis
-                    .moving_seconds
-                    .map(|value| f64::from(value) / 3600.0)
-            },
+            |analysis| analysis.moving_seconds.map(|value| f64::from(value) / 3600.0),
         ),
         compare_metric(
             "moving_speed_mph",
@@ -2002,9 +1877,7 @@ fn compare_volume_metrics(analyses: &[CompareRideAnalysis]) -> Vec<CompareRideMe
     ]
 }
 
-fn compare_effort_signal_metrics(
-    analyses: &[CompareRideAnalysis],
-) -> Vec<CompareRideMetricResponse> {
+fn compare_effort_signal_metrics(analyses: &[CompareRideAnalysis]) -> Vec<CompareRideMetricResponse> {
     vec![
         compare_metric(
             "aerobic_decoupling_percent",
@@ -2067,14 +1940,9 @@ fn compare_context_metrics(analyses: &[CompareRideAnalysis]) -> Vec<CompareRideM
             analyses,
             |analysis| analysis.z2_average_speed_mps.map(|value| value * 2.236_936),
         ),
-        compare_metric(
-            "z2_time_hours",
-            "Z2 Time",
-            Some("h"),
-            "neutral",
-            analyses,
-            |analysis| Some(f64::from(analysis.z2_seconds) / 3600.0),
-        ),
+        compare_metric("z2_time_hours", "Z2 Time", Some("h"), "neutral", analyses, |analysis| {
+            Some(f64::from(analysis.z2_seconds) / 3600.0)
+        }),
     ]
 }
 
@@ -2120,17 +1988,13 @@ impl ReassessmentWindowAccumulator {
     fn add_activity(&mut self, activity: &activities::Model) {
         self.activity_count += 1;
         self.total_distance_meters += activity.distance_meters.unwrap_or_default().max(0.0);
-        self.total_elevation_gain_meters +=
-            activity.elevation_gain_meters.unwrap_or_default().max(0.0);
+        self.total_elevation_gain_meters += activity.elevation_gain_meters.unwrap_or_default().max(0.0);
 
         let samples = activity_samples(activity);
         let elapsed_seconds = activity_elapsed_seconds(activity, &samples);
         if is_reassessment_long_ride(activity, elapsed_seconds) {
-            self.benchmark_rides.push(reassessment_benchmark_ride(
-                activity,
-                &samples,
-                elapsed_seconds,
-            ));
+            self.benchmark_rides
+                .push(reassessment_benchmark_ride(activity, &samples, elapsed_seconds));
         }
     }
 
@@ -2160,41 +2024,28 @@ impl ReassessmentWindowAccumulator {
             activity_count: self.activity_count,
             long_ride_count: self.benchmark_rides.len() as i32,
             total_distance_miles: round_metric(self.total_distance_meters / 1609.344),
-            total_elevation_gain_feet: round_metric(
-                self.total_elevation_gain_meters * FEET_PER_METER,
-            ),
-            best_long_ride_distance_miles: endurance_ride
-                .as_ref()
-                .and_then(|ride| ride.distance_miles),
-            best_long_ride_duration_seconds: endurance_ride
-                .as_ref()
-                .map(|ride| ride.elapsed_seconds),
+            total_elevation_gain_feet: round_metric(self.total_elevation_gain_meters * FEET_PER_METER),
+            best_long_ride_distance_miles: endurance_ride.as_ref().and_then(|ride| ride.distance_miles),
+            best_long_ride_duration_seconds: endurance_ride.as_ref().map(|ride| ride.elapsed_seconds),
             best_long_ride_speed_mph: pace_ride.as_ref().and_then(|ride| ride.elapsed_speed_mph),
             best_long_ride_climbing_density_feet_per_hour: climbing_density_ride
                 .as_ref()
                 .and_then(|ride| ride.climbing_density_feet_per_hour),
-            aggregate_long_ride_climbing_density_feet_per_hour:
-                aggregate_climbing_density_feet_per_hour(&self.benchmark_rides),
-            median_long_ride_decoupling_percent: median_reassessment_ride_metric(
+            aggregate_long_ride_climbing_density_feet_per_hour: aggregate_climbing_density_feet_per_hour(
                 &self.benchmark_rides,
-                |ride| ride.aerobic_decoupling_percent,
             ),
+            median_long_ride_decoupling_percent: median_reassessment_ride_metric(&self.benchmark_rides, |ride| {
+                ride.aerobic_decoupling_percent
+            }),
             median_long_ride_late_speed_change_percent: median_reassessment_ride_metric(
                 &self.benchmark_rides,
                 |ride| ride.late_speed_change_percent,
             ),
-            median_long_ride_fatigue_index: median_reassessment_ride_metric(
-                &self.benchmark_rides,
-                |ride| ride.fatigue_index,
-            ),
-            average_fitness: mean(reassessment_fitness_values(
-                fitness_rows,
-                start_date,
-                end_date,
-            ))
-            .map(round_metric),
-            latest_fitness: latest_reassessment_fitness(fitness_rows, start_date, end_date)
-                .map(round_metric),
+            median_long_ride_fatigue_index: median_reassessment_ride_metric(&self.benchmark_rides, |ride| {
+                ride.fatigue_index
+            }),
+            average_fitness: mean(reassessment_fitness_values(fitness_rows, start_date, end_date)).map(round_metric),
+            latest_fitness: latest_reassessment_fitness(fitness_rows, start_date, end_date).map(round_metric),
         }
     }
 }
@@ -2276,13 +2127,7 @@ fn reassessment_windows(
             activities,
             fitness_rows,
         ),
-        spring: reassessment_window_metrics(
-            "Spring baseline",
-            spring_start,
-            spring_end,
-            activities,
-            fitness_rows,
-        ),
+        spring: reassessment_window_metrics("Spring baseline", spring_start, spring_end, activities, fitness_rows),
         prior_training,
     }
 }
@@ -2329,17 +2174,11 @@ fn reassessment_signals(
             fitness_rows,
             range_end,
         ),
-        fitness_delta: reassessment_fitness_delta_signal(
-            &windows.recent.response,
-            &windows.spring.response,
-            range_end,
-        ),
+        fitness_delta: reassessment_fitness_delta_signal(&windows.recent.response, &windows.spring.response, range_end),
     }
 }
 
-fn reassessment_benchmark_rides(
-    windows: &ReassessmentWindows,
-) -> Vec<ReassessmentBenchmarkRideResponse> {
+fn reassessment_benchmark_rides(windows: &ReassessmentWindows) -> Vec<ReassessmentBenchmarkRideResponse> {
     let mut benchmark_rides = windows
         .recent
         .benchmark_rides
@@ -2375,9 +2214,7 @@ fn reassessment_notes(
         notes.push("The active XC goal does not include a target finish time, so target pace and target climbing-density signals are limited.".to_string());
     }
     if spring.response.activity_count == 0 {
-        notes.push(
-            "No spring-baseline rides were found, so improvement claims are limited.".to_string(),
-        );
+        notes.push("No spring-baseline rides were found, so improvement claims are limited.".to_string());
     }
     if recent.response.long_ride_count == 0 {
         notes.push("No current long rides were found in the reassessment window.".to_string());
@@ -2393,13 +2230,11 @@ fn reassessment_target(preferences: Option<&user_preferences::Model>) -> Reasses
         ) {
             if distance > 0.0 && elevation > 0.0 {
                 let target_finish_seconds = preferences.xc_goal_target_finish_time_seconds;
-                let target_speed_mps = target_finish_seconds
-                    .and_then(|seconds| (seconds > 0).then_some(distance / f64::from(seconds)));
-                let target_climb_density_feet_per_hour =
-                    target_finish_seconds.and_then(|seconds| {
-                        (seconds > 0)
-                            .then_some(elevation * FEET_PER_METER / (f64::from(seconds) / 3600.0))
-                    });
+                let target_speed_mps =
+                    target_finish_seconds.and_then(|seconds| (seconds > 0).then_some(distance / f64::from(seconds)));
+                let target_climb_density_feet_per_hour = target_finish_seconds.and_then(|seconds| {
+                    (seconds > 0).then_some(elevation * FEET_PER_METER / (f64::from(seconds) / 3600.0))
+                });
 
                 return ReassessmentTarget {
                     response: ReassessmentTargetResponse {
@@ -2408,8 +2243,7 @@ fn reassessment_target(preferences: Option<&user_preferences::Model>) -> Reasses
                             .clone()
                             .unwrap_or_else(|| "XC event goal".to_string()),
                         target_source: ReassessmentTargetSource::SavedGoal,
-                        target_source_detail:
-                            "Using the saved XC event goal from account preferences.".to_string(),
+                        target_source_detail: "Using the saved XC event goal from account preferences.".to_string(),
                         target_date: preferences
                             .xc_goal_target_date
                             .map(|date| date.format("%Y-%m-%d").to_string()),
@@ -2418,10 +2252,8 @@ fn reassessment_target(preferences: Option<&user_preferences::Model>) -> Reasses
                         target_distance_meters: Some(round_metric(distance)),
                         target_elevation_gain_meters: Some(round_metric(elevation)),
                         target_speed_mps: target_speed_mps.map(round_metric),
-                        target_speed_mph: target_speed_mps
-                            .map(|speed| round_metric(speed * 2.236_936)),
-                        target_climb_density_feet_per_hour: target_climb_density_feet_per_hour
-                            .map(round_metric),
+                        target_speed_mph: target_speed_mps.map(|speed| round_metric(speed * 2.236_936)),
+                        target_climb_density_feet_per_hour: target_climb_density_feet_per_hour.map(round_metric),
                     },
                 };
             }
@@ -2505,9 +2337,7 @@ fn reassessment_benchmark_ride(
         elapsed_seconds,
         moving_seconds: activity.moving_time_seconds,
         elapsed_speed_mph: elapsed_speed_mph(activity.distance_meters, elapsed_seconds),
-        moving_speed_mph: analysis
-            .moving_speed_mps
-            .map(|speed| round_metric(speed * 2.236_936)),
+        moving_speed_mph: analysis.moving_speed_mps.map(|speed| round_metric(speed * 2.236_936)),
         climbing_density_feet_per_hour: analysis.climbing_density_feet_per_hour.map(round_metric),
         aerobic_decoupling_percent: analysis
             .aerobic_decoupling_percent
@@ -2562,10 +2392,7 @@ fn reassessment_climbing_density_ride(
         })
 }
 
-fn median_reassessment_ride_metric<F>(
-    benchmark_rides: &[ReassessmentBenchmarkRideResponse],
-    value: F,
-) -> Option<f64>
+fn median_reassessment_ride_metric<F>(benchmark_rides: &[ReassessmentBenchmarkRideResponse], value: F) -> Option<f64>
 where
     F: Fn(&ReassessmentBenchmarkRideResponse) -> Option<f64>,
 {
@@ -2602,9 +2429,7 @@ fn reassessment_endurance_score(ride: &ReassessmentBenchmarkRideResponse) -> f64
     duration_hours.max(distance_score)
 }
 
-fn aggregate_climbing_density_feet_per_hour(
-    rides: &[ReassessmentBenchmarkRideResponse],
-) -> Option<f64> {
+fn aggregate_climbing_density_feet_per_hour(rides: &[ReassessmentBenchmarkRideResponse]) -> Option<f64> {
     let mut elevation_feet = 0.0;
     let mut duration_seconds = 0;
 
@@ -2642,10 +2467,7 @@ where
     (ride, ride.and_then(value))
 }
 
-fn latest_fitness_on_or_before(
-    fitness_rows: &[fitness_freshness_daily::Model],
-    day: NaiveDate,
-) -> Option<f64> {
+fn latest_fitness_on_or_before(fitness_rows: &[fitness_freshness_daily::Model], day: NaiveDate) -> Option<f64> {
     fitness_rows
         .iter()
         .filter(|row| row.day <= day && row.fitness > 0.0)
@@ -2693,14 +2515,8 @@ fn reassessment_improvement(
     ReassessmentImprovementResponse {
         fitness_change: delta(recent.average_fitness, spring.average_fitness),
         fitness_change_percent: percent_delta(recent.average_fitness, spring.average_fitness),
-        long_ride_speed_change_mph: delta(
-            recent.best_long_ride_speed_mph,
-            spring.best_long_ride_speed_mph,
-        ),
-        long_ride_speed_change_percent: percent_delta(
-            recent.best_long_ride_speed_mph,
-            spring.best_long_ride_speed_mph,
-        ),
+        long_ride_speed_change_mph: delta(recent.best_long_ride_speed_mph, spring.best_long_ride_speed_mph),
+        long_ride_speed_change_percent: percent_delta(recent.best_long_ride_speed_mph, spring.best_long_ride_speed_mph),
         long_ride_distance_change_miles: delta(
             recent.best_long_ride_distance_miles,
             spring.best_long_ride_distance_miles,
@@ -2724,18 +2540,13 @@ fn reassessment_ability_estimate(
     recent: &ReassessmentWindowMetrics,
     target: &ReassessmentTarget,
 ) -> ReassessmentAbilityEstimateResponse {
-    let target_distance_miles = target
-        .response
-        .target_distance_meters
-        .map(|meters| meters / 1609.344);
+    let target_distance_miles = target.response.target_distance_meters.map(|meters| meters / 1609.344);
     let target_elevation_feet = target
         .response
         .target_elevation_gain_meters
         .map(|meters| meters * FEET_PER_METER);
     let current_speed = recent.response.best_long_ride_speed_mph;
-    let current_climb_density = recent
-        .response
-        .aggregate_long_ride_climbing_density_feet_per_hour;
+    let current_climb_density = recent.response.aggregate_long_ride_climbing_density_feet_per_hour;
     let pace_limited_finish_seconds = match (target_distance_miles, current_speed) {
         (Some(distance), Some(speed)) if distance > 0.0 && speed > 0.0 => {
             Some((distance / speed * 3600.0).round() as i32)
@@ -2748,13 +2559,12 @@ fn reassessment_ability_estimate(
         }
         _ => None,
     };
-    let estimated_finish_seconds =
-        match (pace_limited_finish_seconds, climbing_limited_finish_seconds) {
-            (Some(pace), Some(climbing)) => Some(pace.max(climbing)),
-            (Some(pace), None) => Some(pace),
-            (None, Some(climbing)) => Some(climbing),
-            (None, None) => None,
-        };
+    let estimated_finish_seconds = match (pace_limited_finish_seconds, climbing_limited_finish_seconds) {
+        (Some(pace), Some(climbing)) => Some(pace.max(climbing)),
+        (Some(pace), None) => Some(pace),
+        (None, Some(climbing)) => Some(climbing),
+        (None, None) => None,
+    };
     let limiter = match (pace_limited_finish_seconds, climbing_limited_finish_seconds) {
         (Some(pace), Some(climbing)) if climbing > pace => Some("climbing".to_string()),
         (Some(_), Some(_)) => Some("pace".to_string()),
@@ -2770,8 +2580,7 @@ fn reassessment_ability_estimate(
     };
     let detail = if estimated_finish_seconds.is_some() {
         "Estimated from current benchmark long rides against the saved course distance and elevation. This is a current-ability estimate, not a finish target."
-    } else if target.response.target_distance_meters.is_none()
-        || target.response.target_elevation_gain_meters.is_none()
+    } else if target.response.target_distance_meters.is_none() || target.response.target_elevation_gain_meters.is_none()
     {
         "Save course distance and elevation before Bike can estimate current course ability."
     } else {
@@ -2816,24 +2625,19 @@ fn reassessment_endurance_signal(
         .response
         .target_distance_meters
         .map(|meters| (meters / 1609.344) * REASSESSMENT_LONG_RIDE_TARGET_RATIO);
-    let improved_duration =
-        percent_delta(duration_hours, baseline_hours).unwrap_or_default() >= 10.0;
+    let improved_duration = percent_delta(duration_hours, baseline_hours).unwrap_or_default() >= 10.0;
     let status = if recent.response.long_ride_count == 0 || spring.response.long_ride_count == 0 {
         ReassessmentVerdict::MissingData
-    } else if target_hours
-        .is_some_and(|hours_target| duration_hours.is_some_and(|hours| hours >= hours_target))
-        || target_miles
-            .is_some_and(|miles_target| distance.is_some_and(|miles| miles >= miles_target))
+    } else if target_hours.is_some_and(|hours_target| duration_hours.is_some_and(|hours| hours >= hours_target))
+        || target_miles.is_some_and(|miles_target| distance.is_some_and(|miles| miles >= miles_target))
     {
         if fatigue.is_none_or(|value| value <= 25.0) {
             ReassessmentVerdict::OnTrack
         } else {
             ReassessmentVerdict::PlausibleButRisky
         }
-    } else if target_hours.is_some_and(|hours_target| {
-        duration_hours.is_some_and(|hours| hours >= hours_target * 0.70)
-    }) || target_miles
-        .is_some_and(|miles_target| distance.is_some_and(|miles| miles >= miles_target * 0.70))
+    } else if target_hours.is_some_and(|hours_target| duration_hours.is_some_and(|hours| hours >= hours_target * 0.70))
+        || target_miles.is_some_and(|miles_target| distance.is_some_and(|miles| miles >= miles_target * 0.70))
         || improved_duration
     {
         ReassessmentVerdict::PlausibleButRisky
@@ -2841,9 +2645,7 @@ fn reassessment_endurance_signal(
         ReassessmentVerdict::NeedsMoreEvidence
     };
     let (last_known_source, last_known_value) = if duration_hours.is_none() {
-        latest_benchmark_value(prior_training, |ride| {
-            Some(f64::from(ride.elapsed_seconds) / 3600.0)
-        })
+        latest_benchmark_value(prior_training, |ride| Some(f64::from(ride.elapsed_seconds) / 3600.0))
     } else {
         (None, None)
     };
@@ -2881,12 +2683,8 @@ fn reassessment_climbing_density_signal(
     fitness_rows: &[fitness_freshness_daily::Model],
     range_end: NaiveDate,
 ) -> ReassessmentSignalResponse {
-    let current = recent
-        .response
-        .aggregate_long_ride_climbing_density_feet_per_hour;
-    let baseline = spring
-        .response
-        .aggregate_long_ride_climbing_density_feet_per_hour;
+    let current = recent.response.aggregate_long_ride_climbing_density_feet_per_hour;
+    let baseline = spring.response.aggregate_long_ride_climbing_density_feet_per_hour;
     let target_value = target.response.target_climb_density_feet_per_hour;
     let status = reassessment_climbing_density_status(current, baseline, target_value);
     let detail = reassessment_climbing_density_detail(status, current, baseline, target);
@@ -2932,9 +2730,7 @@ fn reassessment_climbing_density_status(
         }
     } else if current.is_some_and(|value| value >= target_value.unwrap_or_default() * 0.90) {
         ReassessmentVerdict::OnTrack
-    } else if current.is_some_and(|value| value >= target_value.unwrap_or_default() * 0.75)
-        || improved
-    {
+    } else if current.is_some_and(|value| value >= target_value.unwrap_or_default() * 0.75) || improved {
         ReassessmentVerdict::PlausibleButRisky
     } else {
         ReassessmentVerdict::NeedsMoreEvidence
@@ -3007,9 +2803,7 @@ fn reassessment_long_ride_pace_signal(
         }
     } else if current.is_some_and(|value| value >= target_value.unwrap_or_default() * 1.05) {
         ReassessmentVerdict::OnTrack
-    } else if current.is_some_and(|value| value >= target_value.unwrap_or_default() * 0.95)
-        || improved
-    {
+    } else if current.is_some_and(|value| value >= target_value.unwrap_or_default() * 0.95) || improved {
         ReassessmentVerdict::PlausibleButRisky
     } else {
         ReassessmentVerdict::NeedsMoreEvidence
@@ -3157,11 +2951,9 @@ fn reassessment_signal(input: ReassessmentSignalInput<'_>) -> ReassessmentSignal
         last_known_source_activity_id: input.last_known_source.map(|ride| ride.activity_id),
         last_known_source_title: input.last_known_source.map(|ride| ride.title.clone()),
         last_known_source_started_at: input.last_known_source.map(|ride| ride.started_at),
-        last_known_days_old: input.last_known_source.map(|ride| {
-            (input.range_end - ride.started_at.date_naive())
-                .num_days()
-                .max(0)
-        }),
+        last_known_days_old: input
+            .last_known_source
+            .map(|ride| (input.range_end - ride.started_at.date_naive()).num_days().max(0)),
         projection_detail: input.projection_detail,
         baseline_source_activity_id: input.baseline_source.map(|ride| ride.activity_id),
         baseline_source_title: input.baseline_source.map(|ride| ride.title.clone()),
@@ -3289,8 +3081,7 @@ fn delta(current: Option<f64>, baseline: Option<f64>) -> Option<f64> {
 fn percent_delta(current: Option<f64>, baseline: Option<f64>) -> Option<f64> {
     let current = current?;
     let baseline = baseline?;
-    (baseline.abs() > f64::EPSILON)
-        .then_some(round_metric(((current - baseline) / baseline) * 100.0))
+    (baseline.abs() > f64::EPSILON).then_some(round_metric(((current - baseline) / baseline) * 100.0))
 }
 
 #[derive(Debug, Clone)]
@@ -3318,22 +3109,15 @@ fn compare_analysis_from_activity(activity: &activities::Model) -> CompareRideAn
     let moving_speed_mps = activity
         .distance_meters
         .zip(moving_seconds)
-        .and_then(|(distance, seconds)| {
-            (distance > 0.0 && seconds > 0).then_some(distance / f64::from(seconds))
-        })
+        .and_then(|(distance, seconds)| (distance > 0.0 && seconds > 0).then_some(distance / f64::from(seconds)))
         .or(activity.average_speed_mps);
     let first = segment_samples(&samples, 0, elapsed_seconds / 2);
     let second = segment_samples(&samples, elapsed_seconds / 2, elapsed_seconds);
-    let aerobic_decoupling_percent = percent_change(efficiency(&first), efficiency(&second))
-        .and_then(plausible_aerobic_decoupling_percent);
+    let aerobic_decoupling_percent =
+        percent_change(efficiency(&first), efficiency(&second)).and_then(plausible_aerobic_decoupling_percent);
     let late_speed_change_percent = late_ride_changes(&samples).0;
     let climbs = detect_climbs(activity, &samples);
-    let median_climb_rate = median(
-        climbs
-            .iter()
-            .map(|climb| climb.vertical_rate_meters_per_hour)
-            .collect(),
-    );
+    let median_climb_rate = median(climbs.iter().map(|climb| climb.vertical_rate_meters_per_hour).collect());
     let median_60s_hr_recovery_bpm = median(
         climbs
             .iter()
@@ -3344,12 +3128,9 @@ fn compare_analysis_from_activity(activity: &activities::Model) -> CompareRideAn
         .total_time_seconds
         .zip(activity.moving_time_seconds)
         .map(|(total, moving)| (total - moving).max(0));
-    let stopped_time_percent =
-        stopped_seconds
-            .zip(activity.total_time_seconds)
-            .and_then(|(stopped, total)| {
-                (total > 0).then_some((f64::from(stopped) / f64::from(total)) * 100.0)
-            });
+    let stopped_time_percent = stopped_seconds
+        .zip(activity.total_time_seconds)
+        .and_then(|(stopped, total)| (total > 0).then_some((f64::from(stopped) / f64::from(total)) * 100.0));
     let moving_hours = moving_seconds.map(|value| f64::from(value) / 3600.0);
     let climbing_density_feet_per_hour = activity
         .elevation_gain_meters
@@ -3453,8 +3234,7 @@ where
     let first_value = value_for(first)?;
     let latest_value = value_for(latest)?;
     let change = latest_value - first_value;
-    let change_percent =
-        (first_value.abs() > f64::EPSILON).then_some((change / first_value) * 100.0);
+    let change_percent = (first_value.abs() > f64::EPSILON).then_some((change / first_value) * 100.0);
     let interpretation = match direction {
         "higher" if change > 0.0 => "improving",
         "higher" if change < 0.0 => "declining",
@@ -3510,26 +3290,16 @@ fn push_missing_flag(flags: &mut Vec<String>, missing: usize, total: usize, labe
         return;
     }
 
-    flags.push(format!(
-        "{missing} of {total} activities missing {label} data"
-    ));
+    flags.push(format!("{missing} of {total} activities missing {label} data"));
 }
 
 fn activity_samples(activity: &activities::Model) -> Vec<TrendSample> {
     let derived_data = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
     if derived_data.route_points.len() >= 2 {
-        return derived_data
-            .route_points
-            .iter()
-            .map(sample_from_route_point)
-            .collect();
+        return derived_data.route_points.iter().map(sample_from_route_point).collect();
     }
 
-    derived_data
-        .chart_points
-        .iter()
-        .map(sample_from_chart_point)
-        .collect()
+    derived_data.chart_points.iter().map(sample_from_chart_point).collect()
 }
 
 fn activity_elapsed_seconds(activity: &activities::Model, samples: &[TrendSample]) -> i32 {
@@ -3569,17 +3339,11 @@ fn sample_from_chart_point(point: &ActivityChartPoint) -> TrendSample {
     }
 }
 
-fn segment_samples(
-    samples: &[TrendSample],
-    start_seconds: i32,
-    end_seconds: i32,
-) -> Vec<TrendSample> {
+fn segment_samples(samples: &[TrendSample], start_seconds: i32, end_seconds: i32) -> Vec<TrendSample> {
     samples
         .iter()
         .copied()
-        .filter(|sample| {
-            sample.elapsed_seconds >= start_seconds && sample.elapsed_seconds <= end_seconds
-        })
+        .filter(|sample| sample.elapsed_seconds >= start_seconds && sample.elapsed_seconds <= end_seconds)
         .collect()
 }
 
@@ -3600,16 +3364,13 @@ fn hourly_durability(samples: &[TrendSample]) -> Vec<HourlyDurabilityResponse> {
         let distance = segment_distance(&segment);
         let average_speed = average_speed(&segment);
         let average_hr = average_heart_rate(&segment);
-        let max_hr = segment
-            .iter()
-            .filter_map(|sample| sample.heart_rate_bpm)
-            .max();
+        let max_hr = segment.iter().filter_map(|sample| sample.heart_rate_bpm).max();
         let (moving_seconds, stopped_seconds, stop_count) = movement_breakdown(&segment);
         let ascent = positive_gain(&segment);
         let duration_seconds = (end - start).max(1);
         let duration_hours = f64::from(duration_seconds) / 3600.0;
-        let climb_rate_meters_per_hour = (ascent > 0.0 && moving_seconds > 0)
-            .then_some(ascent / (f64::from(moving_seconds) / 3600.0));
+        let climb_rate_meters_per_hour =
+            (ascent > 0.0 && moving_seconds > 0).then_some(ascent / (f64::from(moving_seconds) / 3600.0));
 
         rows.push(HourlyDurabilityResponse {
             hour,
@@ -3637,12 +3398,7 @@ fn hourly_durability(samples: &[TrendSample]) -> Vec<HourlyDurabilityResponse> {
 fn fatigue_start_hour(hourly: &[HourlyDurabilityResponse]) -> Option<i32> {
     hourly
         .iter()
-        .find(|row| {
-            row.hour >= 2
-                && row
-                    .fatigue_index
-                    .is_some_and(|fatigue_index| fatigue_index >= 25.0)
-        })
+        .find(|row| row.hour >= 2 && row.fatigue_index.is_some_and(|fatigue_index| fatigue_index >= 25.0))
         .map(|row| row.hour)
 }
 
@@ -3662,24 +3418,14 @@ fn apply_fatigue_indexes(rows: &mut [HourlyDurabilityResponse]) {
                 .filter_map(|row| row.efficiency_mps_per_bpm)
                 .collect(),
         ),
-        speed: median(
-            rows.iter()
-                .take(2)
-                .filter_map(|row| row.average_speed_mps)
-                .collect(),
-        ),
+        speed: median(rows.iter().take(2).filter_map(|row| row.average_speed_mps).collect()),
         climb_rate: median(
             rows.iter()
                 .take(2)
                 .filter_map(|row| row.climb_rate_meters_per_hour)
                 .collect(),
         ),
-        stop_frequency: median(
-            rows.iter()
-                .take(2)
-                .map(|row| row.stop_frequency_per_hour)
-                .collect(),
-        ),
+        stop_frequency: median(rows.iter().take(2).map(|row| row.stop_frequency_per_hour).collect()),
         heart_rate: median(
             rows.iter()
                 .take(2)
@@ -3702,16 +3448,11 @@ struct FatigueBaseline {
     heart_rate: Option<f64>,
 }
 
-fn fatigue_index_for_row(
-    row: &HourlyDurabilityResponse,
-    baseline: &FatigueBaseline,
-) -> Option<f64> {
+fn fatigue_index_for_row(row: &HourlyDurabilityResponse, baseline: &FatigueBaseline) -> Option<f64> {
     let mut score = 0.0;
     let mut evidence_count = 0;
 
-    if let (Some(baseline_efficiency), Some(efficiency)) =
-        (baseline.efficiency, row.efficiency_mps_per_bpm)
-    {
+    if let (Some(baseline_efficiency), Some(efficiency)) = (baseline.efficiency, row.efficiency_mps_per_bpm) {
         if baseline_efficiency > f64::EPSILON {
             let drop = ((baseline_efficiency - efficiency) / baseline_efficiency).max(0.0);
             score += (drop * 180.0).min(45.0);
@@ -3731,9 +3472,7 @@ fn fatigue_index_for_row(
         }
     }
 
-    if let (Some(baseline_climb_rate), Some(climb_rate)) =
-        (baseline.climb_rate, row.climb_rate_meters_per_hour)
-    {
+    if let (Some(baseline_climb_rate), Some(climb_rate)) = (baseline.climb_rate, row.climb_rate_meters_per_hour) {
         if baseline_climb_rate > f64::EPSILON {
             let drop = ((baseline_climb_rate - climb_rate) / baseline_climb_rate).max(0.0);
             score += (drop * 100.0).min(20.0);
@@ -3804,10 +3543,7 @@ struct ClimbBuildContext<'a> {
 
 fn detect_climbs(activity: &activities::Model, samples: &[TrendSample]) -> Vec<ClimbResponse> {
     let mut climbs = Vec::new();
-    let total_elapsed = samples
-        .last()
-        .map(|sample| sample.elapsed_seconds)
-        .unwrap_or_default();
+    let total_elapsed = samples.last().map(|sample| sample.elapsed_seconds).unwrap_or_default();
     let context = ClimbBuildContext {
         activity,
         samples,
@@ -3864,20 +3600,13 @@ fn process_climb_descent(
     }
 }
 
-fn finalize_climb(
-    context: &ClimbBuildContext<'_>,
-    candidate: ClimbCandidate,
-    climbs: &mut Vec<ClimbResponse>,
-) {
-    if candidate.crest_index <= candidate.valley_index
-        || candidate.crest_index >= context.samples.len()
-    {
+fn finalize_climb(context: &ClimbBuildContext<'_>, candidate: ClimbCandidate, climbs: &mut Vec<ClimbResponse>) {
+    if candidate.crest_index <= candidate.valley_index || candidate.crest_index >= context.samples.len() {
         return;
     }
 
     let segment = &context.samples[candidate.valley_index..=candidate.crest_index];
-    let duration_seconds =
-        segment.last().unwrap().elapsed_seconds - segment.first().unwrap().elapsed_seconds;
+    let duration_seconds = segment.last().unwrap().elapsed_seconds - segment.first().unwrap().elapsed_seconds;
     let distance_meters = segment_distance(segment).unwrap_or_default();
     let gain_meters = candidate.gain_meters();
 
@@ -3904,31 +3633,15 @@ fn finalize_climb(
         vertical_rate_meters_per_hour: round_metric(vertical_rate),
         average_speed_mps: average_speed(segment).map(round_metric),
         average_heart_rate_bpm: average_heart_rate(segment).map(round_metric),
-        peak_heart_rate_bpm: segment
-            .iter()
-            .filter_map(|sample| sample.heart_rate_bpm)
-            .max(),
+        peak_heart_rate_bpm: segment.iter().filter_map(|sample| sample.heart_rate_bpm).max(),
         average_cadence_rpm: average_cadence(segment).map(round_metric),
         average_power_watts: average_power(segment).map(round_metric),
-        heart_rate_recovery_30_seconds_bpm: heart_rate_recovery(
-            context.samples,
-            candidate.crest_index,
-            30,
-        ),
-        heart_rate_recovery_60_seconds_bpm: heart_rate_recovery(
-            context.samples,
-            candidate.crest_index,
-            60,
-        ),
+        heart_rate_recovery_30_seconds_bpm: heart_rate_recovery(context.samples, candidate.crest_index, 30),
+        heart_rate_recovery_60_seconds_bpm: heart_rate_recovery(context.samples, candidate.crest_index, 60),
         seconds_to_drop_10_bpm: seconds_to_drop_bpm(context.samples, candidate.crest_index, 10),
         seconds_to_drop_15_bpm: seconds_to_drop_bpm(context.samples, candidate.crest_index, 15),
-        summit_immediately_enters_descent: summit_enters_descent(
-            context.samples,
-            candidate.crest_index,
-        ),
-        first_or_second_half: if segment.last().unwrap().elapsed_seconds
-            <= context.total_elapsed_seconds / 2
-        {
+        summit_immediately_enters_descent: summit_enters_descent(context.samples, candidate.crest_index),
+        first_or_second_half: if segment.last().unwrap().elapsed_seconds <= context.total_elapsed_seconds / 2 {
             "first".to_string()
         } else {
             "second".to_string()
@@ -3945,10 +3658,7 @@ fn first_elevation_sample(samples: &[TrendSample]) -> Option<(usize, f64)> {
 
 fn segment_distance(samples: &[TrendSample]) -> Option<f64> {
     let first = samples.iter().find_map(|sample| sample.distance_meters)?;
-    let last = samples
-        .iter()
-        .rev()
-        .find_map(|sample| sample.distance_meters)?;
+    let last = samples.iter().rev().find_map(|sample| sample.distance_meters)?;
     (last >= first).then_some(last - first)
 }
 
@@ -3982,11 +3692,7 @@ fn average_power(samples: &[TrendSample]) -> Option<f64> {
     mean(values)
 }
 
-fn heart_rate_recovery(
-    samples: &[TrendSample],
-    summit_index: usize,
-    recovery_seconds: i32,
-) -> Option<i32> {
+fn heart_rate_recovery(samples: &[TrendSample], summit_index: usize, recovery_seconds: i32) -> Option<i32> {
     let summit_heart_rate = samples.get(summit_index)?.heart_rate_bpm?;
     let target_seconds = samples.get(summit_index)?.elapsed_seconds + recovery_seconds;
     let recovery_heart_rate = heart_rate_at_or_after(samples, target_seconds)?;
@@ -4008,11 +3714,7 @@ fn seconds_to_drop_bpm(samples: &[TrendSample], summit_index: usize, drop_bpm: i
     samples
         .iter()
         .skip(summit_index + 1)
-        .find(|sample| {
-            sample
-                .heart_rate_bpm
-                .is_some_and(|hr| hr <= target_heart_rate)
-        })
+        .find(|sample| sample.heart_rate_bpm.is_some_and(|hr| hr <= target_heart_rate))
         .map(|sample| sample.elapsed_seconds - summit.elapsed_seconds)
 }
 
@@ -4105,9 +3807,7 @@ fn movement_breakdown(samples: &[TrendSample]) -> (i32, i32, i32) {
         }
         let speed = previous
             .speed_mps
-            .or_else(|| {
-                delta_distance(previous, current).map(|distance| distance / f64::from(delta_time))
-            })
+            .or_else(|| delta_distance(previous, current).map(|distance| distance / f64::from(delta_time)))
             .unwrap_or_default();
         if speed < 0.5 {
             stopped += delta_time;
@@ -4171,27 +3871,17 @@ fn max_by_metric<F>(climbs: &[ClimbResponse], metric: F) -> Option<ClimbResponse
 where
     F: Fn(&ClimbResponse) -> f64,
 {
-    climbs
-        .iter()
-        .cloned()
-        .max_by(|a, b| metric(a).total_cmp(&metric(b)))
+    climbs.iter().cloned().max_by(|a, b| metric(a).total_cmp(&metric(b)))
 }
 
 fn min_by_metric<F>(climbs: &[ClimbResponse], metric: F) -> Option<ClimbResponse>
 where
     F: Fn(&ClimbResponse) -> f64,
 {
-    climbs
-        .iter()
-        .cloned()
-        .min_by(|a, b| metric(a).total_cmp(&metric(b)))
+    climbs.iter().cloned().min_by(|a, b| metric(a).total_cmp(&metric(b)))
 }
 
-fn percentile_by_metric<F>(
-    climbs: &[ClimbResponse],
-    percentile: f64,
-    metric: F,
-) -> Option<ClimbResponse>
+fn percentile_by_metric<F>(climbs: &[ClimbResponse], percentile: f64, metric: F) -> Option<ClimbResponse>
 where
     F: Fn(&ClimbResponse) -> f64,
 {
@@ -4222,24 +3912,15 @@ impl ReportBoundary {
 
     fn bucket_start(self, value: DateTime<Utc>) -> Result<DateTime<Utc>, BikeCoreError> {
         match self {
-            Self::Day => {
-                make_utc_datetime(value.year(), value.month(), value.day(), value.hour(), 0, 0)
-            }
-            Self::Week | Self::Month => {
-                make_utc_datetime(value.year(), value.month(), value.day(), 0, 0, 0)
-            }
+            Self::Day => make_utc_datetime(value.year(), value.month(), value.day(), value.hour(), 0, 0),
+            Self::Week | Self::Month => make_utc_datetime(value.year(), value.month(), value.day(), 0, 0, 0),
             Self::ThreeMonth | Self::SixMonth => {
                 let date = value.date_naive();
-                let monday =
-                    date - Duration::days(i64::from(date.weekday().num_days_from_monday()));
+                let monday = date - Duration::days(i64::from(date.weekday().num_days_from_monday()));
                 make_utc_datetime(monday.year(), monday.month(), monday.day(), 0, 0, 0)
             }
-            Self::OneYear | Self::TwoYear => {
-                make_utc_datetime(value.year(), value.month(), 1, 0, 0, 0)
-            }
-            Self::ThreeYear | Self::FiveYear | Self::All => {
-                make_utc_datetime(value.year(), 1, 1, 0, 0, 0)
-            }
+            Self::OneYear | Self::TwoYear => make_utc_datetime(value.year(), value.month(), 1, 0, 0, 0),
+            Self::ThreeYear | Self::FiveYear | Self::All => make_utc_datetime(value.year(), 1, 1, 0, 0, 0),
         }
     }
 
@@ -4257,9 +3938,7 @@ impl ReportBoundary {
                 };
                 make_utc_datetime(year, month, 1, 0, 0, 0)
             }
-            Self::ThreeYear | Self::FiveYear | Self::All => {
-                make_utc_datetime(value.year() + 1, 1, 1, 0, 0, 0)
-            }
+            Self::ThreeYear | Self::FiveYear | Self::All => make_utc_datetime(value.year() + 1, 1, 1, 0, 0, 0),
         }
     }
 }
@@ -4447,9 +4126,7 @@ mod tests {
             reassessment_test_activity(
                 3,
                 "Spring climbing",
-                Utc.with_ymd_and_hms(2026, 4, 15, 12, 0, 0)
-                    .single()
-                    .unwrap(),
+                Utc.with_ymd_and_hms(2026, 4, 15, 12, 0, 0).single().unwrap(),
                 35.0,
                 3_000.0,
                 10_800,
@@ -4476,9 +4153,7 @@ mod tests {
             reassessment_test_activity(
                 6,
                 "Recent climbing",
-                Utc.with_ymd_and_hms(2026, 8, 15, 12, 0, 0)
-                    .single()
-                    .unwrap(),
+                Utc.with_ymd_and_hms(2026, 8, 15, 12, 0, 0).single().unwrap(),
                 36.0,
                 5_000.0,
                 12_600,
@@ -4487,12 +4162,7 @@ mod tests {
         ]
     }
 
-    fn sample(
-        elapsed_seconds: i32,
-        distance_meters: f64,
-        elevation_meters: f64,
-        heart_rate_bpm: i32,
-    ) -> TrendSample {
+    fn sample(elapsed_seconds: i32, distance_meters: f64, elevation_meters: f64, heart_rate_bpm: i32) -> TrendSample {
         TrendSample {
             elapsed_seconds,
             distance_meters: Some(distance_meters),
@@ -4510,12 +4180,11 @@ mod tests {
         let mut elevation_meters = 100.0;
 
         for elapsed_seconds in (0..=10_800).step_by(30) {
-            let (speed_mps, heart_rate_bpm, climb_rate_meters_per_hour) =
-                if elapsed_seconds <= 7_200 {
-                    (5.0, 130, 120.0)
-                } else {
-                    (3.0, 132, 40.0)
-                };
+            let (speed_mps, heart_rate_bpm, climb_rate_meters_per_hour) = if elapsed_seconds <= 7_200 {
+                (5.0, 130, 120.0)
+            } else {
+                (3.0, 132, 40.0)
+            };
 
             if elapsed_seconds > 0 {
                 distance_meters += speed_mps * 30.0;
@@ -4544,9 +4213,7 @@ mod tests {
         assert!(definitions
             .iter()
             .any(|definition| definition.id == ReportId::AggregateTrends));
-        assert!(definitions
-            .iter()
-            .any(|definition| definition.id == ReportId::Distance));
+        assert!(definitions.iter().any(|definition| definition.id == ReportId::Distance));
         assert!(definitions
             .iter()
             .any(|definition| definition.id == ReportId::Elevation));
@@ -4558,20 +4225,12 @@ mod tests {
             .iter()
             .find(|definition| definition.id == ReportId::CompareRides)
             .unwrap();
-        assert!(compare
-            .supported_filters
-            .contains(&ReportFilterKey::ActivityIds));
-        assert!(compare
-            .supported_filters
-            .contains(&ReportFilterKey::MinDuration));
-        assert!(compare
-            .supported_filters
-            .contains(&ReportFilterKey::MinDistance));
-        assert!(compare
-            .metrics
-            .iter()
-            .any(|metric| metric.key == "aerobic_decoupling_percent"
-                && metric.direction == ReportMetricDirection::Lower));
+        assert!(compare.supported_filters.contains(&ReportFilterKey::ActivityIds));
+        assert!(compare.supported_filters.contains(&ReportFilterKey::MinDuration));
+        assert!(compare.supported_filters.contains(&ReportFilterKey::MinDistance));
+        assert!(compare.metrics.iter().any(
+            |metric| metric.key == "aerobic_decoupling_percent" && metric.direction == ReportMetricDirection::Lower
+        ));
 
         let reassessment = definitions
             .iter()
@@ -4583,29 +4242,16 @@ mod tests {
         assert!(reassessment
             .metrics
             .iter()
-            .any(|metric| metric.key == "long_ride_pace"
-                && metric.direction == ReportMetricDirection::Higher));
+            .any(|metric| metric.key == "long_ride_pace" && metric.direction == ReportMetricDirection::Higher));
     }
 
     #[test]
     fn parses_report_ids_and_rejects_unknown_reports() {
         assert_eq!(parse_report_id(None).unwrap(), ReportId::AggregateTrends);
-        assert_eq!(
-            parse_report_id(Some("compare_rides")).unwrap(),
-            ReportId::CompareRides
-        );
-        assert_eq!(
-            parse_report_id(Some("reassessment")).unwrap(),
-            ReportId::Reassessment
-        );
-        assert_eq!(
-            parse_report_id(Some("distance")).unwrap(),
-            ReportId::Distance
-        );
-        assert_eq!(
-            parse_report_id(Some("elevation")).unwrap(),
-            ReportId::Elevation
-        );
+        assert_eq!(parse_report_id(Some("compare_rides")).unwrap(), ReportId::CompareRides);
+        assert_eq!(parse_report_id(Some("reassessment")).unwrap(), ReportId::Reassessment);
+        assert_eq!(parse_report_id(Some("distance")).unwrap(), ReportId::Distance);
+        assert_eq!(parse_report_id(Some("elevation")).unwrap(), ReportId::Elevation);
         assert_eq!(
             parse_report_id(Some("activity_type_time")).unwrap(),
             ReportId::ActivityTypeTime
@@ -4625,10 +4271,7 @@ mod tests {
         assert_eq!(target.target_date.as_deref(), Some("2026-09-20"));
 
         let fallback = reassessment_target(None).response;
-        assert_eq!(
-            fallback.target_source,
-            ReassessmentTargetSource::MissingGoal
-        );
+        assert_eq!(fallback.target_source, ReassessmentTargetSource::MissingGoal);
         assert_eq!(fallback.target_finish_seconds, None);
         assert_eq!(fallback.target_distance_meters, None);
     }
@@ -4671,9 +4314,7 @@ mod tests {
         assert_eq!(pace_benchmark.elapsed_speed_mph, Some(11.25));
         assert_eq!(pace_benchmark.moving_speed_mph, Some(15.0));
         assert_eq!(
-            report
-                .recent_window
-                .aggregate_long_ride_climbing_density_feet_per_hour,
+            report.recent_window.aggregate_long_ride_climbing_density_feet_per_hour,
             Some(551.72)
         );
         assert_eq!(
@@ -4685,10 +4326,7 @@ mod tests {
         assert_eq!(report.climbing_density.current_value, Some(551.72));
         assert_eq!(report.climbing_density.baseline_value, Some(450.0));
         assert_eq!(report.climbing_density.current_source_title, None);
-        assert_eq!(
-            report.climbing_density.status,
-            ReassessmentVerdict::PlausibleButRisky
-        );
+        assert_eq!(report.climbing_density.status, ReassessmentVerdict::PlausibleButRisky);
     }
 
     #[test]
@@ -4752,10 +4390,7 @@ mod tests {
 
         assert_eq!(report.recent_window.start_date, "2026-06-01");
         assert_eq!(report.recent_window.long_ride_count, 0);
-        assert_eq!(
-            report.long_ride_pace.status,
-            ReassessmentVerdict::MissingData
-        );
+        assert_eq!(report.long_ride_pace.status, ReassessmentVerdict::MissingData);
         assert_eq!(report.long_ride_pace.current_value, None);
         assert_eq!(report.long_ride_pace.current_source_activity_id, None);
         assert_eq!(
@@ -4785,10 +4420,7 @@ mod tests {
             NaiveDate::from_ymd_opt(2026, 8, 31).unwrap(),
         );
 
-        assert_eq!(
-            report.fitness_delta.status,
-            ReassessmentVerdict::MissingData
-        );
+        assert_eq!(report.fitness_delta.status, ReassessmentVerdict::MissingData);
         assert_eq!(report.verdict, ReassessmentVerdict::MissingData);
     }
 
@@ -4812,9 +4444,7 @@ mod tests {
 
         assert_ne!(report.verdict, ReassessmentVerdict::MissingData);
         assert_eq!(report.verdict_title, "Current ability estimate available");
-        assert!(report
-            .verdict_detail
-            .contains("estimate current course ability"));
+        assert!(report.verdict_detail.contains("estimate current course ability"));
         assert!(report.ability_estimate.estimated_finish_seconds.is_some());
         assert_eq!(report.ability_estimate.limiter.as_deref(), Some("climbing"));
         assert_eq!(
@@ -4822,22 +4452,13 @@ mod tests {
             report.long_ride_pace.current_value
         );
         assert!(report.long_ride_pace.current_value.is_some());
-        assert_ne!(
-            report.long_ride_pace.status,
-            ReassessmentVerdict::MissingData
-        );
+        assert_ne!(report.long_ride_pace.status, ReassessmentVerdict::MissingData);
         assert!(report.long_ride_pace.detail.contains("finish target"));
         assert!(!report.long_ride_pace.detail.contains("No recent long ride"));
         assert!(report.climbing_density.current_value.is_some());
-        assert_ne!(
-            report.climbing_density.status,
-            ReassessmentVerdict::MissingData
-        );
+        assert_ne!(report.climbing_density.status, ReassessmentVerdict::MissingData);
         assert!(report.climbing_density.detail.contains("finish target"));
-        assert!(!report
-            .climbing_density
-            .detail
-            .contains("No recent long ride"));
+        assert!(!report.climbing_density.detail.contains("No recent long ride"));
     }
 
     #[test]
@@ -4956,14 +4577,8 @@ mod tests {
             .unwrap();
         assert_eq!(moving_speed.values[0].display, "10.0 mph");
         assert_eq!(moving_speed.values[1].display, "12.0 mph");
-        assert_eq!(
-            moving_speed.trend.as_ref().unwrap().display,
-            "+2.0 mph (+20.0%)"
-        );
-        assert_eq!(
-            moving_speed.trend.as_ref().unwrap().interpretation,
-            "route_sensitive"
-        );
+        assert_eq!(moving_speed.trend.as_ref().unwrap().display, "+2.0 mph (+20.0%)");
+        assert_eq!(moving_speed.trend.as_ref().unwrap().interpretation, "route_sensitive");
 
         let z2_speed = report
             .metrics

@@ -1,6 +1,5 @@
 use crate::auth::cookies::{
-    clear_oauth_state_cookie_value, oauth_state_cookie_value, refresh_cookie_value,
-    validate_oauth_state,
+    clear_oauth_state_cookie_value, oauth_state_cookie_value, refresh_cookie_value, validate_oauth_state,
 };
 use crate::auth::error::AuthError;
 use crate::auth::services::oauth::OAuthUserInfo;
@@ -56,9 +55,7 @@ pub struct OAuthProvidersResponse {
     ),
     tag = "oauth"
 )]
-pub async fn oauth_providers<S>(
-    State(state): State<Arc<S>>,
-) -> Result<Json<OAuthProvidersResponse>, AuthError>
+pub async fn oauth_providers<S>(State(state): State<Arc<S>>) -> Result<Json<OAuthProvidersResponse>, AuthError>
 where
     S: OAuthRouteStorage,
 {
@@ -100,14 +97,9 @@ where
         return complete_oauth_login(state, &provider, OAuthService::local_dev_user_info()).await;
     }
 
-    let auth_url =
-        OAuthService::get_authorization_url(state.db(), &provider, state.api_url()).await?;
+    let auth_url = OAuthService::get_authorization_url(state.db(), &provider, state.api_url()).await?;
     let cookie = oauth_state_cookie_value(&auth_url.state, state.frontend_url());
-    Ok((
-        [(header::SET_COOKIE, cookie)],
-        Redirect::temporary(&auth_url.url),
-    )
-        .into_response())
+    Ok(([(header::SET_COOKIE, cookie)], Redirect::temporary(&auth_url.url)).into_response())
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -144,14 +136,9 @@ where
         return Err(AuthError::forbidden("OAuth is disabled"));
     }
     let callback_state = validate_oauth_state(params.state.as_deref(), &headers)?;
-    let provider_user = OAuthService::exchange_code_and_get_user(
-        state.db(),
-        &provider,
-        params.code,
-        state.api_url(),
-        &callback_state,
-    )
-    .await?;
+    let provider_user =
+        OAuthService::exchange_code_and_get_user(state.db(), &provider, params.code, state.api_url(), &callback_state)
+            .await?;
 
     complete_oauth_login(state, &provider, provider_user).await
 }
@@ -164,13 +151,9 @@ async fn complete_oauth_login<S>(
 where
     S: OAuthRouteStorage,
 {
-    let user =
-        OAuthService::find_or_create_provider_user(state.db(), provider, provider_user).await?;
+    let user = OAuthService::find_or_create_provider_user(state.db(), provider, provider_user).await?;
 
-    let tokens = state
-        .session_service()
-        .issue_tokens(state.db(), &user)
-        .await?;
+    let tokens = state.session_service().issue_tokens(state.db(), &user).await?;
     let frontend_url = state.frontend_url().to_string();
     let cookie_val = refresh_cookie_value(&tokens.refresh_token, &frontend_url);
 
@@ -185,9 +168,7 @@ where
             clear_oauth_state_cookie_value(&frontend_url),
         )
         .body(Body::empty())
-        .map_err(|e| {
-            AuthError::internal_error(format!("Failed to build redirect response: {}", e))
-        })?;
+        .map_err(|e| AuthError::internal_error(format!("Failed to build redirect response: {}", e)))?;
 
     Ok(response)
 }

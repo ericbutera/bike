@@ -1,8 +1,8 @@
 use super::options::run;
 use super::{logging, options};
 use crate::activities::{
-    CompleteActivity, DeleteSource, FetchActivity, FetchStreams, NormalizeActivity,
-    PersistActivity, PublishHeatmap, RebuildActivity, RebuildFitness, RebuildSegments,
+    CompleteActivity, DeleteSource, FetchActivity, FetchStreams, NormalizeActivity, PersistActivity, PublishHeatmap,
+    RebuildActivity, RebuildFitness, RebuildSegments,
 };
 use bike_core::strava::native::ActivityStatus;
 use bike_core::strava::{
@@ -19,10 +19,7 @@ pub struct UpsertActivity;
 #[workflow_methods]
 impl UpsertActivity {
     #[run]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        event: StravaEvent,
-    ) -> WorkflowResult<ActivityChange> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<ActivityChange> {
         logging::started(ctx, &event);
         let result = Self::upsert(ctx, event.clone()).await;
         let result = options::workflow_result(ctx, result);
@@ -31,19 +28,13 @@ impl UpsertActivity {
         result
     }
 
-    async fn sources(
-        ctx: &mut WorkflowContext<Self>,
-        event: StravaEvent,
-    ) -> WorkflowResult<NormalizedActivity> {
+    async fn sources(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<NormalizedActivity> {
         let activity = run(ctx, FetchActivity, event).await?;
         let streams = run(ctx, FetchStreams, activity).await?;
         run(ctx, NormalizeActivity, streams).await
     }
 
-    async fn upsert(
-        ctx: &mut WorkflowContext<Self>,
-        event: StravaEvent,
-    ) -> WorkflowResult<ActivityChange> {
+    async fn upsert(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<ActivityChange> {
         let normalized = Self::sources(ctx, event).await?;
         let change = run(ctx, PersistActivity, normalized).await?;
         if change.status == ActivityStatus::Superseded {

@@ -14,11 +14,7 @@ pub fn current() -> Option<i32> {
 pub async fn scope<F: Future>(id: Option<i32>, future: F) -> F::Output {
     CURRENT.scope(id, future).await
 }
-pub async fn record_task(
-    db: &impl ConnectionTrait,
-    batch_id: i32,
-    task_id: i32,
-) -> Result<(), DbErr> {
+pub async fn record_task(db: &impl ConnectionTrait, batch_id: i32, task_id: i32) -> Result<(), DbErr> {
     worker_batches::Model::lock(db, batch_id)
         .await?
         .filter(|batch| batch.status == "running")
@@ -139,8 +135,7 @@ async fn finish_batch(
     tasks: &[super::entities::diagnostic_reads::TaskMetadata],
     failed: bool,
 ) -> Result<bool, DbErr> {
-    let archive_failed =
-        crate::archive_import::finish_queued_archive_batch(db, batch, tasks).await?;
+    let archive_failed = crate::archive_import::finish_queued_archive_batch(db, batch, tasks).await?;
     let failed = failed || archive_failed;
     let now = Utc::now();
     batch.finish(db, failed, now).await?;
@@ -149,16 +144,8 @@ async fn finish_batch(
         "segments" => "segment_regeneration",
         _ => "activity_reprocessing",
     };
-    let lock_id = batch.source["lock_id"]
-        .as_i64()
-        .and_then(|id| i32::try_from(id).ok());
-    crate::entities::activity_import_locks::Model::release_batch_lock(
-        db,
-        lock_id,
-        batch.user_id,
-        lock_source,
-    )
-    .await?;
+    let lock_id = batch.source["lock_id"].as_i64().and_then(|id| i32::try_from(id).ok());
+    crate::entities::activity_import_locks::Model::release_batch_lock(db, lock_id, batch.user_id, lock_source).await?;
     if !failed {
         pipeline_outputs::Model::publish(db, "batch", batch.id, &batch.id.to_string(), now).await?;
     }

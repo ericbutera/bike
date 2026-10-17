@@ -12,11 +12,7 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
-    pub async fn attach(
-        db: &impl ConnectionTrait,
-        batch_id: i32,
-        task_id: i32,
-    ) -> Result<(), DbErr> {
+    pub async fn attach(db: &impl ConnectionTrait, batch_id: i32, task_id: i32) -> Result<(), DbErr> {
         use sea_orm::{sea_query::OnConflict, Set};
         Entity::insert(ActiveModel {
             batch_id: Set(batch_id),

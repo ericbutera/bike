@@ -39,8 +39,7 @@ impl ObjectOwner {
         if key.starts_with('/') {
             return false;
         }
-        ObjectPath::parse(key)
-            .is_ok_and(|key| key.as_ref().starts_with(&format!("{}/", self.prefix())))
+        ObjectPath::parse(key).is_ok_and(|key| key.as_ref().starts_with(&format!("{}/", self.prefix())))
     }
 }
 
@@ -84,9 +83,10 @@ impl ObjectStore {
     }
 
     pub async fn read(&self, object: &ObjectRef) -> Result<Vec<u8>, WorkflowError> {
-        let bytes = self.read_bytes(&object.path).await?.ok_or_else(|| {
-            WorkflowError::not_found(format!("Saved object {} is unavailable", object.path))
-        })?;
+        let bytes = self
+            .read_bytes(&object.path)
+            .await?
+            .ok_or_else(|| WorkflowError::not_found(format!("Saved object {} is unavailable", object.path)))?;
         if checksum(&bytes) != object.sha256 || bytes.len() != object.bytes {
             return Err(WorkflowError::internal(format!(
                 "Saved object {} failed checksum verification",
@@ -96,10 +96,7 @@ impl ObjectStore {
         Ok(bytes)
     }
 
-    pub async fn read_json<T: DeserializeOwned>(
-        &self,
-        object: &ObjectRef,
-    ) -> Result<T, WorkflowError> {
+    pub async fn read_json<T: DeserializeOwned>(&self, object: &ObjectRef) -> Result<T, WorkflowError> {
         serde_json::from_slice(&self.read(object).await?).map_err(json_error)
     }
 
@@ -116,20 +113,13 @@ impl ObjectStore {
         Ok(object)
     }
 
-    pub async fn transform<T: Serialize>(
-        &self,
-        prefix: &str,
-        value: &T,
-    ) -> Result<ObjectRef, WorkflowError> {
+    pub async fn transform<T: Serialize>(&self, prefix: &str, value: &T) -> Result<ObjectRef, WorkflowError> {
         self.write(prefix, &serde_json::to_vec(value).map_err(json_error)?)
             .await
     }
 
     /// Named descriptors use the same backend as content-addressed bytes.
-    pub async fn load_json<T: DeserializeOwned>(
-        &self,
-        key: &str,
-    ) -> Result<Option<T>, WorkflowError> {
+    pub async fn load_json<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, WorkflowError> {
         self.read_bytes(key)
             .await?
             .map(|bytes| serde_json::from_slice(&bytes).map_err(json_error))
@@ -137,11 +127,7 @@ impl ObjectStore {
     }
 
     /// Return the winning value if concurrent creators race; never overwrite it.
-    pub async fn create_json<T: Serialize + DeserializeOwned>(
-        &self,
-        key: &str,
-        value: &T,
-    ) -> Result<T, WorkflowError> {
+    pub async fn create_json<T: Serialize + DeserializeOwned>(&self, key: &str, value: &T) -> Result<T, WorkflowError> {
         self.create(key, &serde_json::to_vec(value).map_err(json_error)?)
             .await?;
         self.load_json(key)
@@ -150,28 +136,18 @@ impl ObjectStore {
     }
 
     pub async fn reference(&self, key: &str) -> Result<Option<ObjectRef>, WorkflowError> {
-        let reference = self
-            .load_json::<ObjectRef>(&format!("{key}/reference.json"))
-            .await?;
+        let reference = self.load_json::<ObjectRef>(&format!("{key}/reference.json")).await?;
         if let Some(reference) = &reference {
             self.read(reference).await?;
         }
         Ok(reference)
     }
 
-    pub async fn save_reference(
-        &self,
-        key: &str,
-        reference: &ObjectRef,
-    ) -> Result<(), WorkflowError> {
+    pub async fn save_reference(&self, key: &str, reference: &ObjectRef) -> Result<(), WorkflowError> {
         self.read(reference).await?;
-        let saved = self
-            .create_json(&format!("{key}/reference.json"), reference)
-            .await?;
+        let saved = self.create_json(&format!("{key}/reference.json"), reference).await?;
         if saved != *reference {
-            return Err(WorkflowError::conflict(
-                "Saved source reference is immutable",
-            ));
+            return Err(WorkflowError::conflict("Saved source reference is immutable"));
         }
         Ok(())
     }

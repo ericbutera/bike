@@ -76,32 +76,14 @@ fn optional_heatmap_and_empty_segment_set_do_not_block_import_completion() {
 fn workflow_types_match_the_existing_conversion_plan_names() {
     use crate::workflows::*;
     assert_eq!(ProcessActivityImport::run.name(), "process_activity_import");
-    assert_eq!(
-        ReprocessActivityImport::run.name(),
-        "reprocess_activity_import"
-    );
-    assert_eq!(
-        RebuildFitnessFreshness::run.name(),
-        "rebuild_fitness_freshness"
-    );
-    assert_eq!(
-        RebuildSegmentAnalytics::run.name(),
-        "rebuild_segment_analytics"
-    );
+    assert_eq!(ReprocessActivityImport::run.name(), "reprocess_activity_import");
+    assert_eq!(RebuildFitnessFreshness::run.name(), "rebuild_fitness_freshness");
+    assert_eq!(RebuildSegmentAnalytics::run.name(), "rebuild_segment_analytics");
     assert_eq!(PrepareHeatmap::run.name(), "prepare_heatmap");
     for (actual, expected) in [
-        (
-            RegenerateActivitySegments::run.name(),
-            "regenerate_activity_segments",
-        ),
-        (
-            RegenerateSegmentEfforts::run.name(),
-            "regenerate_segment_efforts",
-        ),
-        (
-            BackfillUserXcTraining::run.name(),
-            "backfill_user_xc_training",
-        ),
+        (RegenerateActivitySegments::run.name(), "regenerate_activity_segments"),
+        (RegenerateSegmentEfforts::run.name(), "regenerate_segment_efforts"),
+        (BackfillUserXcTraining::run.name(), "backfill_user_xc_training"),
         (
             ReprocessUserActivityImports::run.name(),
             "reprocess_user_activity_imports",
@@ -110,10 +92,7 @@ fn workflow_types_match_the_existing_conversion_plan_names() {
             ReprocessArchiveFitActivityImports::run.name(),
             "reprocess_archive_fit_activity_imports",
         ),
-        (
-            RegenerateUserSegments::run.name(),
-            "regenerate_user_segments",
-        ),
+        (RegenerateUserSegments::run.name(), "regenerate_user_segments"),
         (ActivityArchiveImport::run.name(), "activity_archive_import"),
     ] {
         assert_eq!(actual, expected);
@@ -137,19 +116,17 @@ fn cancellation_after_apply_starts_is_too_late_and_handoffs_finish() {
     let mut mock = WorkflowMock::new::<ProcessActivityImport>(command.source.clone());
     let seq = scheduled(&mut mock, "activity_import", &command, 1, "user-7");
     mock.cancel();
-    mock.activate(Variant::ResolveActivity(
-        workflow_activation::ResolveActivity {
-            seq,
-            result: Some(activity_result::ActivityResolution {
-                status: Some(activity_result::activity_resolution::Status::Completed(
-                    activity_result::Success {
-                        result: Some(payload(&import_result())),
-                    },
-                )),
-            }),
-            ..Default::default()
-        },
-    ));
+    mock.activate(Variant::ResolveActivity(workflow_activation::ResolveActivity {
+        seq,
+        result: Some(activity_result::ActivityResolution {
+            status: Some(activity_result::activity_resolution::Status::Completed(
+                activity_result::Success {
+                    result: Some(payload(&import_result())),
+                },
+            )),
+        }),
+        ..Default::default()
+    }));
     handoff(&mut mock, &import_result());
     assert_eq!(mock.result::<ActivityImportResult>(), import_result());
 }

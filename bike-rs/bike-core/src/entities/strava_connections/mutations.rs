@@ -1,8 +1,6 @@
 use super::*;
 use crate::entities::strava_connections;
-use crate::strava::client::{
-    StravaAthleteSummary, StravaAuthorizationTokenResponse, StravaRefreshTokenResponse,
-};
+use crate::strava::client::{StravaAthleteSummary, StravaAuthorizationTokenResponse, StravaRefreshTokenResponse};
 use crate::workflow_error::WorkflowError as AppError;
 
 impl Model {
@@ -41,11 +39,7 @@ impl Model {
             scopes: Set(token_response.scope),
             ..active_model.with_athlete(token_response.athlete)
         }
-        .with_tokens(
-            &token_response.access_token,
-            &token_response.refresh_token,
-            expires_at,
-        )?;
+        .with_tokens(&token_response.access_token, &token_response.refresh_token, expires_at)?;
         if reconnect {
             active_model.update(db).await.map_err(AppError::from)
         } else {
@@ -63,11 +57,7 @@ impl Model {
             scopes: Set(token_response.scope.unwrap_or_else(|| self.scopes.clone())),
             ..self.into()
         }
-        .with_tokens(
-            &token_response.access_token,
-            &token_response.refresh_token,
-            expires_at,
-        )?;
+        .with_tokens(&token_response.access_token, &token_response.refresh_token, expires_at)?;
         if let Some(athlete) = token_response.athlete {
             active_model = active_model.with_athlete(athlete);
         }
@@ -92,12 +82,7 @@ impl ActiveModel {
         }
     }
 
-    fn with_tokens(
-        self,
-        access_token: &str,
-        refresh_token: &str,
-        expires_at: DateTime<Utc>,
-    ) -> Result<Self, AppError> {
+    fn with_tokens(self, access_token: &str, refresh_token: &str, expires_at: DateTime<Utc>) -> Result<Self, AppError> {
         Ok(Self {
             access_token: Set(crate::strava::credentials::seal(access_token.as_bytes())?),
             refresh_token: Set(crate::strava::credentials::seal(refresh_token.as_bytes())?),

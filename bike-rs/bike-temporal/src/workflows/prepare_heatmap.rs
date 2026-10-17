@@ -16,16 +16,12 @@ pub struct PrepareHeatmap {
 #[workflow_methods]
 impl PrepareHeatmap {
     #[run(name = "prepare_heatmap")]
-    pub async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        mut input: RebuildInput<HeatmapChange>,
-    ) -> WorkflowResult<()> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, mut input: RebuildInput<HeatmapChange>) -> WorkflowResult<()> {
         loop {
             let batch = debounce::next(ctx, &mut input, |s| &s.changes, |s| &mut s.changes).await?;
             let request = batch.request.clone();
             let options = options::activity(request.priority, format!("user-{}", request.user_id));
-            let publication =
-                options::run(ctx, DerivedActivities::prepare_heatmap, request, options).await?;
+            let publication = options::run(ctx, DerivedActivities::prepare_heatmap, request, options).await?;
             input.complete(batch, publication);
         }
     }

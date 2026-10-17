@@ -150,10 +150,7 @@ async fn disconnect_accepts_an_event_without_calling_a_remote_provider() {
     )
     .await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        json_body(response).await["message"],
-        "Strava disconnect queued."
-    );
+    assert_eq!(json_body(response).await["message"], "Strava disconnect queued.");
 }
 
 #[tokio::test]
@@ -166,12 +163,8 @@ async fn connection_removed_after_acceptance_returns_not_found_for_sync_and_back
             json!({"start_date":"2026-09-01T00:00:00Z","end_date":"2026-10-01T00:00:00Z"}),
         ),
     ] {
-        let db = acceptance_mock(operation)
-            .append_query_results([Vec::<strava_connections::Model>::new()]);
-        assert_eq!(
-            request(db, "POST", path, body).await.status(),
-            StatusCode::NOT_FOUND
-        );
+        let db = acceptance_mock(operation).append_query_results([Vec::<strava_connections::Model>::new()]);
+        assert_eq!(request(db, "POST", path, body).await.status(), StatusCode::NOT_FOUND);
     }
 }
 
@@ -213,13 +206,10 @@ async fn missing_connection_invalid_window_and_persistence_errors_are_http_error
         .append_query_results([vec![fixture::customer()]])
         .append_query_results([Vec::<strava_connections::Model>::new()]);
     assert_eq!(
-        request(missing, "POST", "/sync", Value::Null)
-            .await
-            .status(),
+        request(missing, "POST", "/sync", Value::Null).await.status(),
         StatusCode::NOT_FOUND
     );
-    let invalid = MockDatabase::new(DatabaseBackend::Postgres)
-        .append_query_results([vec![fixture::customer()]]);
+    let invalid = MockDatabase::new(DatabaseBackend::Postgres).append_query_results([vec![fixture::customer()]]);
     let dates = json!({"start_date":"2026-10-01T00:00:00Z","end_date":"2026-09-01T00:00:00Z"});
     assert_eq!(
         request(invalid, "POST", "/backfill", dates).await.status(),
@@ -229,9 +219,7 @@ async fn missing_connection_invalid_window_and_persistence_errors_are_http_error
         .append_query_results([vec![fixture::customer()]])
         .append_query_errors([sea_orm::DbErr::Custom("fixture persistence failed".into())]);
     assert_eq!(
-        request(failure, "DELETE", "/connection", Value::Null)
-            .await
-            .status(),
+        request(failure, "DELETE", "/connection", Value::Null).await.status(),
         StatusCode::INTERNAL_SERVER_ERROR
     );
 }
@@ -240,13 +228,11 @@ async fn missing_connection_invalid_window_and_persistence_errors_are_http_error
 async fn malformed_webhook_is_rejected_and_unknown_athlete_is_acknowledged() {
     let db = MockDatabase::new(DatabaseBackend::Postgres);
     assert_eq!(
-        request(db, "POST", "/webhook", json!({"invalid":true}))
-            .await
-            .status(),
+        request(db, "POST", "/webhook", json!({"invalid":true})).await.status(),
         StatusCode::BAD_REQUEST
     );
-    let db = MockDatabase::new(DatabaseBackend::Postgres)
-        .append_query_results([Vec::<strava_connections::Model>::new()]);
+    let db =
+        MockDatabase::new(DatabaseBackend::Postgres).append_query_results([Vec::<strava_connections::Model>::new()]);
     let webhook = json!({"aspect_type":"create","object_type":"activity","object_id":42,"owner_id":123,"event_time":1790856000,"subscription_id":1,"updates":{}});
     let response = request(db, "POST", "/webhook", webhook).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -330,10 +316,7 @@ async fn authorization_sets_secure_browser_cookie_and_signs_the_same_url_state()
         .into_connection();
     let config = config();
     let response = authorize_response(&db, &config, 7).await.unwrap();
-    let cookie = response.headers()[header::SET_COOKIE]
-        .to_str()
-        .unwrap()
-        .to_owned();
+    let cookie = response.headers()[header::SET_COOKIE].to_str().unwrap().to_owned();
     assert!(cookie.starts_with("__Host-strava_oauth_session="));
     assert!(cookie.contains("HttpOnly"));
     assert!(cookie.contains("SameSite=Lax"));
@@ -386,8 +369,7 @@ impl OAuthStateStore for StateStore {
 }
 
 #[tokio::test]
-async fn callback_consumes_browser_state_clears_cookie_and_redirects_for_success_or_exchange_error()
-{
+async fn callback_consumes_browser_state_clears_cookie_and_redirects_for_success_or_exchange_error() {
     let config = config();
     for fail in [false, true] {
         let issued = OAuthState::new(&config.jwt_secret)
@@ -417,11 +399,7 @@ async fn callback_consumes_browser_state_clears_cookie_and_redirects_for_success
         let response = callback_response(&db, &config, &Exchange { fail }, &query, &headers).await;
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         let location = response.headers()[header::LOCATION].to_str().unwrap();
-        assert!(location.contains(if fail {
-            "strava=error"
-        } else {
-            "strava=connected"
-        }));
+        assert!(location.contains(if fail { "strava=error" } else { "strava=connected" }));
         assert!(response.headers()[header::SET_COOKIE]
             .to_str()
             .unwrap()
@@ -442,10 +420,7 @@ async fn disabled_configuration_records_connect_failure_without_provider_work() 
         .append_query_results([vec![audit()]])
         .into_connection();
     assert_eq!(
-        authorize_response(&db, &config, 7)
-            .await
-            .unwrap_err()
-            .status,
+        authorize_response(&db, &config, 7).await.unwrap_err().status,
         StatusCode::BAD_REQUEST
     );
     assert!(format!("{:?}", db.into_transaction_log()).contains("oauth.connect_failed"));

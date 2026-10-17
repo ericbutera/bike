@@ -18,11 +18,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(UserPreferences::Table)
-                    .add_column(
-                        ColumnDef::new(UserPreferences::XcGoalTargetDate)
-                            .date()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(UserPreferences::XcGoalTargetDate).date().null())
                     .add_column(
                         ColumnDef::new(UserPreferences::XcGoalTargetDistanceMeters)
                             .double()

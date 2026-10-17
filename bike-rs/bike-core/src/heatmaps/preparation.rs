@@ -7,10 +7,7 @@ use crate::background_jobs::execution::{measured, WorkCounts, WorkScope};
 use sea_orm::{DatabaseConnection, DbErr};
 
 #[tracing::instrument(name = "heatmap.rebuild", skip_all, fields(bike.operation = "heatmap.rebuild", activity_id = pending.activity_id, generation = pending.generation))]
-pub async fn prepare_activity(
-    db: &DatabaseConnection,
-    pending: PendingProjection,
-) -> Result<(), DbErr> {
+pub async fn prepare_activity(db: &DatabaseConnection, pending: PendingProjection) -> Result<(), DbErr> {
     let scope = WorkScope {
         kind: "heatmap",
         work_key: format!("activity:{}", pending.activity_id),
@@ -19,25 +16,19 @@ pub async fn prepare_activity(
         reason: "projection_dirty",
     };
     measured(db, scope, async {
-        prepare_measured(db, pending)
-            .await
-            .map(|counts| ((), counts))
+        prepare_measured(db, pending).await.map(|counts| ((), counts))
     })
     .await
 }
 
-async fn prepare_measured(
-    db: &DatabaseConnection,
-    pending: PendingProjection,
-) -> Result<WorkCounts, DbErr> {
+async fn prepare_measured(db: &DatabaseConnection, pending: PendingProjection) -> Result<WorkCounts, DbErr> {
     let Some(source) = Projection::source(db, &pending).await? else {
         return Ok(WorkCounts {
             outcome: "already_current",
             ..Default::default()
         });
     };
-    if !crate::activity_sport::is_bike_activity_sport(&source.sport)
-        || source.format.as_deref() == Some("unavailable")
+    if !crate::activity_sport::is_bike_activity_sport(&source.sport) || source.format.as_deref() == Some("unavailable")
     {
         let published = Projection::publish(db, &pending, &[]).await?;
         return Ok(WorkCounts {
@@ -82,9 +73,9 @@ async fn prepare_measured(
         });
     }
     let points = derived.route_points.len() as u64;
-    let chunks = tokio::task::spawn_blocking(crate::observability::blocking_with_current_trace(
-        move || prepare_route(&derived),
-    ))
+    let chunks = tokio::task::spawn_blocking(crate::observability::blocking_with_current_trace(move || {
+        prepare_route(&derived)
+    }))
     .await
     .map_err(|error| DbErr::Custom(error.to_string()))?;
     let published = Projection::publish(db, &pending, &chunks).await?;
@@ -98,9 +89,7 @@ async fn prepare_measured(
 }
 
 #[tracing::instrument(name = "heatmap.geometry", skip_all, fields(bike.operation = "heatmap.geometry", route_point_count = derived.route_points.len() as i64))]
-pub(crate) fn prepare_route(
-    derived: &crate::activity_data::ActivityDerivedData,
-) -> Vec<geometry::Chunk> {
+pub(crate) fn prepare_route(derived: &crate::activity_data::ActivityDerivedData) -> Vec<geometry::Chunk> {
     if derived.recording.excluded() {
         Vec::new()
     } else {
@@ -111,9 +100,7 @@ pub(crate) fn prepare_route(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        activity_details::derive_activity_detail_data, activity_recording::RecordingContext,
-    };
+    use crate::{activity_details::derive_activity_detail_data, activity_recording::RecordingContext};
 
     #[test]
     fn legacy_virtual_and_zwift_flags_remove_chunks_while_real_rides_keep_them() {
@@ -129,9 +116,7 @@ mod tests {
                 include_bytes!("../../tests/fixtures/recording/outdoor.fit"),
             )
             .unwrap();
-            derived
-                .recording
-                .merge(RecordingContext::legacy(sport, source, title));
+            derived.recording.merge(RecordingContext::legacy(sport, source, title));
             assert_eq!(prepare_route(&derived).is_empty(), excluded);
         }
     }
@@ -157,9 +142,7 @@ mod recording_tests {
                 point.longitude = longitude + index as f64 * 0.0002;
             }
             assert!(!prepare_route(&derived).is_empty());
-            derived
-                .recording
-                .observe("fit.creator.manufacturer", "zwift");
+            derived.recording.observe("fit.creator.manufacturer", "zwift");
             assert!(prepare_route(&derived).is_empty());
         }
     }

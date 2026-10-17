@@ -76,10 +76,7 @@ impl Cache {
         let destination = self.root.join(format!("{key}.png"));
         let temporary = self.root.join(format!("{key}.png.tmp-{}", Uuid::new_v4()));
         let result = (|| {
-            let mut file = OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&temporary)?;
+            let mut file = OpenOptions::new().create_new(true).write(true).open(&temporary)?;
             file.write_all(png)?;
             drop(file);
             fs::rename(&temporary, destination)
@@ -130,10 +127,7 @@ impl Cache {
     }
 
     fn expired(&self, modified: SystemTime) -> bool {
-        SystemTime::now()
-            .duration_since(modified)
-            .unwrap_or_default()
-            > self.ttl
+        SystemTime::now().duration_since(modified).unwrap_or_default() > self.ttl
     }
 }
 
@@ -141,9 +135,7 @@ fn owned_file(name: &str) -> bool {
     let Some((key, suffix)) = name.split_once(".png") else {
         return false;
     };
-    key.len() == 64
-        && key.bytes().all(|b| b.is_ascii_hexdigit())
-        && (suffix.is_empty() || suffix.starts_with(".tmp-"))
+    key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit()) && (suffix.is_empty() || suffix.starts_with(".tmp-"))
 }
 
 fn remove_missing_ok(path: &std::path::Path) -> io::Result<()> {

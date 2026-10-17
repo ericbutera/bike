@@ -40,41 +40,38 @@ impl Model {
     ) -> Result<Vec<String>, DbErr> {
         let roots = Entity::find()
             .filter(
-                sea_orm::Condition::any()
-                    .add(Column::AvailableAt.lt(cutoff))
-                    .add(
-                        sea_orm::Condition::all()
-                            .add(Column::AcceptedAt.lt(cutoff))
-                            .add(
-                                Column::Id.not_in_subquery(
-                                    pipeline_outputs::Entity::find()
-                                        .select_only()
-                                        .column(pipeline_outputs::Column::RunId)
-                                        .filter(pipeline_outputs::Column::AvailableAt.is_null())
-                                        .into_query(),
-                                ),
-                            )
-                            .add(
-                                Column::Id.not_in_subquery(
-                                    pipeline_tasks::Entity::find()
-                                        .select_only()
-                                        .column(pipeline_tasks::Column::RunId)
-                                        .filter(
-                                            pipeline_tasks::Column::TaskId.in_subquery(
-                                                background_tasks::Entity::find()
-                                                    .select_only()
-                                                    .column(background_tasks::Column::Id)
-                                                    .filter(
-                                                        background_tasks::Column::Status
-                                                            .is_in(["pending", "processing"]),
-                                                    )
-                                                    .into_query(),
-                                            ),
-                                        )
-                                        .into_query(),
-                                ),
+                sea_orm::Condition::any().add(Column::AvailableAt.lt(cutoff)).add(
+                    sea_orm::Condition::all()
+                        .add(Column::AcceptedAt.lt(cutoff))
+                        .add(
+                            Column::Id.not_in_subquery(
+                                pipeline_outputs::Entity::find()
+                                    .select_only()
+                                    .column(pipeline_outputs::Column::RunId)
+                                    .filter(pipeline_outputs::Column::AvailableAt.is_null())
+                                    .into_query(),
                             ),
-                    ),
+                        )
+                        .add(
+                            Column::Id.not_in_subquery(
+                                pipeline_tasks::Entity::find()
+                                    .select_only()
+                                    .column(pipeline_tasks::Column::RunId)
+                                    .filter(
+                                        pipeline_tasks::Column::TaskId.in_subquery(
+                                            background_tasks::Entity::find()
+                                                .select_only()
+                                                .column(background_tasks::Column::Id)
+                                                .filter(
+                                                    background_tasks::Column::Status.is_in(["pending", "processing"]),
+                                                )
+                                                .into_query(),
+                                        ),
+                                    )
+                                    .into_query(),
+                            ),
+                        ),
+                ),
             )
             .select_only()
             .column(Column::Id)
@@ -96,10 +93,7 @@ impl Model {
         available_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<bool, DbErr> {
         Ok(Entity::update_many()
-            .col_expr(
-                Column::AvailableAt,
-                sea_orm::sea_query::Expr::value(available_at),
-            )
+            .col_expr(Column::AvailableAt, sea_orm::sea_query::Expr::value(available_at))
             .filter(Column::Id.eq(self.id.clone()))
             .filter(Column::AvailableAt.is_null())
             .exec(db)

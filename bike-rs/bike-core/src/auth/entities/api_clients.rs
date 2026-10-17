@@ -33,24 +33,14 @@ pub enum Relation {
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
-    pub async fn find_by_client_id(
-        db: &DatabaseConnection,
-        client_id: &Uuid,
-    ) -> Result<Option<Self>, DbErr> {
-        Entity::find()
-            .filter(Column::ClientId.eq(*client_id))
-            .one(db)
-            .await
+    pub async fn find_by_client_id(db: &DatabaseConnection, client_id: &Uuid) -> Result<Option<Self>, DbErr> {
+        Entity::find().filter(Column::ClientId.eq(*client_id)).one(db).await
     }
 
     pub fn parsed_scopes(&self) -> Vec<String> {
         self.scopes
             .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
             .unwrap_or_default()
     }
 }

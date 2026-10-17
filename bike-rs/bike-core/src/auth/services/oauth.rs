@@ -5,8 +5,7 @@ use oauth2::basic::BasicClient;
 use oauth2::reqwest::async_http_client;
 use oauth2::AuthType;
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
-    TokenResponse, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -46,9 +45,7 @@ impl OAuthUserInfo {
 pub struct OAuthService;
 
 impl OAuthService {
-    fn create_client_from_config(
-        cfg: provider_settings::ProviderConfig,
-    ) -> Result<BasicClient, AuthError> {
+    fn create_client_from_config(cfg: provider_settings::ProviderConfig) -> Result<BasicClient, AuthError> {
         let auth_url = AuthUrl::new(cfg.auth_url.clone())
             .map_err(|e| AuthError::internal_error(format!("Invalid auth URL: {}", e)))?;
 
@@ -109,13 +106,7 @@ impl OAuthService {
 
         let (auth_url, csrf_token) = auth_req.url();
 
-        crate::auth::entities::oauth_states::Model::save(
-            db,
-            provider,
-            csrf_token.secret(),
-            nonce.secret(),
-        )
-        .await?;
+        crate::auth::entities::oauth_states::Model::save(db, provider, csrf_token.secret(), nonce.secret()).await?;
 
         Ok(OAuthAuthorizeUrl {
             url: auth_url.to_string(),
@@ -132,8 +123,7 @@ impl OAuthService {
         state: &str,
     ) -> Result<OAuthUserInfo, AuthError> {
         async move {
-            let nonce =
-                crate::auth::entities::oauth_states::Model::consume(db, provider, state).await?;
+            let nonce = crate::auth::entities::oauth_states::Model::consume(db, provider, state).await?;
             let cfg = provider_settings::get_provider_config(provider, api_url).await?;
             if cfg.issuer_url.is_some() {
                 return oidc::exchange(&cfg, code, nonce).await;
@@ -148,22 +138,17 @@ impl OAuthService {
                 .await
                 .map_err(|e| AuthError::internal_error(format!("Token exchange failed: {}", e)))?;
 
-            let userinfo_span =
-                tracing::info_span!("oauth.userinfo.fetch", oauth.provider = provider);
+            let userinfo_span = tracing::info_span!("oauth.userinfo.fetch", oauth.provider = provider);
             let user_info: OAuthUserInfo = async {
                 reqwest::Client::new()
                     .get(&cfg.userinfo_url)
                     .bearer_auth(token_result.access_token().secret())
                     .send()
                     .await
-                    .map_err(|e| {
-                        AuthError::internal_error(format!("Failed to fetch user info: {}", e))
-                    })?
+                    .map_err(|e| AuthError::internal_error(format!("Failed to fetch user info: {}", e)))?
                     .json()
                     .await
-                    .map_err(|e| {
-                        AuthError::internal_error(format!("Failed to parse user info: {}", e))
-                    })
+                    .map_err(|e| AuthError::internal_error(format!("Failed to parse user info: {}", e)))
             }
             .instrument(userinfo_span)
             .await?;
@@ -174,10 +159,7 @@ impl OAuthService {
 
             Ok(user_info)
         }
-        .instrument(tracing::info_span!(
-            "oauth.exchange_code",
-            oauth.provider = provider
-        ))
+        .instrument(tracing::info_span!("oauth.exchange_code", oauth.provider = provider))
         .await
     }
 
@@ -195,10 +177,9 @@ impl OAuthService {
 
         async {
             // First, try to find user by provider subject.
-            if let Some(user) =
-                users::Model::by_provider_identity(db, provider, &provider_user.subject)
-                    .await
-                    .map_err(|e| AuthError::internal_error(format!("Database error: {}", e)))?
+            if let Some(user) = users::Model::by_provider_identity(db, provider, &provider_user.subject)
+                .await
+                .map_err(|e| AuthError::internal_error(format!("Database error: {}", e)))?
             {
                 span.record("auth.user_resolution", "matched_provider_subject");
                 user.ensure_enabled()?;
@@ -215,9 +196,7 @@ impl OAuthService {
                 user = user
                     .link_oauth_identity(db, provider, provider_user.subject)
                     .await
-                    .map_err(|e| {
-                        AuthError::internal_error(format!("Failed to update user: {}", e))
-                    })?;
+                    .map_err(|e| AuthError::internal_error(format!("Failed to update user: {}", e)))?;
 
                 span.record("auth.user_resolution", "linked_existing_email");
                 return Ok(user);

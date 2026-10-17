@@ -11,8 +11,7 @@ pub struct Fixture {
 }
 impl Fixture {
     pub fn new(operation: StravaOperation) -> Self {
-        let activity: serde_json::Value =
-            serde_json::from_str(include_str!("fixtures/activity.json")).unwrap();
+        let activity: serde_json::Value = serde_json::from_str(include_str!("fixtures/activity.json")).unwrap();
         let event = serde_json::from_value(json!({
             "strava_event_id":"00000000-0000-4000-8000-000000000001",
             "correlation_id":"00000000-0000-4000-8000-000000000001",
@@ -68,10 +67,8 @@ impl Fixture {
         }
     }
     pub fn normalized(&self) -> NormalizedActivity {
-        let activity: serde_json::Value =
-            serde_json::from_str(include_str!("fixtures/activity.json")).unwrap();
-        let streams: serde_json::Value =
-            serde_json::from_str(include_str!("fixtures/streams.json")).unwrap();
+        let activity: serde_json::Value = serde_json::from_str(include_str!("fixtures/activity.json")).unwrap();
+        let streams: serde_json::Value = serde_json::from_str(include_str!("fixtures/streams.json")).unwrap();
         let source = serde_json::to_vec(&json!({"v":1,"provider":"strava","provider_activity_id":self.activity_id,"activity":activity,"streams":streams})).unwrap();
         NormalizedActivity {
             event: self.event.clone(),

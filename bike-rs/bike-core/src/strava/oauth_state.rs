@@ -181,16 +181,11 @@ impl<'a> OAuthState<'a> {
     }
 
     fn verify_signature(&self, payload: &str, signature: &[u8]) -> Result<(), WorkflowError> {
-        self.mac(payload)?
-            .verify_slice(signature)
-            .map_err(|_| invalid_state())
+        self.mac(payload)?.verify_slice(signature).map_err(|_| invalid_state())
     }
 }
 
-pub fn browser_session<'a>(
-    headers: &'a HeaderMap,
-    api_url: &str,
-) -> Result<&'a str, WorkflowError> {
+pub fn browser_session<'a>(headers: &'a HeaderMap, api_url: &str) -> Result<&'a str, WorkflowError> {
     crate::auth::cookies::cookie_value(headers, cookie_name(api_url))
         .filter(|value| !value.is_empty())
         .ok_or_else(invalid_state)

@@ -7,8 +7,7 @@ use crate::analytics::{rebuild_activity_analytics_cache, rebuild_segment_analyti
 use crate::dedupe::activity_dedupe_matches_model;
 use crate::entities::activities::parsed::{build_save_data, ActivitySaveData};
 use crate::entities::{
-    activities, activity_import_artifacts, activity_import_attempts, activity_imports,
-    activity_training_analyses,
+    activities, activity_import_artifacts, activity_import_attempts, activity_imports, activity_training_analyses,
 };
 use crate::integration_events_service::INTEGRATION_LEVEL_INFO;
 use crate::jobs::JobQueue as TaskQueue;
@@ -25,12 +24,10 @@ use std::path::Path;
 use uuid::Uuid;
 mod replay;
 mod stage_execution;
-use self::stage_execution::{
-    begin_processing_attempt, complete_processing_node, start_processing_node,
-};
+use self::stage_execution::{begin_processing_attempt, complete_processing_node, start_processing_node};
 pub use replay::{
-    plan_activity_import_replay, queue_activity_import_replay,
-    queue_expected_activity_import_replay, ActivityImportReplayPlan,
+    plan_activity_import_replay, queue_activity_import_replay, queue_expected_activity_import_replay,
+    ActivityImportReplayPlan,
 };
 
 #[derive(Debug, Clone)]
@@ -101,11 +98,10 @@ pub enum PersistActivityUploadOutcome {
 
 pub use crate::activity_import_lifecycle::{
     ACTIVITY_IMPORT_STAGE_ACTIVITY_ANALYTICS_BUILT, ACTIVITY_IMPORT_STAGE_ACTIVITY_PARSED,
-    ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED, ACTIVITY_IMPORT_STAGE_COMPLETE,
-    ACTIVITY_IMPORT_STAGE_RAW_STORED, ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT,
-    ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT, ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT,
-    ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS, ACTIVITY_IMPORT_STATUS_DUPLICATE,
-    ACTIVITY_IMPORT_STATUS_FAILED, ACTIVITY_IMPORT_STATUS_PROCESSED,
+    ACTIVITY_IMPORT_STAGE_ACTIVITY_SAVED, ACTIVITY_IMPORT_STAGE_COMPLETE, ACTIVITY_IMPORT_STAGE_RAW_STORED,
+    ACTIVITY_IMPORT_STAGE_SEGMENTS_BUILT, ACTIVITY_IMPORT_STAGE_SEGMENT_ANALYTICS_BUILT,
+    ACTIVITY_IMPORT_STAGE_TRAINING_ANALYSIS_BUILT, ACTIVITY_IMPORT_STALE_PROCESSING_SECONDS,
+    ACTIVITY_IMPORT_STATUS_DUPLICATE, ACTIVITY_IMPORT_STATUS_FAILED, ACTIVITY_IMPORT_STATUS_PROCESSED,
     ACTIVITY_IMPORT_STATUS_PROCESSING, ACTIVITY_PROCESSING_PROVIDER,
 };
 pub const ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL: &str = "original";
@@ -117,8 +113,7 @@ pub const ACTIVITY_IMPORT_SOURCE_QUALITY_GPX_ORIGINAL: &str = "gpx_original";
 pub const ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS: &str = "strava_streams";
 pub const ACTIVITY_IMPORT_SOURCE_QUALITY_GENERATED_TCX: &str = "generated_tcx";
 pub const ACTIVITY_IMPORT_VERSION_LEGACY: i32 = activity_imports::ACTIVITY_IMPORT_VERSION_LEGACY;
-pub const ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE: i32 =
-    activity_imports::ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE;
+pub const ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE: i32 = activity_imports::ACTIVITY_IMPORT_VERSION_ARTIFACT_AWARE;
 pub const ACTIVITY_IMPORT_VERSION_CURRENT: i32 = activity_imports::ACTIVITY_IMPORT_VERSION_CURRENT;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ActivityProcessingNode {
@@ -166,15 +161,11 @@ pub struct ActivityProcessingGraphNode {
 
 const NO_DEPENDENCIES: &[ActivityProcessingNode] = &[];
 const PARSE_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::RawStored];
-const ACTIVITY_SAVE_DEPENDENCIES: &[ActivityProcessingNode] =
-    &[ActivityProcessingNode::ActivityParsed];
+const ACTIVITY_SAVE_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::ActivityParsed];
 const SEGMENT_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::ActivitySaved];
-const SEGMENT_ANALYTICS_DEPENDENCIES: &[ActivityProcessingNode] =
-    &[ActivityProcessingNode::SegmentsBuilt];
-const ACTIVITY_ANALYTICS_DEPENDENCIES: &[ActivityProcessingNode] =
-    &[ActivityProcessingNode::SegmentAnalyticsBuilt];
-const TRAINING_ANALYSIS_DEPENDENCIES: &[ActivityProcessingNode] =
-    &[ActivityProcessingNode::ActivityAnalyticsBuilt];
+const SEGMENT_ANALYTICS_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::SegmentsBuilt];
+const ACTIVITY_ANALYTICS_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::SegmentAnalyticsBuilt];
+const TRAINING_ANALYSIS_DEPENDENCIES: &[ActivityProcessingNode] = &[ActivityProcessingNode::ActivityAnalyticsBuilt];
 
 const ACTIVITY_PROCESSING_GRAPH_NODES: &[ActivityProcessingGraphNode] = &[
     ActivityProcessingGraphNode {
@@ -221,19 +212,11 @@ pub fn activity_processing_graph_nodes() -> &'static [ActivityProcessingGraphNod
 pub fn activity_processing_graph_mermaid() -> String {
     let mut lines = vec!["flowchart LR".to_string()];
     for graph_node in ACTIVITY_PROCESSING_GRAPH_NODES {
-        lines.push(format!(
-            "  {}[\"{}\"]",
-            graph_node.node.id(),
-            graph_node.node.label()
-        ));
+        lines.push(format!("  {}[\"{}\"]", graph_node.node.id(), graph_node.node.label()));
     }
     for graph_node in ACTIVITY_PROCESSING_GRAPH_NODES {
         for dependency in graph_node.depends_on {
-            lines.push(format!(
-                "  {} --> {}",
-                dependency.id(),
-                graph_node.node.id()
-            ));
+            lines.push(format!("  {} --> {}", dependency.id(), graph_node.node.id()));
         }
     }
     lines.join("\n")
@@ -265,11 +248,7 @@ pub enum ActivityUploadDeduplication {
     Disabled,
 }
 
-fn activity_import_storage_path(
-    user_storage_key: &str,
-    format: &str,
-    bucket_at: DateTime<Utc>,
-) -> String {
+fn activity_import_storage_path(user_storage_key: &str, format: &str, bucket_at: DateTime<Utc>) -> String {
     format!(
         "activity-imports/{}/{}/{}.{}",
         user_storage_key,
@@ -294,11 +273,9 @@ pub async fn recover_abandoned_manual_activity_imports_after_worker_start(
     tasks: &TaskQueue,
     now: DateTime<Utc>,
 ) -> Result<usize, AppError> {
-    crate::activity_import_recovery::recover_abandoned_manual_activity_imports_after_worker_start(
-        db, tasks, now,
-    )
-    .await
-    .map_err(|error| AppError::internal(error.message))
+    crate::activity_import_recovery::recover_abandoned_manual_activity_imports_after_worker_start(db, tasks, now)
+        .await
+        .map_err(|error| AppError::internal(error.message))
 }
 
 pub async fn recover_stale_manual_activity_imports_for_user(
@@ -307,11 +284,9 @@ pub async fn recover_stale_manual_activity_imports_for_user(
     user_id: i32,
     now: DateTime<Utc>,
 ) -> Result<usize, AppError> {
-    crate::activity_import_recovery::recover_stale_manual_activity_imports_for_user(
-        db, tasks, user_id, now,
-    )
-    .await
-    .map_err(|error| AppError::internal(error.message))
+    crate::activity_import_recovery::recover_stale_manual_activity_imports_for_user(db, tasks, user_id, now)
+        .await
+        .map_err(|error| AppError::internal(error.message))
 }
 
 pub fn infer_activity_type(title: &str, original_filename: &str) -> ActivityType {
@@ -352,9 +327,10 @@ pub(crate) struct ActivityProcessingArtifact {
 
 impl ActivityProcessingArtifact {
     pub(crate) fn object_reference(&self) -> Result<ObjectRef, AppError> {
-        let sha256 = self.checksum_sha256.clone().ok_or_else(|| {
-            AppError::bad_request("Retained source needs a checksum before native reprocessing")
-        })?;
+        let sha256 = self
+            .checksum_sha256
+            .clone()
+            .ok_or_else(|| AppError::bad_request("Retained source needs a checksum before native reprocessing"))?;
         Ok(ObjectRef {
             path: self.storage_path.clone(),
             sha256,
@@ -372,20 +348,12 @@ pub async fn mark_activity_import_processing_stage(
     stage: &str,
     activity_id: Option<i32>,
 ) -> Result<activity_imports::Model, AppError> {
-    crate::activity_import_lifecycle::mark_activity_import_processing_stage(
-        db,
-        import,
-        stage,
-        activity_id,
-    )
-    .await
-    .map_err(|error| AppError::internal(error.message))
+    crate::activity_import_lifecycle::mark_activity_import_processing_stage(db, import, stage, activity_id)
+        .await
+        .map_err(|error| AppError::internal(error.message))
 }
 
-pub async fn mark_activity_imports_processed(
-    db: &DatabaseConnection,
-    import_ids: &[i32],
-) -> Result<(), AppError> {
+pub async fn mark_activity_imports_processed(db: &DatabaseConnection, import_ids: &[i32]) -> Result<(), AppError> {
     crate::activity_import_lifecycle::mark_activity_imports_processed(db, import_ids)
         .await
         .map_err(|error| AppError::internal(error.message))
@@ -407,13 +375,9 @@ pub async fn mark_activity_import_duplicate(
     import: &activity_imports::Model,
     duplicate_activity_id: i32,
 ) -> Result<activity_imports::Model, AppError> {
-    crate::activity_import_lifecycle::mark_activity_import_duplicate(
-        db,
-        import,
-        duplicate_activity_id,
-    )
-    .await
-    .map_err(|error| AppError::internal(error.message))
+    crate::activity_import_lifecycle::mark_activity_import_duplicate(db, import, duplicate_activity_id)
+        .await
+        .map_err(|error| AppError::internal(error.message))
 }
 
 async fn record_activity_processing_event(
@@ -424,10 +388,8 @@ async fn record_activity_processing_event(
     message: String,
     payload: Option<serde_json::Value>,
 ) {
-    crate::activity_import_lifecycle::record_activity_processing_event(
-        db, import, event_type, level, message, payload,
-    )
-    .await;
+    crate::activity_import_lifecycle::record_activity_processing_event(db, import, event_type, level, message, payload)
+        .await;
 }
 
 async fn run_activity_processing_graph(
@@ -437,11 +399,9 @@ async fn run_activity_processing_graph(
     let attempt = begin_processing_attempt(&run).await?;
     let result = execute_activity_processing_graph(&run, attempt.clone()).await;
     if let Err(error) = &result {
-        let own_attempt =
-            activity_import_attempts::Entity::find_for_execution(run.db, attempt.id).await?;
+        let own_attempt = activity_import_attempts::Entity::find_for_execution(run.db, attempt.id).await?;
         if let Some(own_attempt) = own_attempt.filter(|attempt| attempt.status == "running") {
-            mark_activity_import_failed(run.db, &run.import, &own_attempt.current_stage, error)
-                .await?;
+            mark_activity_import_failed(run.db, &run.import, &own_attempt.current_stage, error).await?;
         }
     }
     result
@@ -458,11 +418,9 @@ async fn execute_activity_processing_graph(
     let mut state = load_activity_processing_state(run, attempt).await?;
 
     for node in activity_processing_topological_order()? {
-        let graph_node = graph_nodes_by_node.get(&node).ok_or_else(|| {
-            AppError::internal(format!(
-                "Activity processing graph is missing metadata for {node:?}"
-            ))
-        })?;
+        let graph_node = graph_nodes_by_node
+            .get(&node)
+            .ok_or_else(|| AppError::internal(format!("Activity processing graph is missing metadata for {node:?}")))?;
 
         if execution::stages(&state.attempt)?
             .iter()
@@ -487,8 +445,7 @@ async fn load_activity_processing_state(
     attempt: activity_import_attempts::Model,
 ) -> Result<ActivityProcessingState, AppError> {
     let parsing_artifact = load_best_activity_parsing_artifact(run.db, &run.import).await?;
-    let bytes =
-        tokio::fs::read(Path::new(run.uploads_dir).join(&parsing_artifact.storage_path)).await?;
+    let bytes = tokio::fs::read(Path::new(run.uploads_dir).join(&parsing_artifact.storage_path)).await?;
     if let Some(checksum) = &parsing_artifact.checksum_sha256 {
         if checksum_sha256_hex(&bytes) != *checksum {
             return Err(AppError::bad_request(
@@ -500,9 +457,9 @@ async fn load_activity_processing_state(
     if attempt.reused_attempt_id.is_some()
         && (attempt.source_json != stage_execution::artifact_metadata(&parsing_artifact)
             || checkpoint.as_ref().is_some_and(|checkpoint| {
-                run.existing_activity.as_ref().is_some_and(|activity| {
-                    checkpoint.activity_updated_at != Some(activity.updated_at)
-                })
+                run.existing_activity
+                    .as_ref()
+                    .is_some_and(|activity| checkpoint.activity_updated_at != Some(activity.updated_at))
             }))
     {
         return Err(AppError::conflict(
@@ -524,8 +481,7 @@ pub(crate) async fn load_best_activity_parsing_artifact(
     db: &DatabaseConnection,
     import: &activity_imports::Model,
 ) -> Result<ActivityProcessingArtifact, AppError> {
-    let artifacts =
-        activity_import_artifacts::Entity::for_import(db, import.user_id, import.id).await?;
+    let artifacts = activity_import_artifacts::Entity::for_import(db, import.user_id, import.id).await?;
 
     artifacts
         .into_iter()
@@ -541,9 +497,7 @@ pub(crate) async fn load_best_activity_parsing_artifact(
         })
 }
 
-fn activity_processing_artifact_from_model(
-    artifact: activity_import_artifacts::Model,
-) -> ActivityProcessingArtifact {
+fn activity_processing_artifact_from_model(artifact: activity_import_artifacts::Model) -> ActivityProcessingArtifact {
     ActivityProcessingArtifact {
         size_bytes: artifact.size_bytes,
         checksum_sha256: Some(artifact.checksum_sha256),
@@ -555,12 +509,8 @@ fn activity_processing_artifact_from_model(
     }
 }
 
-fn legacy_activity_processing_artifact(
-    import: &activity_imports::Model,
-) -> Option<ActivityProcessingArtifact> {
-    if !activity_format_is_parsable(&import.format)
-        || (import.source == "strava_sync" && import.format == "tcx")
-    {
+fn legacy_activity_processing_artifact(import: &activity_imports::Model) -> Option<ActivityProcessingArtifact> {
+    if !activity_format_is_parsable(&import.format) || (import.source == "strava_sync" && import.format == "tcx") {
         return None;
     }
 
@@ -582,8 +532,7 @@ fn activity_artifact_is_parsable(artifact: &activity_import_artifacts::Model) ->
                 || (artifact.format == "json" && artifact.source_quality == "strava_archive_json")
         }
         ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD => {
-            artifact.source_quality == ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS
-                && artifact.format == "json"
+            artifact.source_quality == ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS && artifact.format == "json"
         }
         _ => false,
     }
@@ -600,29 +549,13 @@ fn activity_artifact_parse_priority(artifact: &activity_import_artifacts::Model)
         artifact.format.as_str(),
     ) {
         (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, "strava_archive_json", "json") => 350,
-        (
-            ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
-            ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL,
-            _,
-        ) => 500,
-        (
-            ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
-            ACTIVITY_IMPORT_SOURCE_QUALITY_TCX_ORIGINAL,
-            _,
-        ) => 400,
-        (
-            ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
-            ACTIVITY_IMPORT_SOURCE_QUALITY_GPX_ORIGINAL,
-            _,
-        ) => 300,
+        (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, ACTIVITY_IMPORT_SOURCE_QUALITY_FIT_ORIGINAL, _) => 500,
+        (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, ACTIVITY_IMPORT_SOURCE_QUALITY_TCX_ORIGINAL, _) => 400,
+        (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, ACTIVITY_IMPORT_SOURCE_QUALITY_GPX_ORIGINAL, _) => 300,
         (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, _, "fit") => 490,
         (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, _, "tcx") => 390,
         (ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL, _, "gpx") => 290,
-        (
-            ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD,
-            ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS,
-            "json",
-        ) => 200,
+        (ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD, ACTIVITY_IMPORT_SOURCE_QUALITY_STRAVA_STREAMS, "json") => 200,
         _ => 0,
     }
 }
@@ -640,12 +573,8 @@ async fn run_activity_processing_node(
                 return Ok(Some(outcome));
             }
         }
-        ActivityProcessingNode::ActivitySaved => {
-            save_activity_node(run, state, graph_node.stage).await?
-        }
-        ActivityProcessingNode::SegmentsBuilt => {
-            build_segments_node(run, state, graph_node.stage).await?
-        }
+        ActivityProcessingNode::ActivitySaved => save_activity_node(run, state, graph_node.stage).await?,
+        ActivityProcessingNode::SegmentsBuilt => build_segments_node(run, state, graph_node.stage).await?,
         ActivityProcessingNode::SegmentAnalyticsBuilt => {
             build_segment_analytics_node(run, state, graph_node.stage).await?;
         }
@@ -660,24 +589,20 @@ async fn run_activity_processing_node(
     Ok(None)
 }
 
-fn activity_processing_result(
-    state: ActivityProcessingState,
-) -> Result<PersistActivityUploadOutcome, AppError> {
-    let parsed = state.parsed_activity.ok_or_else(|| {
-        AppError::internal("Activity processing graph did not run the parser node")
-    })?;
+fn activity_processing_result(state: ActivityProcessingState) -> Result<PersistActivityUploadOutcome, AppError> {
+    let parsed = state
+        .parsed_activity
+        .ok_or_else(|| AppError::internal("Activity processing graph did not run the parser node"))?;
     let activity = state
         .activity_model
         .ok_or_else(|| AppError::internal("Activity processing graph did not save an activity"))?;
 
-    Ok(PersistActivityUploadOutcome::Imported(
-        PersistedActivityImport {
-            import: state.import_model,
-            activity,
-            affected_segment_ids: state.affected_segment_ids,
-            fitness_dirty_from_day: parsed.draft.started_at.date_naive(),
-        },
-    ))
+    Ok(PersistActivityUploadOutcome::Imported(PersistedActivityImport {
+        import: state.import_model,
+        activity,
+        affected_segment_ids: state.affected_segment_ids,
+        fitness_dirty_from_day: parsed.draft.started_at.date_naive(),
+    }))
 }
 
 async fn mark_raw_stored_node(
@@ -749,10 +674,7 @@ pub(crate) async fn enrich_recording(
         ));
     merge_recording_artifacts(db, objects, import, artifact, parsed).await?;
     if let Some(activity) = activity {
-        parsed
-            .derived_data
-            .recording
-            .merge(activity.recording_context());
+        parsed.derived_data.recording.merge(activity.recording_context());
     }
     parsed.derived_data.recording = crate::activity_recording_recovery::resolve_recording(
         db,
@@ -772,11 +694,11 @@ async fn merge_recording_artifacts(
     parsing_artifact: &ActivityProcessingArtifact,
     parsed: &mut ParsedActivityData,
 ) -> Result<(), AppError> {
-    let artifacts =
-        activity_import_artifacts::Entity::for_import(db, import.user_id, import.id).await?;
-    for artifact in artifacts.into_iter().filter(|a| {
-        a.storage_path != parsing_artifact.storage_path && activity_artifact_is_parsable(a)
-    }) {
+    let artifacts = activity_import_artifacts::Entity::for_import(db, import.user_id, import.id).await?;
+    for artifact in artifacts
+        .into_iter()
+        .filter(|a| a.storage_path != parsing_artifact.storage_path && activity_artifact_is_parsable(a))
+    {
         let artifact = activity_processing_artifact_from_model(artifact);
         let bytes = objects.read(&artifact.object_reference()?).await?;
         let other = parse_activity_artifact(ActivityParserArtifact {
@@ -786,10 +708,7 @@ async fn merge_recording_artifacts(
             source_quality: &artifact.source_quality,
             bytes: &bytes,
         })?;
-        parsed
-            .derived_data
-            .recording
-            .merge(other.derived_data.recording);
+        parsed.derived_data.recording.merge(other.derived_data.recording);
     }
     Ok(())
 }
@@ -798,23 +717,18 @@ async fn prevent_duplicate_activity(
     run: &ActivityProcessingRun<'_>,
     state: &mut ActivityProcessingState,
 ) -> Result<Option<PersistActivityUploadOutcome>, AppError> {
-    if state.activity_model.is_some() || run.deduplication == ActivityUploadDeduplication::Disabled
-    {
+    if state.activity_model.is_some() || run.deduplication == ActivityUploadDeduplication::Disabled {
         return Ok(None);
     }
 
     let parsed = parsed_activity_ref(state)?;
-    let Some(duplicate) =
-        find_duplicate_activity(run.db, run.user_id, &parsed.draft, &parsed.derived_data).await?
+    let Some(duplicate) = find_duplicate_activity(run.db, run.user_id, &parsed.draft, &parsed.derived_data).await?
     else {
         return Ok(None);
     };
 
-    let activity =
-        merge_duplicate_recording(run.db, duplicate.activity, &parsed.derived_data.recording)
-            .await?;
-    let import_model =
-        mark_activity_import_duplicate(run.db, &state.import_model, activity.id).await?;
+    let activity = merge_duplicate_recording(run.db, duplicate.activity, &parsed.derived_data.recording).await?;
+    let import_model = mark_activity_import_duplicate(run.db, &state.import_model, activity.id).await?;
     Ok(Some(PersistActivityUploadOutcome::Duplicate(
         DeduplicatedActivityImport {
             activity,
@@ -828,20 +742,11 @@ async fn merge_duplicate_recording(
     activity: activities::Model,
     recording: &crate::activity_recording::RecordingContext,
 ) -> Result<activities::Model, AppError> {
-    let mut derived = crate::activity_data::deserialize_derived_activity_data(
-        activity.derived_data_json.as_ref(),
-    );
+    let mut derived = crate::activity_data::deserialize_derived_activity_data(activity.derived_data_json.as_ref());
     let previous = derived.recording.clone();
     derived.recording.merge(recording.clone());
     if derived.recording != previous {
-        if !activities::Model::store_recording(
-            db,
-            activity.id,
-            activity.user_id,
-            activity.updated_at,
-            &derived,
-        )
-        .await?
+        if !activities::Model::store_recording(db, activity.id, activity.user_id, activity.updated_at, &derived).await?
         {
             return Err(AppError::internal(
                 "Duplicate activity changed while merging recording evidence; retry the import",
@@ -863,50 +768,25 @@ async fn save_activity_node(
 ) -> Result<(), AppError> {
     let parsed = parsed_activity_ref(state)?.clone();
     let training_profile = load_processing_training_profile(run).await?;
-    let save_data = build_save_data(
-        &parsed,
-        &state.parsing_artifact.original_filename,
-        &training_profile,
-    )?;
+    let save_data = build_save_data(&parsed, &state.parsing_artifact.original_filename, &training_profile)?;
     let saved_activity = match state.activity_model.take() {
         Some(activity) => {
-            update_activity_from_parsed(
-                run.db,
-                activity,
-                &state.parsing_artifact,
-                &parsed,
-                save_data,
-            )
-            .await?
+            update_activity_from_parsed(run.db, activity, &state.parsing_artifact, &parsed, save_data).await?
         }
         None => {
-            insert_activity_from_parsed(
-                run,
-                &state.import_model,
-                &state.parsing_artifact,
-                &parsed,
-                save_data,
-            )
-            .await?
+            insert_activity_from_parsed(run, &state.import_model, &state.parsing_artifact, &parsed, save_data).await?
         }
     };
 
     crate::activity_recording_recovery::propagate_recording(run.db, &saved_activity).await?;
 
-    state.import_model = mark_activity_import_processing_stage(
-        run.db,
-        &state.import_model,
-        stage,
-        Some(saved_activity.id),
-    )
-    .await?;
+    state.import_model =
+        mark_activity_import_processing_stage(run.db, &state.import_model, stage, Some(saved_activity.id)).await?;
     state.activity_model = Some(saved_activity);
     Ok(())
 }
 
-async fn load_processing_training_profile(
-    run: &ActivityProcessingRun<'_>,
-) -> Result<TrainingProfile, AppError> {
+async fn load_processing_training_profile(run: &ActivityProcessingRun<'_>) -> Result<TrainingProfile, AppError> {
     match run.training_profile {
         Some(profile) => Ok(profile.clone()),
         None => load_training_profile(run.db, run.user_id).await,
@@ -920,9 +800,7 @@ async fn update_activity_from_parsed(
     parsed: &ParsedActivityData,
     save_data: ActivitySaveData,
 ) -> Result<activities::Model, AppError> {
-    activity
-        .update_parsed(db, parsing_artifact, parsed, save_data)
-        .await
+    activity.update_parsed(db, parsing_artifact, parsed, save_data).await
 }
 
 async fn insert_activity_from_parsed(
@@ -956,20 +834,10 @@ async fn build_segments_node(
     } else {
         &[]
     };
-    state.affected_segment_ids = refresh_activity_derived_state_without_cache_rebuilds(
-        run.db,
-        run.user_id,
-        activity_id,
-        route_points,
-    )
-    .await?;
-    state.import_model = mark_activity_import_processing_stage(
-        run.db,
-        &state.import_model,
-        stage,
-        Some(activity_id),
-    )
-    .await?;
+    state.affected_segment_ids =
+        refresh_activity_derived_state_without_cache_rebuilds(run.db, run.user_id, activity_id, route_points).await?;
+    state.import_model =
+        mark_activity_import_processing_stage(run.db, &state.import_model, stage, Some(activity_id)).await?;
     Ok(())
 }
 
@@ -980,13 +848,8 @@ async fn build_segment_analytics_node(
 ) -> Result<(), AppError> {
     let activity_id = activity_model_ref(state)?.id;
     rebuild_segment_analytics_cache(run.db, &state.affected_segment_ids).await?;
-    state.import_model = mark_activity_import_processing_stage(
-        run.db,
-        &state.import_model,
-        stage,
-        Some(activity_id),
-    )
-    .await?;
+    state.import_model =
+        mark_activity_import_processing_stage(run.db, &state.import_model, stage, Some(activity_id)).await?;
     Ok(())
 }
 
@@ -997,13 +860,8 @@ async fn build_activity_analytics_node(
 ) -> Result<(), AppError> {
     let activity_id = activity_model_ref(state)?.id;
     rebuild_activity_analytics_cache(run.db, &[activity_id]).await?;
-    state.import_model = mark_activity_import_processing_stage(
-        run.db,
-        &state.import_model,
-        stage,
-        Some(activity_id),
-    )
-    .await?;
+    state.import_model =
+        mark_activity_import_processing_stage(run.db, &state.import_model, stage, Some(activity_id)).await?;
     Ok(())
 }
 
@@ -1015,37 +873,29 @@ async fn build_training_analysis_node(
     let activity_id = activity_model_ref(state)?.id;
     if !activity_model_ref(state)?.is_bike_activity() {
         activity_training_analyses::Model::clear_activity(run.db, activity_id).await?;
-        state.import_model = mark_activity_import_processing_stage(
-            run.db,
-            &state.import_model,
-            stage,
-            Some(activity_id),
-        )
-        .await?;
+        state.import_model =
+            mark_activity_import_processing_stage(run.db, &state.import_model, stage, Some(activity_id)).await?;
         return Ok(());
     }
 
     rebuild_activity_training_analysis_cache(run.db, &[activity_id]).await?;
-    state.import_model = mark_activity_import_processing_stage(
-        run.db,
-        &state.import_model,
-        stage,
-        Some(activity_id),
-    )
-    .await?;
+    state.import_model =
+        mark_activity_import_processing_stage(run.db, &state.import_model, stage, Some(activity_id)).await?;
     Ok(())
 }
 
 fn parsed_activity_ref(state: &ActivityProcessingState) -> Result<&ParsedActivityData, AppError> {
-    state.parsed_activity.as_ref().ok_or_else(|| {
-        AppError::internal("Activity processing reached a dependent node before parse")
-    })
+    state
+        .parsed_activity
+        .as_ref()
+        .ok_or_else(|| AppError::internal("Activity processing reached a dependent node before parse"))
 }
 
 fn activity_model_ref(state: &ActivityProcessingState) -> Result<&activities::Model, AppError> {
-    state.activity_model.as_ref().ok_or_else(|| {
-        AppError::internal("Activity processing reached a dependent node before activity save")
-    })
+    state
+        .activity_model
+        .as_ref()
+        .ok_or_else(|| AppError::internal("Activity processing reached a dependent node before activity save"))
 }
 
 #[tracing::instrument(name = "activity.import", skip_all, fields(bike.operation = "activity.import", user_id = request.user_id, source = request.source))]
@@ -1066,12 +916,10 @@ pub async fn persist_activity_upload_with_artifacts(
         {
             let recording = incoming_recording(&request)?;
             let activity = merge_duplicate_recording(db, existing.activity, &recording).await?;
-            return Ok(PersistActivityUploadOutcome::Duplicate(
-                DeduplicatedActivityImport {
-                    activity,
-                    existing_import: existing.existing_import,
-                },
-            ));
+            return Ok(PersistActivityUploadOutcome::Duplicate(DeduplicatedActivityImport {
+                activity,
+                existing_import: existing.existing_import,
+            }));
         }
     }
 
@@ -1145,13 +993,9 @@ pub async fn find_stored_activity_import(
     user_id: i32,
     bytes: &[u8],
 ) -> Result<Option<activity_imports::Model>, AppError> {
-    activity_import_artifacts::Entity::find_existing_original_by_checksum(
-        db,
-        user_id,
-        &checksum_sha256_hex(bytes),
-    )
-    .await
-    .map_err(AppError::from)
+    activity_import_artifacts::Entity::find_existing_original_by_checksum(db, user_id, &checksum_sha256_hex(bytes))
+        .await
+        .map_err(AppError::from)
 }
 
 pub async fn store_activity_upload_import(
@@ -1204,8 +1048,7 @@ pub async fn store_activity_upload_import_with_artifacts(
     };
 
     let import_model =
-        activity_imports::Model::store_upload(db, user_id, source, &upload, relative_path.clone())
-            .await?;
+        activity_imports::Model::store_upload(db, user_id, source, &upload, relative_path.clone()).await?;
 
     insert_activity_import_artifact(
         db,
@@ -1217,14 +1060,7 @@ pub async fn store_activity_upload_import_with_artifacts(
     .await?;
 
     for artifact in additional_artifacts {
-        store_additional_activity_import_artifact(
-            db,
-            uploads_dir,
-            user_storage_key,
-            &import_model,
-            artifact,
-        )
-        .await?;
+        store_additional_activity_import_artifact(db, uploads_dir, user_storage_key, &import_model, artifact).await?;
     }
 
     record_activity_processing_event(
@@ -1244,24 +1080,16 @@ pub async fn store_activity_upload_import_with_artifacts(
     Ok(import_model)
 }
 
-async fn store_activity_upload_source(
-    request: &StoreActivityUploadImportRequest<'_>,
-) -> Result<String, AppError> {
+async fn store_activity_upload_source(request: &StoreActivityUploadImportRequest<'_>) -> Result<String, AppError> {
     if request.source == "strava_sync"
         && request.primary_artifact_kind == ACTIVITY_IMPORT_ARTIFACT_KIND_PROVIDER_PAYLOAD
     {
-        return Ok(
-            crate::strava::objects::ObjectStore::new(request.uploads_dir)
-                .write(
-                    &format!("strava/sources/{}", request.user_id),
-                    &request.upload.bytes,
-                )
-                .await?
-                .path,
-        );
+        return Ok(crate::strava::objects::ObjectStore::new(request.uploads_dir)
+            .write(&format!("strava/sources/{}", request.user_id), &request.upload.bytes)
+            .await?
+            .path);
     }
-    let relative =
-        activity_import_storage_path(request.user_storage_key, &request.upload.format, Utc::now());
+    let relative = activity_import_storage_path(request.user_storage_key, &request.upload.format, Utc::now());
     let full_path = Path::new(request.uploads_dir).join(&relative);
     if let Some(parent) = full_path.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -1286,8 +1114,7 @@ async fn store_additional_activity_import_artifact(
     import: &activity_imports::Model,
     artifact: ActivityImportArtifactPayload,
 ) -> Result<activity_import_artifacts::Model, AppError> {
-    let relative_path =
-        activity_import_storage_path(user_storage_key, &artifact.format, Utc::now());
+    let relative_path = activity_import_storage_path(user_storage_key, &artifact.format, Utc::now());
     let full_path = Path::new(uploads_dir).join(&relative_path);
 
     if let Some(parent) = full_path.parent() {
@@ -1306,8 +1133,7 @@ async fn insert_activity_import_artifact(
     storage_path: String,
     size_bytes: i64,
 ) -> Result<activity_import_artifacts::Model, AppError> {
-    activity_import_artifacts::Model::store_artifact(db, import, artifact, storage_path, size_bytes)
-        .await
+    activity_import_artifacts::Model::store_artifact(db, import, artifact, storage_path, size_bytes).await
 }
 
 pub(crate) fn checksum_sha256_hex(bytes: &[u8]) -> String {
@@ -1394,10 +1220,7 @@ pub fn validate_activity_format(filename: &str) -> Result<String, AppError> {
         .and_then(|value| value.to_str())
         .map(|value| value.to_ascii_lowercase())
         .ok_or_else(|| {
-            AppError::validation_field(
-                "file",
-                "Uploaded file must include a .fit, .tcx, or .gpx extension",
-            )
+            AppError::validation_field("file", "Uploaded file must include a .fit, .tcx, or .gpx extension")
         })?;
 
     match extension.as_str() {
@@ -1418,19 +1241,12 @@ async fn find_duplicate_activity(
     let sport_values = crate::activity_sport::activity_sport_from_stored(&activity_draft.sport)
         .map(|sport| sport.stored_values().to_vec())
         .unwrap_or_else(|| vec![activity_draft.sport.as_str()]);
-    let candidates = activities::Model::at_start_for_sports(
-        db,
-        user_id,
-        activity_draft.started_at,
-        &sport_values,
-    )
-    .await?;
+    let candidates =
+        activities::Model::at_start_for_sports(db, user_id, activity_draft.started_at, &sport_values).await?;
 
     for activity in candidates {
         if activity_dedupe_matches_model(&activity, activity_draft, &derived_data.route_points) {
-            return deduplicated_activity_import_for_model(db, activity)
-                .await
-                .map(Some);
+            return deduplicated_activity_import_for_model(db, activity).await.map(Some);
         }
     }
 
@@ -1443,20 +1259,14 @@ async fn find_existing_activity_by_source_correlation(
     source: &str,
     source_correlation_id: Option<&str>,
 ) -> Result<Option<DeduplicatedActivityImport>, AppError> {
-    let Some(source_correlation_id) = source_correlation_id
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
+    let Some(source_correlation_id) = source_correlation_id.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
 
-    let activity =
-        activities::Model::from_source_identity(db, user_id, source, source_correlation_id).await?;
+    let activity = activities::Model::from_source_identity(db, user_id, source, source_correlation_id).await?;
 
     match activity {
-        Some(activity) => deduplicated_activity_import_for_model(db, activity)
-            .await
-            .map(Some),
+        Some(activity) => deduplicated_activity_import_for_model(db, activity).await.map(Some),
         None => Ok(None),
     }
 }

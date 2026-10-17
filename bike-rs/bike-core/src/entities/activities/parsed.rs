@@ -4,18 +4,14 @@
 mod activity_reprocessing_tests;
 
 use super::*;
-use crate::activity_import_pipeline::{
-    ActivityProcessingArtifact, ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL,
-};
+use crate::activity_import_pipeline::{ActivityProcessingArtifact, ACTIVITY_IMPORT_ARTIFACT_KIND_ORIGINAL};
 use crate::entities::{activities, activity_imports};
 use crate::workflow_error::WorkflowError as AppError;
 use crate::{
     activity_details::serialize_derived_activity_data,
     activity_parser::ParsedActivityData,
     activity_type::ActivityType,
-    training_profile::{
-        serialize_activity_heart_rate_zones, summarize_heart_rate_zones, TrainingProfile,
-    },
+    training_profile::{serialize_activity_heart_rate_zones, summarize_heart_rate_zones, TrainingProfile},
     workflow_error::WorkflowError,
 };
 pub(crate) struct ActivitySaveData {
@@ -33,10 +29,7 @@ pub(crate) fn build_save_data(
     let zones = summarize_heart_rate_zones(
         &parsed.derived_data.route_points,
         &parsed.derived_data.chart_points,
-        parsed
-            .draft
-            .moving_time_seconds
-            .or(parsed.draft.total_time_seconds),
+        parsed.draft.moving_time_seconds.or(parsed.draft.total_time_seconds),
         parsed.draft.average_heart_rate_bpm,
         profile.heart_rate_zone_bounds_bpm.as_deref(),
     );
@@ -117,9 +110,7 @@ fn build_strava_save_data(
     summary: &crate::strava::provider_payload::StravaActivitySummary,
 ) -> Result<ActivitySaveData, WorkflowError> {
     let mut data = build_save_data(parsed, filename, profile)?;
-    data.derived_data_json = data
-        .derived_data_json
-        .with_source_metadata(summary.source_metadata());
+    data.derived_data_json = data.derived_data_json.with_source_metadata(summary.source_metadata());
     if !crate::activity_sport::is_bike_activity_sport(&parsed.draft.sport) {
         data.estimated_ftp_watts = None;
         data.heart_rate_zones_json = None;
@@ -206,37 +197,28 @@ mod strava_native_unit {
 
     #[test]
     fn summary_storage_preserves_gear_and_description_and_excludes_non_cycling_training() {
-        use crate::strava::provider_payload::{
-            parse_strava_provider_payload, StoredStravaProviderPayload,
-        };
+        use crate::strava::provider_payload::{parse_strava_provider_payload, StoredStravaProviderPayload};
         let mut payload: StoredStravaProviderPayload =
             serde_json::from_slice(crate::strava::fixtures::REAL_RIDE).unwrap();
-        payload.activity.additional_fields.insert(
-            "description".into(),
-            serde_json::json!("Fixture description"),
-        );
+        payload
+            .activity
+            .additional_fields
+            .insert("description".into(), serde_json::json!("Fixture description"));
         payload.activity.additional_fields.insert(
             "gear".into(),
             serde_json::json!({"id":"fixture-bike","name":"Fixture bicycle"}),
         );
         for sport in ["Ride", "Walk", "Swim", "Workout"] {
             payload.activity.sport_type = Some(sport.into());
-            let parsed =
-                parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
+            let parsed = parse_strava_provider_payload(&serde_json::to_vec(&payload).unwrap()).unwrap();
             let profile = TrainingProfile {
                 estimated_ftp_watts: Some(250),
                 ..Default::default()
             };
-            let saved =
-                build_strava_save_data(&parsed, "fixture.json", &profile, &payload.activity)
-                    .unwrap();
+            let saved = build_strava_save_data(&parsed, "fixture.json", &profile, &payload.activity).unwrap();
             let json = serde_json::to_vec(&saved.derived_data_json).unwrap();
-            let restored: crate::activity_data::StoredActivityDerivedData =
-                serde_json::from_slice(&json).unwrap();
-            assert_eq!(
-                restored.source_metadata(),
-                Some(&payload.activity.source_metadata())
-            );
+            let restored: crate::activity_data::StoredActivityDerivedData = serde_json::from_slice(&json).unwrap();
+            assert_eq!(restored.source_metadata(), Some(&payload.activity.source_metadata()));
             if sport != "Ride" {
                 assert!(saved.estimated_ftp_watts.is_none());
                 assert!(saved.heart_rate_zones_json.is_none());

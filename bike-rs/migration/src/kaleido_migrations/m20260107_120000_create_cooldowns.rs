@@ -34,11 +34,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Cooldowns::SubjectType).string().not_null())
                     .col(ColumnDef::new(Cooldowns::SubjectId).integer().null())
                     .col(ColumnDef::new(Cooldowns::Action).string().not_null())
-                    .col(
-                        ColumnDef::new(Cooldowns::LastRun)
-                            .timestamp_with_time_zone()
-                            .null(),
-                    )
+                    .col(ColumnDef::new(Cooldowns::LastRun).timestamp_with_time_zone().null())
                     .col(
                         ColumnDef::new(Cooldowns::AttemptCount)
                             .integer()

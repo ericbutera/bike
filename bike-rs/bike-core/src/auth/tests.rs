@@ -65,9 +65,7 @@ async fn oidc_exchange_validates_missing_mismatched_and_expired_nonce() {
     for invalid in 1..=4 {
         mode.store(invalid, Ordering::SeqCst);
         assert!(
-            oidc::exchange(&cfg, "code".into(), "expected".into())
-                .await
-                .is_err(),
+            oidc::exchange(&cfg, "code".into(), "expected".into()).await.is_err(),
             "invalid mode {invalid}"
         );
     }
@@ -93,8 +91,7 @@ fn oidc_token_response(issuer: &str, mode: usize) -> axum::Json<serde_json::Valu
         &jsonwebtoken::EncodingKey::from_secret(b"oidc-test-client-secret"),
     )
     .unwrap();
-    let mut response =
-        serde_json::json!({"access_token": "access", "token_type": "Bearer", "id_token": token});
+    let mut response = serde_json::json!({"access_token": "access", "token_type": "Bearer", "id_token": token});
     if mode == 1 {
         response.as_object_mut().unwrap().remove("id_token");
     }

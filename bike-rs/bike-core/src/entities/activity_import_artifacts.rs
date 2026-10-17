@@ -5,8 +5,8 @@ use crate::workflow_error::WorkflowError as AppError;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, QueryTrait, Set, TryIntoModel,
+    ColumnTrait, ConnectionTrait, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
+    Set, TryIntoModel,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
@@ -124,8 +124,7 @@ impl Entity {
             .await?
             .into_iter()
             .find(|artifact| {
-                artifact.artifact_kind == "provider_payload"
-                    && artifact.source_quality == "strava_streams"
+                artifact.artifact_kind == "provider_payload" && artifact.source_quality == "strava_streams"
             });
         let mut model: ActiveModel = existing.map(Into::into).unwrap_or_default();
         model.activity_import_id = Set(import.id);
@@ -141,11 +140,7 @@ impl Entity {
         model.save(db).await?.try_into_model()
     }
 
-    pub async fn for_import(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-        import_id: i32,
-    ) -> Result<Vec<Model>, DbErr> {
+    pub async fn for_import(db: &impl ConnectionTrait, user_id: i32, import_id: i32) -> Result<Vec<Model>, DbErr> {
         Self::find()
             .filter(Column::UserId.eq(user_id))
             .filter(Column::ActivityImportId.eq(import_id))
@@ -233,21 +228,13 @@ impl Model {
 }
 
 impl Model {
-    pub async fn copy_with_size(
-        self,
-        db: &impl ConnectionTrait,
-        size_bytes: i64,
-    ) -> Result<Self, DbErr> {
+    pub async fn copy_with_size(self, db: &impl ConnectionTrait, size_bytes: i64) -> Result<Self, DbErr> {
         let mut model: ActiveModel = self.into();
         model.id = sea_orm::ActiveValue::NotSet;
         model.size_bytes = Set(size_bytes);
         model.insert(db).await
     }
-    pub async fn copy_to_import(
-        self,
-        db: &impl ConnectionTrait,
-        import_id: i32,
-    ) -> Result<Self, DbErr> {
+    pub async fn copy_to_import(self, db: &impl ConnectionTrait, import_id: i32) -> Result<Self, DbErr> {
         let mut model: ActiveModel = self.into();
         model.id = sea_orm::ActiveValue::NotSet;
         model.activity_import_id = Set(import_id);

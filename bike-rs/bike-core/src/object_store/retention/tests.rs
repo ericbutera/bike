@@ -20,11 +20,7 @@ fn complete_inventory() -> ReferenceInventory {
     }
 }
 
-fn decision(
-    record: &RetentionRecord,
-    after: TimeDelta,
-    inventory: ReferenceInventory,
-) -> RetentionDecision {
+fn decision(record: &RetentionRecord, after: TimeDelta, inventory: ReferenceInventory) -> RetentionDecision {
     record.decision(
         ObjectOwner::BikeTasks,
         test_support::timestamp() + after,
@@ -36,9 +32,7 @@ fn decision(
 #[test]
 fn abandoned_inputs_expire_from_the_last_retry() {
     let at = test_support::timestamp();
-    let pending = record(ObjectLifetime::Unaccepted {
-        last_attempt_at: at,
-    });
+    let pending = record(ObjectLifetime::Unaccepted { last_attempt_at: at });
     assert_eq!(
         decision(
             &pending,
@@ -62,17 +56,12 @@ fn abandoned_inputs_expire_from_the_last_retry() {
 
 #[test]
 fn closed_chain_outcomes_use_distinct_ttls_and_persist_without_history() {
-    for (outcome, days) in [
-        (Outcome::Succeeded, 14),
-        (Outcome::Failed, 90),
-        (Outcome::Canceled, 90),
-    ] {
+    for (outcome, days) in [(Outcome::Succeeded, 14), (Outcome::Failed, 90), (Outcome::Canceled, 90)] {
         let saved = record(ObjectLifetime::Closed {
             final_chain_closed_at: test_support::timestamp(),
             outcome,
         });
-        let saved: RetentionRecord =
-            serde_json::from_value(serde_json::to_value(saved).unwrap()).unwrap();
+        let saved: RetentionRecord = serde_json::from_value(serde_json::to_value(saved).unwrap()).unwrap();
         let ttl = TimeDelta::days(days);
         assert_eq!(
             decision(&saved, ttl - TimeDelta::seconds(1), complete_inventory()),
@@ -89,11 +78,7 @@ fn closed_chain_outcomes_use_distinct_ttls_and_persist_without_history() {
 fn canonical_and_open_objects_never_become_ttl_candidates() {
     for lifetime in [ObjectLifetime::Canonical, ObjectLifetime::Open] {
         assert_eq!(
-            decision(
-                &record(lifetime),
-                TimeDelta::days(3650),
-                complete_inventory()
-            ),
+            decision(&record(lifetime), TimeDelta::days(3650), complete_inventory()),
             RetentionDecision::Protected
         );
     }
@@ -105,11 +90,7 @@ fn missing_inventory_and_each_reference_protect_expired_objects() {
         last_attempt_at: test_support::timestamp(),
     });
     assert_eq!(
-        decision(
-            &expired,
-            TimeDelta::days(100),
-            ReferenceInventory::default()
-        ),
+        decision(&expired, TimeDelta::days(100), ReferenceInventory::default()),
         RetentionDecision::InventoryUnavailable
     );
     for inventory in [

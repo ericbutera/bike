@@ -43,9 +43,7 @@ pub async fn reprocess_page(
     let sealed = ids.len() < 16;
     let jobs = ids
         .into_iter()
-        .map(|activity_id| {
-            Job::ReprocessActivityImport(ReprocessActivityImportTask { activity_id })
-        })
+        .map(|activity_id| Job::ReprocessActivityImport(ReprocessActivityImportTask { activity_id }))
         .collect();
     schedule_page(db, &batch, next, sealed, jobs).await?;
     Ok(())

@@ -42,13 +42,8 @@ impl TaskProcessor for PrepareHeatmap {
         JobType::PrepareHeatmap.as_str()
     }
 
-    async fn process(
-        &self,
-        _task_id: i32,
-        payload: serde_json::Value,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let task: PrepareHeatmapPayload =
-            serde_json::from_value(payload.get("data").unwrap_or(&payload).clone())?;
+    async fn process(&self, _task_id: i32, payload: serde_json::Value) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let task: PrepareHeatmapPayload = serde_json::from_value(payload.get("data").unwrap_or(&payload).clone())?;
         let activities = task.activities();
         if activities.is_empty() {
             return Err(std::io::Error::other("PrepareHeatmap task contains no activities").into());

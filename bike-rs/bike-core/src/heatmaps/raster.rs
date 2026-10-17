@@ -142,9 +142,7 @@ impl Raster {
             let t = step as f64 / steps as f64;
             let x = (a[0] + t * (b[0] - a[0])).round() as usize;
             let y = (a[1] + t * (b[1] - a[1])).round() as usize;
-            self.ink
-                [y.min(self.layout.width - 1) * self.layout.width + x.min(self.layout.width - 1)] =
-                true;
+            self.ink[y.min(self.layout.width - 1) * self.layout.width + x.min(self.layout.width - 1)] = true;
         }
     }
 
@@ -208,11 +206,7 @@ fn disk(x: i32, y: i32, radius: i32, width: usize) -> impl Iterator<Item = (usiz
         (-radius..=radius).filter_map(move |dx| {
             let px = x + dx;
             let py = y + dy;
-            (dx * dx + dy * dy <= radius * radius
-                && px >= 0
-                && py >= 0
-                && px < width as i32
-                && py < width as i32)
+            (dx * dx + dy * dy <= radius * radius && px >= 0 && py >= 0 && px < width as i32 && py < width as i32)
                 .then_some((px as usize, py as usize))
         })
     })
@@ -274,38 +268,19 @@ mod tests {
         raster.add_chunk(&nearby);
         raster.finish_activity();
         let image = raster.rgba();
-        assert_eq!(
-            image.as_chunks::<4>().0.iter().map(|p| p[3]).max(),
-            Some(155)
-        );
+        assert_eq!(image.as_chunks::<4>().0.iter().map(|p| p[3]).max(), Some(155));
         assert!(image.as_chunks::<4>().0.iter().filter(|p| p[3] > 0).count() < 4096);
         let mut separate = Raster::new(tile);
         separate.add_chunk(&route);
         separate.finish_activity();
         separate.add_chunk(&route.map(|p| [p[0], p[1] + offset * 5.0]));
         separate.finish_activity();
-        assert_eq!(
-            separate
-                .rgba()
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|p| p[3])
-                .max(),
-            Some(100)
-        );
+        assert_eq!(separate.rgba().as_chunks::<4>().0.iter().map(|p| p[3]).max(), Some(100));
     }
     #[test]
     fn repeated_traversals_count_once_and_frequency_changes_only_blue_opacity() {
-        let tile = Tile {
-            z: 10,
-            x: 250,
-            y: 350,
-        };
-        let route = [
-            [250.1 / 1024.0, 350.5 / 1024.0],
-            [250.9 / 1024.0, 350.5 / 1024.0],
-        ];
+        let tile = Tile { z: 10, x: 250, y: 350 };
+        let route = [[250.1 / 1024.0, 350.5 / 1024.0], [250.9 / 1024.0, 350.5 / 1024.0]];
         let mut raster = Raster::new(tile);
         raster.add_chunk(&route);
         raster.add_chunk(&route);
@@ -318,25 +293,10 @@ mod tests {
         }
         let frequent = raster.rgba();
         assert_eq!(
-            frequent
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .filter(|p| p[3] > 0)
-                .count(),
-            single
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .filter(|p| p[3] > 0)
-                .count()
+            frequent.as_chunks::<4>().0.iter().filter(|p| p[3] > 0).count(),
+            single.as_chunks::<4>().0.iter().filter(|p| p[3] > 0).count()
         );
-        for (one, many) in single
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .zip(frequent.as_chunks::<4>().0.iter())
-        {
+        for (one, many) in single.as_chunks::<4>().0.iter().zip(frequent.as_chunks::<4>().0.iter()) {
             assert_eq!(one[3] > 0, many[3] > 0);
             if one[3] > 0 {
                 assert_eq!(&one[..3], &[0, 96, 223]);
@@ -352,10 +312,7 @@ mod tests {
     }
     #[test]
     fn adjacent_tile_edges_share_the_same_intensity() {
-        let route = [
-            [250.99 / 1024.0, 350.5 / 1024.0],
-            [251.01 / 1024.0, 350.5 / 1024.0],
-        ];
+        let route = [[250.99 / 1024.0, 350.5 / 1024.0], [251.01 / 1024.0, 350.5 / 1024.0]];
         let images: Vec<_> = [250, 251]
             .into_iter()
             .map(|x| {

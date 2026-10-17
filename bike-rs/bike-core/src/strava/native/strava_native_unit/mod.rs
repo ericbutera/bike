@@ -17,10 +17,7 @@ async fn connection_checks_customer_and_generation_with_mocked_storage() {
         .append_query_results([vec![fixture.connection.clone()]])
         .append_query_results([vec![fixture.customer.clone()]])
         .into_connection();
-    let connection = StravaOperations::new(db)
-        .connection(&fixture.event)
-        .await
-        .unwrap();
+    let connection = StravaOperations::new(db).connection(&fixture.event).await.unwrap();
     assert_eq!(connection.id, fixture.connection.id);
 }
 
@@ -33,10 +30,7 @@ async fn connection_rejects_a_different_customer() {
         .append_query_results([vec![fixture.connection.clone()]])
         .append_query_results([vec![customer]])
         .into_connection();
-    let error = StravaOperations::new(db)
-        .connection(&fixture.event)
-        .await
-        .unwrap_err();
+    let error = StravaOperations::new(db).connection(&fixture.event).await.unwrap_err();
     assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
 }
 
@@ -48,10 +42,7 @@ async fn connection_rejects_a_reconnected_athlete_before_loading_the_customer() 
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([vec![connection]])
         .into_connection();
-    let error = StravaOperations::new(db)
-        .connection(&fixture.event)
-        .await
-        .unwrap_err();
+    let error = StravaOperations::new(db).connection(&fixture.event).await.unwrap_err();
     assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
 }
 

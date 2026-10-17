@@ -32,11 +32,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ActivityTrainingAnalyses::UserId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityTrainingAnalyses::UserId).integer().not_null())
                     .col(
                         ColumnDef::new(ActivityTrainingAnalyses::Z2TimeSeconds)
                             .integer()
@@ -110,11 +106,7 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
-            .drop_table(
-                Table::drop()
-                    .table(ActivityTrainingAnalyses::Table)
-                    .to_owned(),
-            )
+            .drop_table(Table::drop().table(ActivityTrainingAnalyses::Table).to_owned())
             .await
     }
 }

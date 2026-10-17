@@ -1,16 +1,14 @@
 //! Persistence for disposable heatmap projections. Source activity data stays authoritative.
 use crate::entities::{
-    activities, heatmap_chunks as chunks_entity, heatmap_projections as projections,
-    heatmap_user_states as user_states,
+    activities, heatmap_chunks as chunks_entity, heatmap_projections as projections, heatmap_user_states as user_states,
 };
 use crate::heatmaps::{geometry::Chunk, PROJECTION_VERSION};
 use crate::platform::feature_flags::entities as feature_flags;
 use chrono::{DateTime, Utc};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, DbErr, EntityTrait, ExprTrait,
-    FromQueryResult, JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Set, Statement,
-    TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, DbErr, EntityTrait, ExprTrait, FromQueryResult,
+    JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Set, Statement, TransactionTrait,
 };
 
 #[derive(Debug, FromQueryResult)]
@@ -23,11 +21,7 @@ pub struct Projection;
 
 impl Projection {
     /// Invalidate an owned route within the caller's source-change transaction.
-    pub async fn invalidate_owned(
-        db: &impl ConnectionTrait,
-        activity_id: i32,
-        user_id: i32,
-    ) -> Result<(), DbErr> {
+    pub async fn invalidate_owned(db: &impl ConnectionTrait, activity_id: i32, user_id: i32) -> Result<(), DbErr> {
         let changed = projections::Entity::update_many()
             .set(projections::ActiveModel {
                 status: Set("pending".into()),
@@ -72,10 +66,7 @@ impl Projection {
     ) -> Result<Vec<PendingProjection>, DbErr> {
         projections::Entity::find()
             .select_only()
-            .columns([
-                projections::Column::ActivityId,
-                projections::Column::Generation,
-            ])
+            .columns([projections::Column::ActivityId, projections::Column::Generation])
             .filter(projections::Column::UserId.eq(user_id))
             .filter(projections::Column::ActivityId.gt(after_id))
             .filter(projections::Column::Status.is_in(["pending", "failed"]))
@@ -95,18 +86,10 @@ impl Projection {
     /// failures cannot strand durable dirty state. Projection and heartbeat leases
     /// share WORKER_RECOVERY_TIMEOUT_SECONDS.
     pub async fn enqueue_pending(db: &DatabaseConnection) -> Result<u64, DbErr> {
-        let context =
-            crate::background_jobs::pipeline::PipelineContext::current().unwrap_or_else(|| {
-                crate::background_jobs::pipeline::PipelineContext::received(
-                    "heatmap_reconciliation",
-                    None,
-                )
-            });
-        crate::background_jobs::pipeline::PipelineContext::scope(
-            Some(context),
-            Self::lease_and_enqueue(db),
-        )
-        .await
+        let context = crate::background_jobs::pipeline::PipelineContext::current().unwrap_or_else(|| {
+            crate::background_jobs::pipeline::PipelineContext::received("heatmap_reconciliation", None)
+        });
+        crate::background_jobs::pipeline::PipelineContext::scope(Some(context), Self::lease_and_enqueue(db)).await
     }
 
     async fn lease_and_enqueue(db: &DatabaseConnection) -> Result<u64, DbErr> {
@@ -167,11 +150,7 @@ impl Projection {
         format!("{generation}:{PROJECTION_VERSION}")
     }
 
-    pub async fn pending(
-        db: &impl ConnectionTrait,
-        activity_id: i32,
-        generation: i64,
-    ) -> Result<bool, DbErr> {
+    pub async fn pending(db: &impl ConnectionTrait, activity_id: i32, generation: i64) -> Result<bool, DbErr> {
         Ok(projections::Entity::find_by_id(activity_id)
             .select_only()
             .column(projections::Column::ActivityId)
@@ -207,8 +186,7 @@ impl Projection {
         chunks_entity::Model::clear_activity(&txn, pending.activity_id).await?;
         // Each insert is capped at 64 chunks / 256 KiB of coordinates.
         for (batch, group) in chunks.chunks(64).enumerate() {
-            chunks_entity::Model::insert_chunks(&txn, pending.activity_id, batch * 64, group)
-                .await?;
+            chunks_entity::Model::insert_chunks(&txn, pending.activity_id, batch * 64, group).await?;
         }
         let bounds = chunks.iter().fold([1f64, 1f64, 0f64, 0f64], |b, c| {
             [
@@ -221,12 +199,7 @@ impl Projection {
         let published_at = Utc::now();
         projections::Entity::update_many()
             .set(projections::ActiveModel {
-                status: Set(if chunks.is_empty() {
-                    "skipped"
-                } else {
-                    "ready"
-                }
-                .into()),
+                status: Set(if chunks.is_empty() { "skipped" } else { "ready" }.into()),
                 projection_version: Set(PROJECTION_VERSION),
                 error: Set(None),
                 queued_at: Set(None),
@@ -253,10 +226,7 @@ impl Projection {
         Ok(true)
     }
 
-    pub async fn record_failure(
-        db: &impl ConnectionTrait,
-        pending: &PendingProjection,
-    ) -> Result<(), DbErr> {
+    pub async fn record_failure(db: &impl ConnectionTrait, pending: &PendingProjection) -> Result<(), DbErr> {
         // One guarded writable CTE updates the failed generation and its owner
         // revision together; a newer projection must not invalidate the cache.
         db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,

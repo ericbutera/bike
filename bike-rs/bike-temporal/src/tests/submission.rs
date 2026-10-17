@@ -11,8 +11,7 @@ async fn submission_returns_native_reference_and_preserves_causal_input() {
     let requests = fixture.requests.lock().unwrap();
     let start = &requests.starts[0];
     assert_eq!(job.job_id, start.workflow_id);
-    let submitted: ReprocessInput =
-        serde_json::from_slice(&start.input.as_ref().unwrap().payloads[0].data).unwrap();
+    let submitted: ReprocessInput = serde_json::from_slice(&start.input.as_ref().unwrap().payloads[0].data).unwrap();
     assert_eq!(submitted.source.cause, Some(fixtures::task_cause()));
 }
 
@@ -23,8 +22,7 @@ async fn both_import_entry_points_preserve_the_same_context() {
     fixture.reprocess_activity_import().await.unwrap();
     let requests = fixture.requests.lock().unwrap();
     let input: ImportSource =
-        serde_json::from_slice(&requests.starts[0].input.as_ref().unwrap().payloads[0].data)
-            .unwrap();
+        serde_json::from_slice(&requests.starts[0].input.as_ref().unwrap().payloads[0].data).unwrap();
     assert_eq!(input.cause, Some(fixtures::task_cause()));
 }
 
@@ -70,12 +68,7 @@ async fn invalid_command_is_rejected_before_the_lazy_connection() {
         expected_revision: 0,
         ..reprocess_input()
     };
-    let expected = input
-        .clone()
-        .into_command()
-        .validate()
-        .unwrap_err()
-        .to_string();
+    let expected = input.clone().into_command().validate().unwrap_err().to_string();
     let error = service
         .reprocess_activity_import(input, fixtures::task_cause())
         .await

@@ -14,9 +14,7 @@ pub use bike_core::entities::segments::SegmentMode;
 #[cfg(test)]
 use bike_core::entities::segments::{normalize_segment_title, slice_builder_route_points};
 use bike_core::entities::segments::{ActivitySegmentSource, SegmentImport, SegmentListRow};
-use bike_core::entities::{
-    activities, segment_efforts, segment_summaries, segment_user_summaries, segments,
-};
+use bike_core::entities::{activities, segment_efforts, segment_summaries, segment_user_summaries, segments};
 use chrono::{DateTime, Datelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -239,9 +237,7 @@ pub struct SegmentBuilderSourceResponse {
     pub end_route_point_index: i32,
 }
 
-fn segment_builder_source_from_model(
-    segment: &segments::Model,
-) -> Option<SegmentBuilderSourceResponse> {
+fn segment_builder_source_from_model(segment: &segments::Model) -> Option<SegmentBuilderSourceResponse> {
     match (
         segment.source_activity_id,
         segment.source_start_route_point_index,
@@ -369,25 +365,14 @@ pub async fn list_segments(
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<SegmentResponse>>, AppError> {
     let mut segment_rows = segments::Model::list_for_user(&state.db, user.id).await?;
-    let segment_ids = segment_rows
-        .iter()
-        .map(|segment| segment.id)
-        .collect::<Vec<_>>();
+    let segment_ids = segment_rows.iter().map(|segment| segment.id).collect::<Vec<_>>();
     let summary_by_segment_id = load_segment_summaries(&state.db, &segment_ids).await?;
     sort_segment_rows_by_latest_activity_started_at(&mut segment_rows, &summary_by_segment_id);
-    let user_summary_by_segment_id =
-        load_segment_user_summaries(&state.db, user.id, &segment_ids).await?;
-    let stale_segment_ids = stale_list_segment_ids(
-        &segment_rows,
-        &summary_by_segment_id,
-        &user_summary_by_segment_id,
-    );
+    let user_summary_by_segment_id = load_segment_user_summaries(&state.db, user.id, &segment_ids).await?;
+    let stale_segment_ids = stale_list_segment_ids(&segment_rows, &summary_by_segment_id, &user_summary_by_segment_id);
 
     if !stale_segment_ids.is_empty() {
-        state
-            .tasks
-            .rebuild_segment_analytics(stale_segment_ids)
-            .await?;
+        state.tasks.rebuild_segment_analytics(stale_segment_ids).await?;
     }
 
     Ok(Json(segment_list_responses(
@@ -422,9 +407,7 @@ pub async fn get_segment(
     let segment = segments::Model::find_owned(&state.db, id, user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
-    Ok(Json(
-        load_segment_summary_response(&state.db, &segment, user.id).await?,
-    ))
+    Ok(Json(load_segment_summary_response(&state.db, &segment, user.id).await?))
 }
 
 #[utoipa::path(
@@ -453,9 +436,7 @@ pub async fn get_segment_comparison(
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
 
-    Ok(Json(
-        load_segment_comparison_response(&state.db, &segment).await?,
-    ))
+    Ok(Json(load_segment_comparison_response(&state.db, &segment).await?))
 }
 
 #[utoipa::path(
@@ -552,12 +533,7 @@ pub async fn update_segment(
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
     let updated_segment = segment
-        .update_details(
-            &state.db,
-            payload.title.as_deref(),
-            payload.mode,
-            payload.starred,
-        )
+        .update_details(&state.db, payload.title.as_deref(), payload.mode, payload.starred)
         .await?;
     Ok(Json(
         load_segment_summary_response(&state.db, &updated_segment, user.id).await?,
@@ -672,17 +648,10 @@ pub async fn create_segment_from_activity(
     )
     .await?;
 
-    if let Some(existing_segment) = segments::Model::find_duplicate(
-        &state.db,
-        user.id,
-        source.distance_meters(),
-        source.route_points(),
-    )
-    .await?
+    if let Some(existing_segment) =
+        segments::Model::find_duplicate(&state.db, user.id, source.distance_meters(), source.route_points()).await?
     {
-        let existing_segment = existing_segment
-            .adopt_builder_source(&state.db, &source)
-            .await?;
+        let existing_segment = existing_segment.adopt_builder_source(&state.db, &source).await?;
 
         return Ok((
             StatusCode::OK,
@@ -695,10 +664,7 @@ pub async fn create_segment_from_activity(
 
     Ok((
         StatusCode::CREATED,
-        Json(load_light_segment_response(
-            &segment,
-            Some(&processing_task),
-        )),
+        Json(load_light_segment_response(&segment, Some(&processing_task))),
     ))
 }
 
@@ -743,10 +709,7 @@ pub async fn import_segment(
     let processing_task = enqueue_segment_effort_regeneration(&state, segment.id).await?;
     Ok((
         StatusCode::CREATED,
-        Json(load_light_segment_response(
-            &segment,
-            Some(&processing_task),
-        )),
+        Json(load_light_segment_response(&segment, Some(&processing_task))),
     ))
 }
 
@@ -756,9 +719,7 @@ struct UploadedSegmentFile {
     bytes: Vec<u8>,
 }
 
-async fn read_uploaded_segment_file(
-    mut multipart: Multipart,
-) -> Result<UploadedSegmentFile, AppError> {
+async fn read_uploaded_segment_file(mut multipart: Multipart) -> Result<UploadedSegmentFile, AppError> {
     while let Some(mut field) = multipart
         .next_field()
         .await
@@ -771,15 +732,15 @@ async fn read_uploaded_segment_file(
         let original_filename = field
             .file_name()
             .map(|value| value.to_string())
-            .ok_or_else(|| {
-                AppError::validation_field("file", "Uploaded file is missing a filename")
-            })?;
+            .ok_or_else(|| AppError::validation_field("file", "Uploaded file is missing a filename"))?;
         let format = validate_segment_format(&original_filename)?;
         let mut bytes = Vec::new();
 
-        while let Some(chunk) = field.chunk().await.map_err(|error| {
-            AppError::bad_request(format!("Failed to read segment upload: {error}"))
-        })? {
+        while let Some(chunk) = field
+            .chunk()
+            .await
+            .map_err(|error| AppError::bad_request(format!("Failed to read segment upload: {error}")))?
+        {
             bytes.extend_from_slice(&chunk);
         }
 
@@ -827,8 +788,7 @@ async fn load_segment_summary_response(
     user_id: i32,
 ) -> Result<SegmentResponse, AppError> {
     let summary_by_segment_id = load_segment_summaries(db, &[segment.id]).await?;
-    let user_summary_by_segment_id =
-        load_segment_user_summaries(db, user_id, &[segment.id]).await?;
+    let user_summary_by_segment_id = load_segment_user_summaries(db, user_id, &[segment.id]).await?;
     let summary = summary_by_segment_id.get(&segment.id);
     let user_summary = user_summary_by_segment_id.get(&segment.id);
 
@@ -843,8 +803,7 @@ async fn load_segment_summary_response(
         distance_meters: segment.distance_meters,
         effort_count: summary.map(|value| value.effort_count).unwrap_or_default(),
         best_duration_seconds: summary.and_then(|value| value.best_duration_seconds),
-        current_user_pr_duration_seconds: user_summary
-            .and_then(|value| value.personal_best_duration_seconds),
+        current_user_pr_duration_seconds: user_summary.and_then(|value| value.personal_best_duration_seconds),
         created_at: segment.created_at,
         processing_task_id: None,
         processing_task_status: None,
@@ -858,9 +817,8 @@ async fn load_segment_comparison_response(
     db: &sea_orm::DatabaseConnection,
     segment: &segments::Model,
 ) -> Result<SegmentComparisonResponse, AppError> {
-    let route_points = segment_route_point_responses(&deserialize_segment_route_points(
-        segment.route_data_json.as_ref(),
-    ));
+    let route_points =
+        segment_route_point_responses(&deserialize_segment_route_points(segment.route_data_json.as_ref()));
     let efforts = load_effort_responses(db, &[segment.id]).await?;
 
     Ok(SegmentComparisonResponse {
@@ -884,10 +842,7 @@ async fn load_segment_yearly_bests_response(
         });
     }
 
-    let activity_ids = efforts
-        .iter()
-        .map(|effort| effort.activity_id)
-        .collect::<Vec<_>>();
+    let activity_ids = efforts.iter().map(|effort| effort.activity_id).collect::<Vec<_>>();
     let activity_models = activities::Model::effort_summaries(db, &activity_ids).await?;
     let activities_by_id = activity_models
         .into_iter()
@@ -925,8 +880,7 @@ fn segment_yearly_bests_from_models(
         };
 
         let should_replace = best_by_year.get(&year).is_none_or(|current| {
-            (candidate.duration_seconds, candidate.effort_id)
-                < (current.duration_seconds, current.effort_id)
+            (candidate.duration_seconds, candidate.effort_id) < (current.duration_seconds, current.effort_id)
         });
 
         if should_replace {
@@ -943,8 +897,7 @@ fn segment_yearly_bests_from_models(
     for best in &mut yearly_bests {
         best.improvement_from_previous_year_seconds =
             previous_duration.map(|duration| duration - best.duration_seconds);
-        best.improvement_from_first_year_seconds =
-            first_duration.map(|duration| duration - best.duration_seconds);
+        best.improvement_from_first_year_seconds = first_duration.map(|duration| duration - best.duration_seconds);
         previous_duration = Some(best.duration_seconds);
     }
 
@@ -965,10 +918,7 @@ async fn load_segment_effort_analysis_response(
         return Err(AppError::not_found("No efforts found for this segment"));
     }
 
-    let activity_ids = efforts
-        .iter()
-        .map(|effort| effort.activity_id)
-        .collect::<Vec<_>>();
+    let activity_ids = efforts.iter().map(|effort| effort.activity_id).collect::<Vec<_>>();
     let activity_models = activities::Model::effort_sources(db, &activity_ids).await?;
     let activities_by_id = activity_models
         .into_iter()
@@ -978,8 +928,7 @@ async fn load_segment_effort_analysis_response(
         .into_iter()
         .filter_map(|effort| {
             let activity = activities_by_id.get(&effort.activity_id)?;
-            let derived_data =
-                deserialize_derived_activity_data(activity.derived_data_json.as_ref());
+            let derived_data = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
             let route_points = slice_effort_route_points(
                 &derived_data.route_points,
                 effort.start_route_point_index,
@@ -1005,9 +954,7 @@ async fn load_segment_effort_analysis_response(
     segment_effort_analysis_from_sources(
         segment.id,
         segment.title.clone(),
-        segment_route_point_responses(&deserialize_segment_route_points(
-            segment.route_data_json.as_ref(),
-        )),
+        segment_route_point_responses(&deserialize_segment_route_points(segment.route_data_json.as_ref())),
         effort_sources,
         query.reference_effort_id,
         split_count,
@@ -1070,9 +1017,7 @@ fn segment_effort_analysis_from_sources(
         .filter(|summary| visible_ids.contains(&summary.effort_id))
         .collect();
     for section in &mut sections {
-        section
-            .efforts
-            .retain(|effort| visible_ids.contains(&effort.effort_id));
+        section.efforts.retain(|effort| visible_ids.contains(&effort.effort_id));
     }
 
     Ok(SegmentEffortAnalysisResponse {
@@ -1109,10 +1054,7 @@ fn select_analysis_reference_effort(
         .ok_or_else(|| AppError::not_found("No analyzable efforts found for this segment"))
 }
 
-fn sampled_analysis_efforts(
-    efforts: &[SegmentAnalysisEffortSource],
-    split_count: usize,
-) -> Vec<SampledAnalysisEffort> {
+fn sampled_analysis_efforts(efforts: &[SegmentAnalysisEffortSource], split_count: usize) -> Vec<SampledAnalysisEffort> {
     efforts
         .iter()
         .filter_map(|effort| {
@@ -1159,9 +1101,7 @@ fn analysis_effort_summaries(
         .collect()
 }
 
-fn reference_effort_summary(
-    reference_effort: SegmentAnalysisEffortSource,
-) -> SegmentAnalysisEffortSummaryResponse {
+fn reference_effort_summary(reference_effort: SegmentAnalysisEffortSource) -> SegmentAnalysisEffortSummaryResponse {
     SegmentAnalysisEffortSummaryResponse {
         effort_id: reference_effort.effort_id,
         activity_id: reference_effort.activity_id,
@@ -1182,12 +1122,9 @@ fn analysis_sections(
     let mut theoretical_best_duration_seconds = 0.0;
 
     for section_index in 0..split_count {
-        if let Some((section, best_split_seconds)) = analysis_section(
-            sampled_efforts,
-            reference_samples,
-            section_index,
-            split_count,
-        ) {
+        if let Some((section, best_split_seconds)) =
+            analysis_section(sampled_efforts, reference_samples, section_index, split_count)
+        {
             theoretical_best_duration_seconds += best_split_seconds;
             sections.push(section);
         }
@@ -1202,8 +1139,7 @@ fn analysis_section(
     section_index: usize,
     split_count: usize,
 ) -> Option<(SegmentAnalysisSectionResponse, f64)> {
-    let reference_split_seconds =
-        split_seconds(reference_samples, section_index).unwrap_or_default();
+    let reference_split_seconds = split_seconds(reference_samples, section_index).unwrap_or_default();
     let section_splits = analysis_section_splits(sampled_efforts, section_index);
     let (best_effort, best_split_seconds) = best_analysis_section_split(&section_splits)?;
     let section_efforts = analysis_section_efforts(
@@ -1218,9 +1154,7 @@ fn analysis_section(
         SegmentAnalysisSectionResponse {
             section_index: section_index + 1,
             start_progress_percent: round_metric(section_index as f64 * 100.0 / split_count as f64),
-            end_progress_percent: round_metric(
-                (section_index + 1) as f64 * 100.0 / split_count as f64,
-            ),
+            end_progress_percent: round_metric((section_index + 1) as f64 * 100.0 / split_count as f64),
             reference_split_seconds: round_seconds(reference_split_seconds),
             best_split_seconds: round_seconds(best_split_seconds),
             best_effort_id: best_effort.effort_id,
@@ -1241,8 +1175,7 @@ fn analysis_section_splits(
     sampled_efforts
         .iter()
         .filter_map(|sampled| {
-            split_seconds(&sampled.samples, section_index)
-                .map(|split_seconds| (&sampled.source, split_seconds))
+            split_seconds(&sampled.samples, section_index).map(|split_seconds| (&sampled.source, split_seconds))
         })
         .collect()
 }
@@ -1250,13 +1183,14 @@ fn analysis_section_splits(
 fn best_analysis_section_split<'a>(
     section_splits: &'a [(&'a SegmentAnalysisEffortSource, f64)],
 ) -> Option<(&'a SegmentAnalysisEffortSource, f64)> {
-    section_splits.iter().copied().min_by(
-        |(left_effort, left_seconds), (right_effort, right_seconds)| {
+    section_splits
+        .iter()
+        .copied()
+        .min_by(|(left_effort, left_seconds), (right_effort, right_seconds)| {
             left_seconds
                 .total_cmp(right_seconds)
                 .then_with(|| left_effort.effort_id.cmp(&right_effort.effort_id))
-        },
-    )
+        })
 }
 
 fn analysis_section_efforts(
@@ -1277,9 +1211,7 @@ fn analysis_section_efforts(
                 activity_title: effort.activity_title.clone(),
                 activity_started_at: effort.activity_started_at,
                 split_seconds: round_seconds(*split_seconds),
-                delta_from_reference_seconds: round_seconds(
-                    *split_seconds - reference_split_seconds,
-                ),
+                delta_from_reference_seconds: round_seconds(*split_seconds - reference_split_seconds),
                 delta_from_best_seconds: round_seconds(*split_seconds - best_split_seconds),
                 average_speed_mps: average_speed_mps.map(round_metric),
             }
@@ -1307,11 +1239,11 @@ fn analysis_samples_for_effort(
     (0..=split_count)
         .map(|index| {
             let progress = index as f64 / split_count as f64;
-            interpolate_activity_route_point_by_progress(&effort.route_points, progress).map(
-                |point| SegmentAnalysisSample {
+            interpolate_activity_route_point_by_progress(&effort.route_points, progress).map(|point| {
+                SegmentAnalysisSample {
                     elapsed_seconds: point.elapsed_seconds as f64,
-                },
-            )
+                }
+            })
         })
         .collect()
 }
@@ -1322,14 +1254,8 @@ fn split_seconds(samples: &[SegmentAnalysisSample], section_index: usize) -> Opt
     Some((end.elapsed_seconds - start.elapsed_seconds).max(0.0))
 }
 
-fn section_distance_meters(
-    effort: &SegmentAnalysisEffortSource,
-    split_count: usize,
-) -> Option<f64> {
-    let total = effort
-        .route_points
-        .last()
-        .and_then(|point| point.distance_meters)?;
+fn section_distance_meters(effort: &SegmentAnalysisEffortSource, split_count: usize) -> Option<f64> {
+    let total = effort.route_points.last().and_then(|point| point.distance_meters)?;
     (total > 0.0).then_some(total / split_count as f64)
 }
 
@@ -1402,27 +1328,14 @@ fn interpolate_activity_route_point(
     normalized_distance_meters: Option<f64>,
 ) -> ActivityRoutePoint {
     ActivityRoutePoint {
-        elapsed_seconds: interpolate_i32(
-            previous.elapsed_seconds,
-            current.elapsed_seconds,
-            progress,
-        ),
+        elapsed_seconds: interpolate_i32(previous.elapsed_seconds, current.elapsed_seconds, progress),
         latitude: interpolate_f64(previous.latitude, current.latitude, progress),
         longitude: interpolate_f64(previous.longitude, current.longitude, progress),
-        distance_meters: normalized_distance_meters.or_else(|| {
-            interpolate_optional_f64(previous.distance_meters, current.distance_meters, progress)
-        }),
-        elevation_meters: interpolate_optional_f64(
-            previous.elevation_meters,
-            current.elevation_meters,
-            progress,
-        ),
+        distance_meters: normalized_distance_meters
+            .or_else(|| interpolate_optional_f64(previous.distance_meters, current.distance_meters, progress)),
+        elevation_meters: interpolate_optional_f64(previous.elevation_meters, current.elevation_meters, progress),
         speed_mps: interpolate_optional_f64(previous.speed_mps, current.speed_mps, progress),
-        heart_rate_bpm: interpolate_optional_i32(
-            previous.heart_rate_bpm,
-            current.heart_rate_bpm,
-            progress,
-        ),
+        heart_rate_bpm: interpolate_optional_i32(previous.heart_rate_bpm, current.heart_rate_bpm, progress),
         cadence_rpm: interpolate_optional_i32(previous.cadence_rpm, current.cadence_rpm, progress),
         power_watts: interpolate_optional_i32(previous.power_watts, current.power_watts, progress),
     }
@@ -1436,11 +1349,7 @@ fn interpolate_i32(previous: i32, current: i32, progress: f64) -> i32 {
     interpolate_f64(previous as f64, current as f64, progress).round() as i32
 }
 
-fn interpolate_optional_f64(
-    previous: Option<f64>,
-    current: Option<f64>,
-    progress: f64,
-) -> Option<f64> {
+fn interpolate_optional_f64(previous: Option<f64>, current: Option<f64>, progress: f64) -> Option<f64> {
     match (previous, current) {
         (Some(previous), Some(current)) => Some(interpolate_f64(previous, current, progress)),
         (Some(previous), None) => Some(previous),
@@ -1449,11 +1358,7 @@ fn interpolate_optional_f64(
     }
 }
 
-fn interpolate_optional_i32(
-    previous: Option<i32>,
-    current: Option<i32>,
-    progress: f64,
-) -> Option<i32> {
+fn interpolate_optional_i32(previous: Option<i32>, current: Option<i32>, progress: f64) -> Option<i32> {
     match (previous, current) {
         (Some(previous), Some(current)) => Some(interpolate_i32(previous, current, progress)),
         (Some(previous), None) => Some(previous),
@@ -1470,9 +1375,7 @@ fn round_metric(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
 }
 
-fn segment_route_point_responses(
-    route_points: &[ActivityRoutePoint],
-) -> Vec<SegmentRoutePointResponse> {
+fn segment_route_point_responses(route_points: &[ActivityRoutePoint]) -> Vec<SegmentRoutePointResponse> {
     route_points
         .iter()
         .map(SegmentRoutePointResponse::from_activity_route_point)
@@ -1526,11 +1429,7 @@ async fn enqueue_segment_effort_regeneration(
         .tasks
         .regenerate_segment_efforts(segment_id)
         .await
-        .map_err(|message| {
-            AppError::internal(format!(
-                "Failed to queue segment effort regeneration: {message}"
-            ))
-        })
+        .map_err(|message| AppError::internal(format!("Failed to queue segment effort regeneration: {message}")))
 }
 
 #[cfg(test)]
@@ -1590,9 +1489,7 @@ fn stale_list_segment_ids(
                 {
                     None
                 }
-                (Some(summary), None) if summary.updated_at >= segment.last_activity_change_at => {
-                    None
-                }
+                (Some(summary), None) if summary.updated_at >= segment.last_activity_change_at => None,
                 _ => Some(segment.id),
             }
         })
@@ -1630,8 +1527,7 @@ fn segment_list_response_from_row(
         distance_meters: segment.distance_meters,
         effort_count: summary.map(|value| value.effort_count).unwrap_or_default(),
         best_duration_seconds: summary.and_then(|value| value.best_duration_seconds),
-        current_user_pr_duration_seconds: user_summary
-            .and_then(|value| value.personal_best_duration_seconds),
+        current_user_pr_duration_seconds: user_summary.and_then(|value| value.personal_best_duration_seconds),
         created_at: segment.created_at,
         processing_task_id: None,
         processing_task_status: None,
@@ -1687,14 +1583,8 @@ async fn load_effort_responses(
     }
 
     let efforts = segment_efforts::Model::ranked_for_segments(db, segment_ids).await?;
-    let activity_ids = efforts
-        .iter()
-        .map(|effort| effort.activity_id)
-        .collect::<Vec<_>>();
-    let rider_user_ids = efforts
-        .iter()
-        .map(|effort| effort.user_id)
-        .collect::<Vec<_>>();
+    let activity_ids = efforts.iter().map(|effort| effort.activity_id).collect::<Vec<_>>();
+    let rider_user_ids = efforts.iter().map(|effort| effort.user_id).collect::<Vec<_>>();
     let activity_models = activities::Model::effort_sources(db, &activity_ids).await?;
     let rider_models = users::Model::rider_names(db, &rider_user_ids).await?;
     let activities_by_id = activity_models
@@ -1711,8 +1601,7 @@ async fn load_effort_responses(
         .filter_map(|effort| {
             let activity = activities_by_id.get(&effort.activity_id)?;
             let rider = riders_by_id.get(&effort.user_id)?;
-            let derived_data =
-                deserialize_derived_activity_data(activity.derived_data_json.as_ref());
+            let derived_data = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
 
             let route_points = slice_effort_route_points(
                 &derived_data.route_points,
@@ -1762,10 +1651,7 @@ mod tests {
         }
     }
 
-    fn current_user_pr_duration_from_models(
-        efforts: &[segment_efforts::Model],
-        user_id: i32,
-    ) -> Option<i32> {
+    fn current_user_pr_duration_from_models(efforts: &[segment_efforts::Model], user_id: i32) -> Option<i32> {
         efforts
             .iter()
             .filter(|effort| effort.user_id == user_id)
@@ -1794,11 +1680,7 @@ mod tests {
         }
     }
 
-    fn build_effort_model(
-        id: i32,
-        activity_id: i32,
-        duration_seconds: i32,
-    ) -> segment_efforts::Model {
+    fn build_effort_model(id: i32, activity_id: i32, duration_seconds: i32) -> segment_efforts::Model {
         let now = Utc::now();
 
         segment_efforts::Model {
@@ -1820,11 +1702,7 @@ mod tests {
         }
     }
 
-    fn build_effort_activity_row(
-        id: i32,
-        title: &str,
-        started_at: DateTime<Utc>,
-    ) -> EffortActivitySummaryRow {
+    fn build_effort_activity_row(id: i32, title: &str, started_at: DateTime<Utc>) -> EffortActivitySummaryRow {
         EffortActivitySummaryRow {
             id,
             title: title.to_string(),
@@ -1927,14 +1805,8 @@ mod tests {
         let response_points = segment_route_point_responses(&route_points);
 
         assert_eq!(response_points.len(), route_points.len());
-        assert_eq!(
-            response_points.first().map(|point| point.elapsed_seconds),
-            Some(0)
-        );
-        assert_eq!(
-            response_points.last().map(|point| point.elapsed_seconds),
-            Some(24)
-        );
+        assert_eq!(response_points.first().map(|point| point.elapsed_seconds), Some(0));
+        assert_eq!(response_points.last().map(|point| point.elapsed_seconds), Some(24));
     }
 
     #[test]
@@ -2123,10 +1995,7 @@ mod tests {
         assert_eq!(yearly_bests[0].improvement_from_first_year_seconds, Some(0));
         assert_eq!(yearly_bests[1].year, 2025);
         assert_eq!(yearly_bests[1].duration_seconds, 76);
-        assert_eq!(
-            yearly_bests[1].improvement_from_previous_year_seconds,
-            Some(6)
-        );
+        assert_eq!(yearly_bests[1].improvement_from_previous_year_seconds, Some(6));
         assert_eq!(yearly_bests[1].improvement_from_first_year_seconds, Some(6));
     }
 
@@ -2165,16 +2034,9 @@ mod tests {
             build_analysis_effort(3, 103, "Fast middle", 105, &[0, 35, 58, 105]),
         ];
 
-        let analysis = segment_effort_analysis_from_sources(
-            10,
-            "Breaking the Law".to_string(),
-            Vec::new(),
-            efforts,
-            None,
-            3,
-            0,
-        )
-        .unwrap();
+        let analysis =
+            segment_effort_analysis_from_sources(10, "Breaking the Law".to_string(), Vec::new(), efforts, None, 3, 0)
+                .unwrap();
 
         assert_eq!(analysis.reference_effort.effort_id, 1);
         assert_eq!(analysis.sections.len(), 3);
@@ -2234,16 +2096,8 @@ mod tests {
             build_analysis_effort(2, 102, "Fast first", 103, &[0, 25, 65, 103]),
             build_analysis_effort(3, 103, "Fast second", 105, &[0, 35, 58, 105]),
         ];
-        let analysis = segment_effort_analysis_from_sources(
-            10,
-            "Climb".to_string(),
-            Vec::new(),
-            efforts,
-            Some(3),
-            3,
-            1,
-        )
-        .unwrap();
+        let analysis =
+            segment_effort_analysis_from_sources(10, "Climb".to_string(), Vec::new(), efforts, Some(3), 3, 1).unwrap();
 
         assert_eq!(analysis.total_effort_count, 3);
         assert_eq!(
@@ -2331,10 +2185,7 @@ mod tests {
         sort_segments_by_latest_activity_started_at(&mut segment_models, &summary_by_segment_id);
 
         assert_eq!(
-            segment_models
-                .into_iter()
-                .map(|segment| segment.id)
-                .collect::<Vec<_>>(),
+            segment_models.into_iter().map(|segment| segment.id).collect::<Vec<_>>(),
             vec![3, 2, 1, 4]
         );
     }

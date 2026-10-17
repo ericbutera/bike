@@ -75,9 +75,7 @@ fn refresh_body_uses_cookie(body: &[u8]) -> bool {
     ),
     tag = "auth"
 )]
-pub async fn current<S>(
-    UserContext { user, .. }: UserContext<S>,
-) -> Result<Json<UserResponse>, AuthError>
+pub async fn current<S>(UserContext { user, .. }: UserContext<S>) -> Result<Json<UserResponse>, AuthError>
 where
     S: crate::auth::extractors::AuthStorage,
 {
@@ -95,11 +93,7 @@ where
     ),
     tag = "auth"
 )]
-pub async fn refresh<S>(
-    State(state): State<Arc<S>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<Response, AuthError>
+pub async fn refresh<S>(State(state): State<Arc<S>>, headers: HeaderMap, body: Bytes) -> Result<Response, AuthError>
 where
     S: AuthRouteStorage,
 {
@@ -111,15 +105,12 @@ where
         struct RefreshRequest {
             refresh_token: String,
         }
-        let rr: RefreshRequest = serde_json::from_slice(&body)
-            .map_err(|_| AuthError::validation("Invalid refresh token payload"))?;
+        let rr: RefreshRequest =
+            serde_json::from_slice(&body).map_err(|_| AuthError::validation("Invalid refresh token payload"))?;
         rr.refresh_token
     };
 
-    let token = state
-        .session_service()
-        .refresh(state.db(), refresh_token)
-        .await?;
+    let token = state.session_service().refresh(state.db(), refresh_token).await?;
 
     let mut builder = Response::builder().status(StatusCode::OK);
     if used_cookie {
@@ -133,9 +124,8 @@ where
             "is_admin": token.is_admin,
         });
         let body = serde_json::json!({ "user": user_obj });
-        let body_bytes = serde_json::to_vec(&body).map_err(|e| {
-            AuthError::internal_error(format!("Failed to serialize response: {}", e))
-        })?;
+        let body_bytes = serde_json::to_vec(&body)
+            .map_err(|e| AuthError::internal_error(format!("Failed to serialize response: {}", e)))?;
 
         let response = builder
             .header(axum::http::header::CONTENT_TYPE, "application/json")
@@ -172,9 +162,7 @@ mod tests {
 
     #[test]
     fn explicit_refresh_token_body_does_not_use_cookie() {
-        assert!(!refresh_body_uses_cookie(
-            br#"{"refresh_token":"refresh-token"}"#
-        ));
+        assert!(!refresh_body_uses_cookie(br#"{"refresh_token":"refresh-token"}"#));
     }
 }
 
@@ -190,19 +178,12 @@ mod tests {
     ),
     tag = "auth"
 )]
-pub async fn logout<S>(
-    State(state): State<Arc<S>>,
-    auth: AuthInfo<S>,
-) -> Result<Response, AuthError>
+pub async fn logout<S>(State(state): State<Arc<S>>, auth: AuthInfo<S>) -> Result<Response, AuthError>
 where
     S: AuthRouteStorage + crate::auth::extractors::AuthStorage,
 {
     if let Some(refresh_token) = auth.refresh_token {
-        let _ = refresh_tokens::Model::revoke(
-            crate::auth::extractors::AuthStorage::db(&*state),
-            refresh_token,
-        )
-        .await;
+        let _ = refresh_tokens::Model::revoke(crate::auth::extractors::AuthStorage::db(&*state), refresh_token).await;
     } else if let Some(crate::auth::extractors::AuthIdentity::User(user_identity)) = auth.identity {
         let _ = state.session_service().logout(user_identity.user_pid).await;
     }

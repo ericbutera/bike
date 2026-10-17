@@ -29,21 +29,9 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ActivityImportLocks::UserId)
-                            .integer()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ActivityImportLocks::Source)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ActivityImportLocks::Stage)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityImportLocks::UserId).integer().not_null())
+                    .col(ColumnDef::new(ActivityImportLocks::Source).string().not_null())
+                    .col(ColumnDef::new(ActivityImportLocks::Stage).string().not_null())
                     .col(
                         ColumnDef::new(ActivityImportLocks::CreatedAt)
                             .timestamp_with_time_zone()

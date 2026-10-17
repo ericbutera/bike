@@ -61,10 +61,7 @@ impl ImportSource {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImportTarget {
     NewActivity,
-    ExistingActivity {
-        activity_id: i32,
-        expected_revision: u64,
-    },
+    ExistingActivity { activity_id: i32, expected_revision: u64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,9 +79,7 @@ impl ActivityImport {
         }
         if let ImportTarget::ExistingActivity { activity_id, .. } = self.target {
             if result.activity_id != activity_id {
-                return Err(WorkflowError::conflict(
-                    "Reprocessing changed the activity identity",
-                ));
+                return Err(WorkflowError::conflict("Reprocessing changed the activity identity"));
             }
         }
         Ok(())
@@ -98,17 +93,12 @@ impl ActivityImport {
             return Err(WorkflowError::bad_request("Import requires a command ID"));
         }
         if self.source.user_id <= 0 || self.source.activity_import_id <= 0 {
-            return Err(WorkflowError::bad_request(
-                "Import requires an owner and import ID",
-            ));
+            return Err(WorkflowError::bad_request("Import requires an owner and import ID"));
         }
         if let Some(cause) = &self.source.cause {
             cause.validate(self.source.user_id)?;
         }
-        if let ImportTarget::ExistingActivity {
-            expected_revision, ..
-        } = self.target
-        {
+        if let ImportTarget::ExistingActivity { expected_revision, .. } = self.target {
             validate_revision(expected_revision)?;
         }
         Ok(())
@@ -172,9 +162,7 @@ pub enum Publication {
 
 pub fn validate_revision(revision: u64) -> Result<(), WorkflowError> {
     if revision == 0 {
-        return Err(WorkflowError::bad_request(
-            "Expected a positive committed revision",
-        ));
+        return Err(WorkflowError::bad_request("Expected a positive committed revision"));
     }
     Ok(())
 }

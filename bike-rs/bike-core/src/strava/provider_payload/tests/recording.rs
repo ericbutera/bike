@@ -3,8 +3,7 @@ use crate::activity_recording::RecordingEnvironment;
 
 #[test]
 fn native_json_retains_unmodeled_summary_fields_and_virtual_recorder_evidence() {
-    let mut input: serde_json::Value =
-        serde_json::from_slice(crate::strava::fixtures::REAL_RIDE).unwrap();
+    let mut input: serde_json::Value = serde_json::from_slice(crate::strava::fixtures::REAL_RIDE).unwrap();
     input["activity"]["device_name"] = "Zwift".into();
     input["activity"]["external_id"] = "zwift-activity.fit".into();
     input["activity"]["future_provider_field"] = serde_json::json!({"nested":"retained"});
@@ -12,10 +11,7 @@ fn native_json_retains_unmodeled_summary_fields_and_virtual_recorder_evidence() 
     let stored = crate::strava::build_activity_upload(&payload.activity, &payload.streams).unwrap();
     assert_eq!(stored.format, "json");
     let retained: serde_json::Value = serde_json::from_slice(&stored.bytes).unwrap();
-    assert_eq!(
-        retained["activity"]["future_provider_field"]["nested"],
-        "retained"
-    );
+    assert_eq!(retained["activity"]["future_provider_field"]["nested"], "retained");
     assert_eq!(retained["activity"]["device_name"], "Zwift");
     assert_eq!(
         parse_strava_provider_payload(&stored.bytes)
@@ -30,41 +26,11 @@ fn native_json_retains_unmodeled_summary_fields_and_virtual_recorder_evidence() 
 #[test]
 fn provider_payload_preserves_each_independent_virtual_signal() {
     for (sport, legacy, trainer, name, expected) in [
-        (
-            "VirtualRide",
-            "Ride",
-            false,
-            "Morning",
-            RecordingEnvironment::Virtual,
-        ),
-        (
-            "Ride",
-            "VirtualRide",
-            false,
-            "Morning",
-            RecordingEnvironment::Virtual,
-        ),
-        (
-            "Ride",
-            "Ride",
-            true,
-            "Morning",
-            RecordingEnvironment::Indoor,
-        ),
-        (
-            "Ride",
-            "Ride",
-            false,
-            "Zwift workout",
-            RecordingEnvironment::Virtual,
-        ),
-        (
-            "Ride",
-            "Ride",
-            false,
-            "Morning",
-            RecordingEnvironment::Unknown,
-        ),
+        ("VirtualRide", "Ride", false, "Morning", RecordingEnvironment::Virtual),
+        ("Ride", "VirtualRide", false, "Morning", RecordingEnvironment::Virtual),
+        ("Ride", "Ride", true, "Morning", RecordingEnvironment::Indoor),
+        ("Ride", "Ride", false, "Zwift workout", RecordingEnvironment::Virtual),
+        ("Ride", "Ride", false, "Morning", RecordingEnvironment::Unknown),
         (
             "MountainBikeRide",
             "Ride",

@@ -31,11 +31,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default("complete"),
                     )
-                    .add_column(
-                        ColumnDef::new(ActivityImports::ProcessingError)
-                            .text()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(ActivityImports::ProcessingError).text().null())
                     .add_column(
                         ColumnDef::new(ActivityImports::ProcessingAttempts)
                             .integer()

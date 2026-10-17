@@ -36,11 +36,9 @@ impl MigrationTrait for Migration {
                             .null(),
                     )
                     .add_column(
-                        ColumnDef::new(
-                            ActivityTrainingAnalyses::ComparableElevationGainBucketMeters,
-                        )
-                        .integer()
-                        .null(),
+                        ColumnDef::new(ActivityTrainingAnalyses::ComparableElevationGainBucketMeters)
+                            .integer()
+                            .null(),
                     )
                     .to_owned(),
             )

@@ -35,18 +35,10 @@ pub fn normalize_activity_sport(value: &str) -> String {
         "run" | "running" | "virtualrun" | "trailrun" => "run".to_string(),
         "walk" | "walking" => "walk".to_string(),
         "hike" | "hiking" => "hike".to_string(),
-        "mountainbike" | "mountainbiking" | "mountainbikeride" | "mtb" | "mtbride" => {
-            "mountain_bike".to_string()
-        }
-        "indoortrainerride" | "indoortrainer" | "indoorcycling" | "virtualride" => {
-            "indoor_trainer_ride".to_string()
-        }
-        "roadride" | "roadcycling" | "ride" | "cycling" | "biking" | "bike" => {
-            "road_ride".to_string()
-        }
-        "gravelride" | "ebikeride" | "emountainbikeride" | "velomobile" | "handcycle" => {
-            "ride".to_string()
-        }
+        "mountainbike" | "mountainbiking" | "mountainbikeride" | "mtb" | "mtbride" => "mountain_bike".to_string(),
+        "indoortrainerride" | "indoortrainer" | "indoorcycling" | "virtualride" => "indoor_trainer_ride".to_string(),
+        "roadride" | "roadcycling" | "ride" | "cycling" | "biking" | "bike" => "road_ride".to_string(),
+        "gravelride" | "ebikeride" | "emountainbikeride" | "velomobile" | "handcycle" => "ride".to_string(),
         "swim" | "swimming" => "swim".to_string(),
         "workout" => "workout".to_string(),
         "" => "activity".to_string(),

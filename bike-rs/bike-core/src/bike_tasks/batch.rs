@@ -31,24 +31,11 @@ pub struct BatchManifest {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ManifestScope {
-    Reprocessing {
-        user_id: i32,
-        selection: ReprocessScope,
-    },
-    UserSegments {
-        user_id: i32,
-    },
-    Training {
-        user_id: i32,
-    },
-    Segment {
-        segment_id: i32,
-        expected_revision: u64,
-    },
-    Archive {
-        user_id: i32,
-        archive_job_id: i32,
-    },
+    Reprocessing { user_id: i32, selection: ReprocessScope },
+    UserSegments { user_id: i32 },
+    Training { user_id: i32 },
+    Segment { segment_id: i32, expected_revision: u64 },
+    Archive { user_id: i32, archive_job_id: i32 },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,10 +96,7 @@ pub struct PageRequest {
 
 impl PageRequest {
     pub fn expected_entries(&self) -> usize {
-        self.manifest
-            .entries
-            .saturating_sub(self.offset)
-            .min(PAGE_SIZE as u64) as usize
+        self.manifest.entries.saturating_sub(self.offset).min(PAGE_SIZE as u64) as usize
     }
 }
 

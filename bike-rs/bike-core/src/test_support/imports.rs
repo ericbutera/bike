@@ -21,8 +21,7 @@ pub fn activity_import_attempt() -> crate::entities::activity_import_attempts::M
             "format": super::activity_import().format,
         }),
         stages_json: serde_json::to_value(
-            crate::activity_import_execution::initial_stages("raw_stored", None)
-                .expect("valid fixture stages"),
+            crate::activity_import_execution::initial_stages("raw_stored", None).expect("valid fixture stages"),
         )
         .expect("valid fixture stage records"),
         checkpoint_json: None,

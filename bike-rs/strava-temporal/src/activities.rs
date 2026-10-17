@@ -15,10 +15,10 @@ use temporalio_sdk::activities::{ActivityContext, ActivityError};
 use tracing::Instrument;
 
 pub use strava_activities::{
-    AcceptChild, BeginDisconnect, CaptureDeletion, CollectionWindow, CompleteActivity,
-    CompleteBackfill, CompleteSync, DeleteActivity, DeleteSource, FetchActivity, FetchStreams,
-    ListActivityPage, NormalizeActivity, PersistActivity, PublishHeatmap, RebuildActivity,
-    RebuildFitness, RebuildSegments, RemoveConnection, RevokeConnection, ScanConnections,
+    AcceptChild, BeginDisconnect, CaptureDeletion, CollectionWindow, CompleteActivity, CompleteBackfill, CompleteSync,
+    DeleteActivity, DeleteSource, FetchActivity, FetchStreams, ListActivityPage, NormalizeActivity, PersistActivity,
+    PublishHeatmap, RebuildActivity, RebuildFitness, RebuildSegments, RemoveConnection, RevokeConnection,
+    ScanConnections,
 };
 
 pub struct StravaActivities {
@@ -81,12 +81,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: CollectionResult,
     ) -> Result<CollectionResult, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.complete_sync(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.complete_sync(input)).await
     }
     #[activity(name = "strava_complete_backfill")]
     pub async fn complete_backfill(
@@ -94,12 +89,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: CollectionResult,
     ) -> Result<CollectionResult, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.complete_backfill(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.complete_backfill(input)).await
     }
     #[activity(name = "strava_begin_disconnect")]
     pub async fn begin_disconnect(
@@ -139,12 +129,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: ActivitySource,
     ) -> Result<ActivitySources, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.fetch_streams(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.fetch_streams(input)).await
     }
     #[activity(name = "strava_normalize_activity")]
     pub async fn normalize_activity(
@@ -152,12 +137,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: ActivitySources,
     ) -> Result<NormalizedActivity, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.normalize_activity(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.normalize_activity(input)).await
     }
     #[activity(name = "strava_persist_activity")]
     pub async fn persist_activity(
@@ -165,12 +145,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: NormalizedActivity,
     ) -> Result<ActivityChange, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.persist_activity(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.persist_activity(input)).await
     }
     #[activity(name = "strava_capture_deletion")]
     pub async fn capture_deletion(
@@ -186,12 +161,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: ActivityChange,
     ) -> Result<ActivityChange, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.delete_activity(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.delete_activity(input)).await
     }
     #[activity(name = "strava_delete_source")]
     pub async fn delete_source(
@@ -199,12 +169,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: ActivityChange,
     ) -> Result<ActivityChange, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.delete_source(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.delete_source(input)).await
     }
     #[activity(name = "strava_rebuild_activity")]
     pub async fn rebuild_activity(
@@ -212,12 +177,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: ActivityChange,
     ) -> Result<ActivityChange, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.rebuild_activity(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.rebuild_activity(input)).await
     }
     #[activity(name = "strava_rebuild_fitness")]
     pub async fn rebuild_fitness(
@@ -225,12 +185,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: ActivityChange,
     ) -> Result<ActivityChange, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.rebuild_fitness(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.rebuild_fitness(input)).await
     }
     #[activity(name = "strava_rebuild_segments")]
     pub async fn rebuild_segments(
@@ -238,12 +193,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: ActivityChange,
     ) -> Result<ActivityChange, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.rebuild_segments(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.rebuild_segments(input)).await
     }
     #[activity(name = "strava_publish_heatmap")]
     pub async fn publish_heatmap(
@@ -251,12 +201,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: ActivityChange,
     ) -> Result<ActivityChange, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.publish_heatmap(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.publish_heatmap(input)).await
     }
     #[activity(name = "strava_complete_activity")]
     pub async fn complete_activity(
@@ -264,12 +209,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: ActivityChange,
     ) -> Result<ActivityChange, ActivityError> {
-        run(
-            ctx,
-            input.event.clone(),
-            self.operations.complete_activity(input),
-        )
-        .await
+        run(ctx, input.event.clone(), self.operations.complete_activity(input)).await
     }
     #[activity(name = "strava_list_activity_page")]
     pub async fn list_activity_page(
@@ -277,12 +217,7 @@ impl StravaActivities {
         ctx: ActivityContext,
         input: PageInput,
     ) -> Result<ActivityPage, ActivityError> {
-        run(
-            ctx,
-            input.collection.event.clone(),
-            self.operations.list_page(input),
-        )
-        .await
+        run(ctx, input.collection.event.clone(), self.operations.list_page(input)).await
     }
 }
 
@@ -296,9 +231,7 @@ async fn run<T: serde::Serialize>(
     use bike_core::strava::events::StravaOperation;
     use temporalio_workflow::common::WorkflowDefinition;
     let expected_workflow = match event.operation {
-        StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => {
-            UpsertActivity::run.name()
-        }
+        StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => UpsertActivity::run.name(),
         StravaOperation::Delete => DeleteActivity::run.name(),
         StravaOperation::Sync => SyncActivities::run.name(),
         StravaOperation::Backfill => BackfillActivities::run.name(),

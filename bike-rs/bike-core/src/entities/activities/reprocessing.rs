@@ -36,13 +36,11 @@ impl Model {
                 parsed::build_save_data(parsed, &artifact.original_filename, profile)?,
             )
             .await?;
-        let scope = saved
-            .refresh_after_reprocessing(&txn, &before, parsed)
-            .await?;
+        let scope = saved.refresh_after_reprocessing(&txn, &before, parsed).await?;
         activity_imports::Model::complete_native_reprocess(&txn, execution).await?;
         let mut event = activity_event_history::Event::import(execution, Some(&before), &saved)?;
-        event.context["refresh_scope"] = serde_json::to_value(&scope)
-            .map_err(|error| WorkflowError::internal(error.to_string()))?;
+        event.context["refresh_scope"] =
+            serde_json::to_value(&scope).map_err(|error| WorkflowError::internal(error.to_string()))?;
         activity_event_history::Model::append_import(&txn, event).await?;
         txn.commit().await?;
         Ok(scope)
@@ -59,31 +57,21 @@ impl Model {
         } else {
             &[]
         };
-        let segment_ids =
-            crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebuilds(
-                txn,
-                self.user_id,
-                self.id,
-                route,
-            )
-            .await?;
+        let segment_ids = crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebuilds(
+            txn,
+            self.user_id,
+            self.id,
+            route,
+        )
+        .await?;
         crate::analytics::rebuild_activity_analytics_cache(txn, &[self.id]).await?;
         if self.is_bike_activity() {
-            crate::activity_training_analysis::rebuild_activity_training_analysis_cache(
-                txn,
-                &[self.id],
-            )
-            .await?;
+            crate::activity_training_analysis::rebuild_activity_training_analysis_cache(txn, &[self.id]).await?;
         } else {
-            crate::entities::activity_training_analyses::Model::clear_activity(txn, self.id)
-                .await?;
+            crate::entities::activity_training_analyses::Model::clear_activity(txn, self.id).await?;
         }
-        let dirty_from = before
-            .started_at
-            .date_naive()
-            .min(self.started_at.date_naive());
-        crate::analytics::mark_user_fitness_dirty(txn, self.user_id, dirty_from, self.updated_at)
-            .await?;
+        let dirty_from = before.started_at.date_naive().min(self.started_at.date_naive());
+        crate::analytics::mark_user_fitness_dirty(txn, self.user_id, dirty_from, self.updated_at).await?;
         crate::analytics::mark_segment_activity_changes(txn, &segment_ids, self.updated_at).await?;
         // The activity-update trigger invalidates its existing heatmap generation.
         Ok(RefreshScope {
@@ -108,10 +96,8 @@ impl Model {
         else {
             return Err(WorkflowError::bad_request("Expected a reprocess command"));
         };
-        let target_matches =
-            self.id == activity_id && self.user_id == execution.command.source.user_id;
-        let source_matches = self.activity_import_id
-            == Some(execution.command.source.activity_import_id)
+        let target_matches = self.id == activity_id && self.user_id == execution.command.source.user_id;
+        let source_matches = self.activity_import_id == Some(execution.command.source.activity_import_id)
             && self.source != "strava_sync";
         if !target_matches || !source_matches {
             return Err(WorkflowError::conflict(

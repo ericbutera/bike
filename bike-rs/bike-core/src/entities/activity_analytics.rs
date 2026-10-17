@@ -32,10 +32,7 @@ pub struct Model {
 pub enum Relation {}
 
 impl Entity {
-    pub async fn delete_by_activity_id(
-        db: &impl ConnectionTrait,
-        activity_id: i32,
-    ) -> Result<(), DbErr> {
+    pub async fn delete_by_activity_id(db: &impl ConnectionTrait, activity_id: i32) -> Result<(), DbErr> {
         Self::delete_by_id(activity_id).exec(db).await?;
         Ok(())
     }
@@ -60,11 +57,7 @@ impl Model {
         Ok(())
     }
 
-    pub async fn list_by_user_activity_ids<C>(
-        db: &C,
-        user_id: i32,
-        activity_ids: &[i32],
-    ) -> Result<Vec<Model>, DbErr>
+    pub async fn list_by_user_activity_ids<C>(db: &C, user_id: i32, activity_ids: &[i32]) -> Result<Vec<Model>, DbErr>
     where
         C: ConnectionTrait,
     {
@@ -104,11 +97,7 @@ impl Model {
 }
 
 impl ActiveModel {
-    fn from_summary(
-        activity_id: i32,
-        user_id: i32,
-        analytics: ActivityAnalyticsAccumulator,
-    ) -> Self {
+    fn from_summary(activity_id: i32, user_id: i32, analytics: ActivityAnalyticsAccumulator) -> Self {
         Self {
             activity_id: Set(activity_id),
             user_id: Set(user_id),
@@ -117,9 +106,9 @@ impl ActiveModel {
             kom_count: Set(analytics.kom_count),
             top_10_count: Set(analytics.top_10_count),
             pr_count: Set(analytics.pr_count),
-            achievement_highlights_json: Set(Some(
-                StoredActivityAchievementHighlights::from_items(analytics.achievement_highlights),
-            )),
+            achievement_highlights_json: Set(Some(StoredActivityAchievementHighlights::from_items(
+                analytics.achievement_highlights,
+            ))),
             ..Default::default()
         }
     }
@@ -154,9 +143,7 @@ mod tests {
             .iter()
             .map(|txn| {
                 let statement = &txn.statements()[0];
-                assert!(statement
-                    .sql
-                    .starts_with("INSERT INTO \"activity_analytics\""));
+                assert!(statement.sql.starts_with("INSERT INTO \"activity_analytics\""));
                 assert!(!statement.sql.contains("RETURNING"));
                 statement.values.as_ref().unwrap().0.len()
             })
@@ -167,12 +154,9 @@ mod tests {
     #[tokio::test]
     async fn projections_without_an_owner_do_not_create_invalid_rows() {
         let db = fixtures::postgres_mock().into_connection();
-        Model::store_summaries(
-            &db,
-            HashMap::from([(42, ActivityAnalyticsAccumulator::default())]),
-        )
-        .await
-        .unwrap();
+        Model::store_summaries(&db, HashMap::from([(42, ActivityAnalyticsAccumulator::default())]))
+            .await
+            .unwrap();
         assert!(db.into_transaction_log().is_empty());
     }
 }

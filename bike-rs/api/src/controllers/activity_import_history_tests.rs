@@ -15,9 +15,6 @@ fn http_input_mapping_keeps_reviewed_replay_preconditions() {
             command.expected_start_stage.as_deref(),
             expected.map(|(stage, _)| stage)
         );
-        assert_eq!(
-            command.expected_reused_attempt_id,
-            expected.map(|(_, id)| id)
-        );
+        assert_eq!(command.expected_reused_attempt_id, expected.map(|(_, id)| id));
     }
 }

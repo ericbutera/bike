@@ -16,12 +16,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Users::Table)
-                    .add_column(
-                        ColumnDef::new(Users::Disabled)
-                            .boolean()
-                            .not_null()
-                            .default(false),
-                    )
+                    .add_column(ColumnDef::new(Users::Disabled).boolean().not_null().default(false))
                     .to_owned(),
             )
             .await

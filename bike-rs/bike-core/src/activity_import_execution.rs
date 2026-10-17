@@ -47,8 +47,7 @@ pub async fn create_attempt(
     start_stage: &str,
     previous: Option<&attempts::Model>,
 ) -> Result<attempts::Model, WorkflowError> {
-    attempts::Model::create_attempt(db, import, source, requested_stage, start_stage, previous)
-        .await
+    attempts::Model::create_attempt(db, import, source, requested_stage, start_stage, previous).await
 }
 
 pub(crate) fn initial_stages(
@@ -64,10 +63,7 @@ pub(crate) fn initial_stages(
                 reuse = false;
             }
             if reuse {
-                if let Some(record) = previous_records
-                    .iter()
-                    .find(|record| record.stage == node.stage)
-                {
+                if let Some(record) = previous_records.iter().find(|record| record.stage == node.stage) {
                     let mut record = record.clone();
                     record.status = "reused".into();
                     record.reused_attempt_id = previous.map(|attempt| attempt.id);
@@ -97,10 +93,7 @@ pub async fn record_stage(
     attempts::Model::record_stage(db, attempt, record, checkpoint, activity_id).await
 }
 
-pub(crate) async fn record_activity_lineage(
-    db: &impl ConnectionTrait,
-    activity_id: i32,
-) -> Result<(), WorkflowError> {
+pub(crate) async fn record_activity_lineage(db: &impl ConnectionTrait, activity_id: i32) -> Result<(), WorkflowError> {
     use crate::background_jobs::{
         entities::{pipeline_outputs, pipeline_runs, pipeline_subjects},
         pipeline::PipelineContext,
@@ -114,31 +107,15 @@ pub(crate) async fn record_activity_lineage(
     if let Some(activity) = crate::entities::activities::Model::find_by_id(db, activity_id).await? {
         let revision = activity.updated_at.timestamp_micros().to_string();
         pipeline_outputs::Model::require(db, "activity", activity_id, revision.clone()).await?;
-        pipeline_outputs::Model::publish(
-            db,
-            "activity",
-            activity_id,
-            &revision,
-            activity.updated_at,
-        )
-        .await?;
+        pipeline_outputs::Model::publish(db, "activity", activity_id, &revision, activity.updated_at).await?;
     }
     if crate::heatmaps::projection::Projection::enabled(db).await? {
-        if let Some(projection) =
-            crate::entities::heatmap_projections::Model::for_activity(db, activity_id).await?
-        {
+        if let Some(projection) = crate::entities::heatmap_projections::Model::for_activity(db, activity_id).await? {
             let revision = crate::heatmaps::projection::Projection::revision(projection.generation);
             pipeline_outputs::Model::require(db, "heatmap", activity_id, revision.clone()).await?;
             if ["ready", "skipped"].contains(&projection.status.as_str()) {
                 if let Some(published) = projection.published_at {
-                    pipeline_outputs::Model::publish(
-                        db,
-                        "heatmap",
-                        activity_id,
-                        &revision,
-                        published,
-                    )
-                    .await?;
+                    pipeline_outputs::Model::publish(db, "heatmap", activity_id, &revision, published).await?;
                 }
             }
         }

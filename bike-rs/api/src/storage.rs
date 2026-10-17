@@ -25,9 +25,7 @@ impl AppStorage {
     #[cfg(test)]
     pub(crate) fn for_test(db: DatabaseConnection) -> Self {
         Self {
-            task_submission: std::sync::Arc::new(
-                bike_temporal::submission::TaskSubmissionService::from_env(),
-            ),
+            task_submission: std::sync::Arc::new(bike_temporal::submission::TaskSubmissionService::from_env()),
             map_images: None,
             heatmaps: std::sync::Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
             tasks: TaskQueue::new(db.clone()),
@@ -40,9 +38,7 @@ impl AppStorage {
     }
 
     pub async fn new(database_url: &str) -> Self {
-        let db = connect_database(database_url)
-            .await
-            .expect("DB connection failed");
+        let db = connect_database(database_url).await.expect("DB connection failed");
 
         let tasks = TaskQueue::new(db.clone());
 
@@ -63,9 +59,7 @@ impl AppStorage {
         std::fs::create_dir_all(&uploads_dir).expect("Failed to create uploads directory");
 
         Self {
-            task_submission: std::sync::Arc::new(
-                bike_temporal::submission::TaskSubmissionService::from_env(),
-            ),
+            task_submission: std::sync::Arc::new(bike_temporal::submission::TaskSubmissionService::from_env()),
             map_images: create_map_image_service(Config::get()).await,
             heatmaps: std::sync::Arc::new(bike_core::heatmaps::service::HeatmapService::default()),
             db,

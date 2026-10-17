@@ -1,8 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, DbErr, EntityTrait, FromQueryResult, PaginatorTrait,
-    QueryFilter,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter};
 
 /// Counts of retained records, including the subset created in a rolling window.
 #[derive(Debug, PartialEq, Eq)]

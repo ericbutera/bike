@@ -39,11 +39,7 @@ pub(super) async fn upsert_pages<W>(
                 .await?
             }
         };
-        result.last_started_at = result
-            .last_started_at
-            .into_iter()
-            .chain(listed.latest_started_at)
-            .max();
+        result.last_started_at = result.last_started_at.into_iter().chain(listed.latest_started_at).max();
         let mut remaining = std::mem::take(&mut listed.activity_ids).into_iter();
         while let Some(id) = remaining.next() {
             let changed = upsert_activity(ctx, &input.event, id).await?;

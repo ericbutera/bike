@@ -28,17 +28,11 @@ crate::timestamps::impl_timestamps!(ActiveModel);
 impl Model {
     pub async fn list_all(db: &impl ConnectionTrait) -> Result<Vec<Self>, DbErr> {
         use sea_orm::QueryOrder;
-        Entity::find()
-            .order_by_asc(Column::FeatureKey)
-            .all(db)
-            .await
+        Entity::find().order_by_asc(Column::FeatureKey).all(db).await
     }
     pub async fn by_key(db: &impl ConnectionTrait, key: &str) -> Result<Option<Self>, DbErr> {
         use sea_orm::QueryFilter;
-        Entity::find()
-            .filter(Column::FeatureKey.eq(key))
-            .one(db)
-            .await
+        Entity::find().filter(Column::FeatureKey.eq(key)).one(db).await
     }
     pub async fn enabled(db: &impl ConnectionTrait, key: &str) -> Result<bool, DbErr> {
         use sea_orm::{QueryFilter, QuerySelect};
@@ -51,11 +45,7 @@ impl Model {
             .await?
             .unwrap_or(false))
     }
-    pub async fn set_enabled(
-        self,
-        db: &impl ConnectionTrait,
-        enabled: bool,
-    ) -> Result<Self, DbErr> {
+    pub async fn set_enabled(self, db: &impl ConnectionTrait, enabled: bool) -> Result<Self, DbErr> {
         let mut active: ActiveModel = self.into();
         active.enabled = sea_orm::Set(enabled);
         active.update(db).await
