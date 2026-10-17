@@ -4,7 +4,8 @@ use bike_core::strava::events::StravaEvent;
 use temporalio_common::data_converters::TemporalDeserializable;
 use temporalio_common::error::ActivityExecutionError;
 use temporalio_sdk::{
-    ActivityCancellationType, ActivityOptions, ChildWorkflowOptions, WorkflowContext, WorkflowResult,
+    ActivityCancellationType, ActivityOptions, ChildWorkflowCancellationType, ChildWorkflowOptions, ParentClosePolicy,
+    WorkflowCancellationToken, WorkflowContext, WorkflowResult,
 };
 use temporalio_workflow::common::WorkflowDefinition;
 use temporalio_workflow::{common::ActivityDefinition, WorkflowTermination};
@@ -18,6 +19,11 @@ pub(super) async fn start_child_workflow<W, D: WorkflowDefinition<Input = Strava
 where
     D::Output: TemporalDeserializable + 'static,
 {
+    if ctx.patched("strava-commit-boundary-v1") {
+        workflow_result(ctx, Ok(()))?;
+        options.cancel_type = ChildWorkflowCancellationType::WaitCancellationCompleted;
+        options.parent_close_policy = ParentClosePolicy::RequestCancel;
+    }
     validate_input(ctx, &event)?;
     let workflow_id = options
         .workflow_id
@@ -61,10 +67,35 @@ pub(super) fn workflow_result<W, T>(ctx: &WorkflowContext<W>, result: WorkflowRe
     }
 }
 
+/// A single-event child owns the apply boundary. Its successful or failed result
+/// remains authoritative when cancellation arrived after mutation began.
+pub(super) fn command_result<W, T>(ctx: &WorkflowContext<W>, result: WorkflowResult<T>) -> WorkflowResult<T> {
+    if ctx.patched("strava-commit-boundary-v1") {
+        result
+    } else {
+        workflow_result(ctx, result)
+    }
+}
+
 pub(super) async fn run<W, A: ActivityDefinition>(
-    ctx: &mut WorkflowContext<W>,
+    ctx: &WorkflowContext<W>,
     definition: A,
     input: A::Input,
+) -> WorkflowResult<A::Output>
+where
+    A::Input: serde::Serialize,
+{
+    if ctx.patched("strava-commit-boundary-v1") {
+        workflow_result(ctx, Ok(()))?;
+    }
+    execute(ctx, definition, input, None).await
+}
+
+async fn execute<W, A: ActivityDefinition>(
+    ctx: &WorkflowContext<W>,
+    definition: A,
+    input: A::Input,
+    cancellation_token: Option<WorkflowCancellationToken>,
 ) -> WorkflowResult<A::Output>
 where
     A::Input: serde::Serialize,
@@ -72,9 +103,34 @@ where
     validate_input(ctx, &input)?;
     let name = definition.name();
     let summary = name.strip_prefix("strava_").unwrap_or(name).replace('_', " ");
-    ctx.execute_activity(definition, input, activity(&summary))
+    let mut options = activity(&summary);
+    options.cancellation_token = cancellation_token;
+    ctx.execute_activity(definition, input, options)
         .await
         .map_err(termination)
+}
+
+pub(super) struct CommitBoundary<'a, W> {
+    ctx: &'a WorkflowContext<W>,
+    protected: bool,
+}
+
+impl<'a, W> CommitBoundary<'a, W> {
+    pub fn begin(ctx: &'a WorkflowContext<W>) -> WorkflowResult<Self> {
+        let protected = ctx.patched("strava-commit-boundary-v1");
+        if protected {
+            workflow_result(ctx, Ok(()))?;
+        }
+        Ok(Self { ctx, protected })
+    }
+
+    pub async fn run<A: ActivityDefinition>(&self, definition: A, input: A::Input) -> WorkflowResult<A::Output>
+    where
+        A::Input: serde::Serialize,
+    {
+        let token = self.protected.then(WorkflowCancellationToken::new);
+        execute(self.ctx, definition, input, token).await
+    }
 }
 
 pub(super) fn validate_input<W, T: serde::Serialize>(ctx: &WorkflowContext<W>, input: &T) -> WorkflowResult<()> {

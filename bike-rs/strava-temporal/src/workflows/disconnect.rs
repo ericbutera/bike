@@ -23,7 +23,9 @@ impl DisconnectStrava {
         result
     }
     async fn disconnect(ctx: &mut WorkflowContext<Self>, event: StravaEvent) -> WorkflowResult<StravaEvent> {
-        let ids = run(ctx, BeginDisconnect, event.clone()).await?;
+        let ids = options::CommitBoundary::begin(ctx)?
+            .run(BeginDisconnect, event.clone())
+            .await?;
         let more = ids.len() == 50;
         for id in ids {
             let child = event.for_activity(id, StravaOperation::Delete);
@@ -48,7 +50,8 @@ impl DisconnectStrava {
                 .continue_as_new(event, Default::default())
                 .map(|never| match never {});
         }
-        let event = run(ctx, RevokeConnection, event).await?;
-        run(ctx, RemoveConnection, event).await
+        let boundary = options::CommitBoundary::begin(ctx)?;
+        let event = boundary.run(RevokeConnection, event).await?;
+        boundary.run(RemoveConnection, event).await
     }
 }
