@@ -493,6 +493,8 @@ fn strava_error_from_response(
         current.record("retry_at", field::display(retry_at));
         current.record("status", "429");
         AppError::too_many_requests(message, Some(retry_at))
+    } else if status == StatusCode::NOT_FOUND {
+        AppError::not_found(message)
     } else if status.is_client_error() {
         AppError::bad_request(message)
     } else {
@@ -717,6 +719,28 @@ mod tests {
         assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(error.message, "Rate Limit Exceeded");
         assert_eq!(error.retry_at, Some(retry_at));
+    }
+
+    #[test]
+    fn missing_streams_remain_distinguishable_from_other_provider_failures() {
+        for (provider_status, expected) in [
+            (StatusCode::NOT_FOUND, StatusCode::NOT_FOUND),
+            (StatusCode::UNAUTHORIZED, StatusCode::BAD_REQUEST),
+            (StatusCode::BAD_REQUEST, StatusCode::BAD_REQUEST),
+            (StatusCode::INTERNAL_SERVER_ERROR, StatusCode::INTERNAL_SERVER_ERROR),
+        ] {
+            let error = strava_error_from_response(
+                provider_status,
+                &HeaderMap::new(),
+                r#"{"message":"Provider fault"}"#,
+                None,
+                StravaRequestClass::Read,
+                "get_activity_streams",
+                bike_core::test_support::timestamp(),
+            );
+            assert_eq!(error.status, expected);
+            assert_eq!(error.message, "Provider fault");
+        }
     }
 
     #[test]
