@@ -35,7 +35,7 @@ pub(crate) fn command_workflow_id(workflow_type: &str, user_id: i32, command_id:
 fn start_options(id: String, priority: Priority, fairness: String) -> WorkflowStartOptions {
     WorkflowStartOptions::new(TASK_QUEUE, id)
         .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
-        .id_reuse_policy(WorkflowIdReusePolicy::AllowDuplicateFailedOnly)
+        .id_reuse_policy(WorkflowIdReusePolicy::AllowDuplicate)
         .priority(options::priority(priority, fairness))
         .build()
 }

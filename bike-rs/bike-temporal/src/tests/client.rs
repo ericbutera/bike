@@ -162,7 +162,7 @@ async fn repeated_parent_handoffs_use_native_atomic_start_for_the_same_named_out
         );
         assert_eq!(
             request.workflow_id_reuse_policy,
-            WorkflowIdReusePolicy::AllowDuplicateFailedOnly as i32
+            WorkflowIdReusePolicy::AllowDuplicate as i32
         );
         assert_eq!(request.signal_name, "changed");
         assert_eq!(request.priority.as_ref().unwrap().priority_key, 5);

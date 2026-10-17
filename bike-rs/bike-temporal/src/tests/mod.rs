@@ -24,6 +24,7 @@ pub(crate) mod fixtures;
 mod handlers;
 mod import_operations;
 mod imports;
+mod output_lifecycle;
 mod segments;
 mod submission;
 mod training;
@@ -92,7 +93,11 @@ fn scheduled(mock: &mut WorkflowMock, name: &str, expected: &impl Serialize, pri
     activity.seq
 }
 fn complete(mock: &mut WorkflowMock, seq: u32, publication: Publication) {
-    mock.activate(Variant::ResolveActivity(workflow_activation::ResolveActivity {
+    mock.activate(completed(seq, publication));
+}
+
+fn completed(seq: u32, publication: Publication) -> Variant {
+    Variant::ResolveActivity(workflow_activation::ResolveActivity {
         seq,
         result: Some(activity_result::ActivityResolution {
             status: Some(activity_result::activity_resolution::Status::Completed(
@@ -102,7 +107,7 @@ fn complete(mock: &mut WorkflowMock, seq: u32, publication: Publication) {
             )),
         }),
         ..Default::default()
-    }));
+    })
 }
 
 #[test]
@@ -124,7 +129,7 @@ fn five_quick_requests_for_the_same_user_rebuild_once_at_the_latest_revision() {
         "user-7",
     );
     complete(&mut mock, seq, Publication::Published);
-    mock.assert_no_commands();
+    mock.result::<()>();
 }
 
 #[test]
@@ -177,7 +182,7 @@ fn native_replay_preserves_active_work_and_one_merged_follow_up() {
         "user-7",
     );
     complete(&mut mock, second, Publication::Published);
-    mock.assert_no_commands();
+    mock.result::<()>();
 }
 
 #[test]
@@ -189,13 +194,15 @@ fn continue_as_new_preserves_pending_requests_and_timer_deadlines() {
     fire(&mut mock, wait, 60);
     let continued: RebuildInput<FitnessChange> = mock.continued_input();
     let mut resumed = WorkflowMock::at_time::<RebuildFitnessFreshness>(continued, UNIX_EPOCH + Duration::from_secs(60));
-    scheduled(
+    let seq = scheduled(
         &mut resumed,
         "rebuild_fitness_freshness",
         &change(1, Priority::Background),
         5,
         "user-7",
     );
+    complete(&mut resumed, seq, Publication::Published);
+    resumed.result::<()>();
 }
 
 #[test]
@@ -225,7 +232,7 @@ fn segment_requests_from_multiple_parents_share_one_segment_output() {
     };
     let seq = scheduled(&mut mock, "rebuild_segment_analytics", &expected, 5, "segment-18");
     complete(&mut mock, seq, Publication::Published);
-    mock.assert_no_commands();
+    mock.result::<()>();
 }
 
 #[test]
@@ -242,7 +249,7 @@ fn heatmap_workflow_prepares_the_latest_generation() {
     fire(&mut mock, wait, 2);
     let seq = scheduled(&mut mock, "prepare_heatmap", &request, 1, "user-7");
     complete(&mut mock, seq, Publication::Published);
-    mock.assert_no_commands();
+    mock.result::<()>();
 }
 
 #[test]
@@ -277,7 +284,8 @@ fn cancellation_while_debouncing_cancels_the_timer() {
 
 #[test]
 fn late_notification_is_rebuilt_even_after_a_higher_revision_published() {
-    let mut mock = WorkflowMock::new::<RebuildFitnessFreshness>(input());
+    // Old histories can still receive another notification after publication.
+    let mut mock = WorkflowMock::with_replay::<RebuildFitnessFreshness>(input(), true);
     signal(&mut mock, &change(5, Priority::NewActivity), 0);
     let wait = timer(&mut mock, 2);
     fire(&mut mock, wait, 2);

@@ -10,7 +10,10 @@
   focused review follow-ups remain below. #64 and #65 are superseded.
   Strava is already native. Single-endpoint
   wiring is not production cutover of all producers or shared outputs.
-- Convert one task at a time and stop for user review after each. Status advances
+- Convert one bounded task at a time. The user authorized merging and deploying
+  completed PRs continuously until this backlog is complete, with each task and
+  its downstream outputs verified. Keep PRs and checks as the review record;
+  do not pause after each delivery. Status advances
   `Pending` → `In progress` → `Ready to verify` → `Verified`; email becomes `Retired`.
   A failed gate keeps the task open. Do not rename registered tasks without user
   approval/explanation. Email retirement is independent of reprocessing.
@@ -50,8 +53,8 @@
       this review slice; remove native attempt stages; use shared object storage
       and in-memory/SeaORM fixtures for primary and supplemental source reads.
 - [ ] Vet the actual admin reprocess flow and eventual rider-visible outputs in
-      the existing Docker stack. Stop for user review before broader rollout;
-      extend the existing CI E2E suite only after the working flow is accepted.
+      the existing Docker stack and production. Continue the authorized rollout;
+      extend the existing CI E2E suite after the working flow is verified.
 - [ ] Repair checksumless legacy source metadata before accepting those imports;
       preserve retained keys/bytes and keep native Strava on sync/backfill.
 - [ ] Route every legacy single/bulk producer and batch completion contract at
@@ -68,7 +71,7 @@
       record each test/command/commit/result and unimplemented variants. Pass the
       simplicity gate without SQL orchestration, redundant bookkeeping, or a new
       generic recovery service.
-- [ ] After user vetting, prove P01/P02/P04 in the existing stack/CI suite and P03
+- [ ] Prove P01/P02/P04 in the existing stack/CI suite and P03
       where provider routing/history changes. Include acceptance while the worker
       is stopped, commit-before-lost-reply, partial handoff, cancellation races,
       and real eventual outputs. Keep mock, DB, runtime, and deployed evidence distinct.
@@ -150,7 +153,7 @@
 | 5     | R04    | P1       | Cancellation boundary across provider parents/children  | Pending         |
 | 6     | R06    | P1       | Bounded webhook acceptance                              | Pending         |
 | 7     | R09    | P2       | Separate legacy SQL bookkeeping from domain effects     | Pending         |
-| 8     | R08    | P2       | Simplify debounce state and return domain outcomes      | Pending         |
+| 8     | R08    | P2       | Simplify debounce state and return domain outcomes      | In progress     |
 | 9     | R11    | P2       | Permanent retained-input failures                       | Pending         |
 | 10    | R10    | P2       | Native job diagnosis and causal context                 | Pending         |
 | 11    | R07    | P1       | One owner for shared outputs and all selected producers | Pending         |
@@ -224,6 +227,9 @@
   failures. Finish a drained coordinator and let native Signal-With-Start create
   the next run for its stable resource key. Keep completion/reuse atomic across
   a racing notification; mock drain, completion/signal race, and a later new run.
+  The user prioritizes this correction before resuming source ordering. Lifecycle
+  implementation passes 78 native units and SDK replay of all ten real histories;
+  deployment, graceful retirement, and a later live publication remain required.
   Return actual publication outcomes from domain operations instead of inferring
   them with surrounding reads. Remove unused `published` state and unsupported
   blocked/superseded behavior; retain resource, merged pending work, priority,
@@ -240,7 +246,7 @@
   Mock failure before a domain audit exists, ownership, retry, and merged causes.
   Reuse Temporal history and existing activity audit rather than a new job table.
 - **R07 — shared-output ownership and producer cutover** (F5/F6; U15–U17/U22/U26/P03/P04).
-  After the preceding corrections and user vetting, route Strava, legacy single/
+  After the preceding corrections and verification, route Strava, legacy single/
   bulk imports, edits/deletes, training, reads, and archive producers through
   neutral keyed refresh handoffs. Drain/fence legacy writers at the selected
   boundary; source completion waits only for handoff acceptance. Preserve deployed
@@ -339,7 +345,7 @@ database race or live recovery proof.
 - [ ] For each conversion, record focused checks/hooks/CI, owning queue/prefix,
       status/history, retry/cancel behavior, actual outputs, same-request retry,
       and interruption during an executing Activity. Mark `Ready to verify` only
-      after its gate; mark `Verified` only after user acceptance. Rollback drains
+      after its gate; mark `Verified` only after observed downstream results. Rollback drains
       or fences dispatch before switching ownership.
 
 ## Model boundaries and fixtures

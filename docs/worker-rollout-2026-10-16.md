@@ -1,5 +1,20 @@
 # Bike worker fail-forward rollout, 2026-10-16
 
+## Output lifecycle verification before deployment, 2026-10-17 02:04 UTC
+
+- The lifecycle correction passes **78 native workflow/client/Activity units**.
+  Six new regressions failed against the old implementation before the fix.
+  Coverage includes all three output types completing, a later lower revision in
+  a new run, same-activation completion/signal orderings, pending/active graceful
+  drain, continuation, and replay of old multi-publication histories.
+- Read and replayed all ten real running coordinator histories with the pinned
+  SDK's native `WorkflowReplayer`: heatmap activity 1588, fitness user 1, and
+  segments 8/9/13/17/21/22/26/28. All replayed successfully with the new code.
+  The replayer fetches history directly through the SDK; it executes no domain
+  Activities and makes no application writes.
+- This is local and retained-history evidence. Deployment, graceful drain of
+  those ten runs, and new-run publication/reuse are still pending.
+
 ## Live rename and running-workflow inspection, 2026-10-17 01:17 UTC
 
 - A user-initiated title change for real Strava activity `20608722796` reached
