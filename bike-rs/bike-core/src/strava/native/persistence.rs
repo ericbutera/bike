@@ -10,6 +10,8 @@ use sea_orm::{DatabaseTransaction, TransactionTrait};
 mod strava_native_unit_deletion;
 #[cfg(test)]
 mod strava_native_unit_history;
+#[cfg(test)]
+mod strava_native_unit_retry;
 
 impl StravaOperations {
     pub async fn persist_activity(&self, input: NormalizedActivity) -> Result<ActivityChange, WorkflowError> {
@@ -38,6 +40,10 @@ impl StravaOperations {
     ) -> Result<ActivityChange, WorkflowError> {
         let txn = self.db.begin().await?;
         strava_connections::Model::lock_event(&txn, &input.event).await?;
+        if let Some(change) = strava_events::Model::stored_mutation(&txn, &input.event).await? {
+            txn.commit().await?;
+            return Ok(change);
+        }
         if strava_activity_states::Model::supersedes(&txn, &input.event, false).await? {
             let change = ActivityChange::unchanged(input.event, ActivityStatus::Superseded);
             strava_events::Model::record_mutation(&txn, &change).await?;
@@ -46,17 +52,15 @@ impl StravaOperations {
         }
         let existing =
             activities::Model::lock_strava_activity(&txn, input.event.bike_user_id, input.event.activity_id()?).await?;
-        if let Some(activity) = &existing {
-            if strava_activity_states::Model::matches_content(&txn, &input.event, &input.source.sha256).await? {
-                let change = Self::persist_unchanged(&txn, &input, activity).await?;
-                txn.commit().await?;
-                return Ok(change);
-            }
-        }
-        let upload = super::super::build_activity_upload(&summary.activity, &summary.streams)?;
-        if let Some(change) = strava_events::Model::stored_mutation(&txn, &input.event).await? {
+        if let Some(change) = Self::persist_matching_content(&txn, &input, existing.as_ref()).await? {
+            txn.commit().await?;
             return Ok(change);
         }
+        let upload = super::super::build_activity_upload(&summary.activity, &summary.streams)?;
+        let previous_segment_ids = match &existing {
+            Some(activity) => crate::activity_lifecycle::load_segment_ids_for_activity(&txn, activity.id).await?,
+            None => vec![],
+        };
         let import = activity_imports::Entity::native_strava_source(
             &txn,
             &input.event,
@@ -70,6 +74,7 @@ impl StravaOperations {
                 .await?;
         let mut change =
             ActivityChange::applied(input.event, saved.id, import.id, parsed.draft.started_at.date_naive());
+        change.segment_ids = previous_segment_ids;
         let state =
             strava_activity_states::Model::apply_event(&txn, &change.event, Some(input.source.sha256), false).await?;
         change.dirty_from = Self::mark_fitness_change(&txn, &change.event, &parsed.draft, existing.as_ref()).await?;
@@ -96,6 +101,20 @@ impl StravaOperations {
         Ok(Some(dirty_from))
     }
 
+    async fn persist_matching_content(
+        db: &DatabaseTransaction,
+        input: &NormalizedActivity,
+        activity: Option<&activities::Model>,
+    ) -> Result<Option<ActivityChange>, WorkflowError> {
+        let Some(activity) = activity else {
+            return Ok(None);
+        };
+        if !strava_activity_states::Model::matches_content(db, &input.event, &input.source.sha256).await? {
+            return Ok(None);
+        }
+        Self::persist_unchanged(db, input, activity).await.map(Some)
+    }
+
     async fn persist_unchanged(
         db: &DatabaseTransaction,
         input: &NormalizedActivity,
@@ -105,6 +124,7 @@ impl StravaOperations {
         change.event.bike_activity_id = Some(activity.id);
         change.bike_activity_id = Some(activity.id);
         change.import_id = activity.activity_import_id;
+        change.segment_ids = crate::activity_lifecycle::load_segment_ids_for_activity(db, activity.id).await?;
         change.dirty_from = activity.is_bike_activity().then_some(activity.started_at.date_naive());
         let state =
             strava_activity_states::Model::apply_event(db, &change.event, Some(input.source.sha256.clone()), false)
@@ -232,13 +252,15 @@ impl StravaOperations {
             if let Some(activity) = activities::Model::lock_owned(&txn, id, change.event.bike_user_id).await? {
                 let derived =
                     crate::activity_data::deserialize_derived_activity_data(activity.derived_data_json.as_ref());
-                change.segment_ids = crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebuilds(
-                    &txn,
-                    change.event.bike_user_id,
-                    id,
-                    &derived.route_points,
-                )
-                .await?;
+                let affected_segments =
+                    crate::activity_lifecycle::refresh_activity_derived_state_without_cache_rebuilds(
+                        &txn,
+                        change.event.bike_user_id,
+                        id,
+                        &derived.route_points,
+                    )
+                    .await?;
+                change.include_segments(affected_segments);
                 crate::analytics::mark_segment_activity_changes(&txn, &change.segment_ids, chrono::Utc::now()).await?;
                 crate::analytics::rebuild_activity_analytics_cache(&txn, &[id]).await?;
                 crate::entities::activity_training_analyses::Model::clear_for_non_cycling(&txn, &activity).await?;

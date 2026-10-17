@@ -153,6 +153,14 @@ flowchart LR
   versions together.
 - If an existing stored outcome supplies idempotency, recheck it under the lock
   before unchanged/superseded branches. Preserve the original retry outcome.
+- Strava's source transaction captures the owned activity's old segment IDs in
+  its existing mutation result before replacing source data. Capture them for
+  unchanged-content events too: segment definitions can change independently of
+  source bytes. Persist the scope atomically with the original source outcome.
+- Rematching unions that captured scope with the current old/new memberships.
+  An Activity retry receives the original captured input even after the first
+  attempt removed a membership and lost its completion reply. This uses the
+  existing result/history; no extra table or execution version is required.
 - A rematch `{A,B}` → `{B,C}` must eventually refresh A as well as B/C. Retain an
   old version, a version-validated plan captured before mutation, a small committed
   refresh scope, or rebuild a broader authoritative scope. Current replacement

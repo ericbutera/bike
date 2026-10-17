@@ -13,6 +13,7 @@ fn unchanged_state(fixture: &Fixture) -> strava_activity_states::Model {
 async fn unchanged_content_still_archives_its_provider_state_transition() {
     let fixture = Fixture::new();
     let db = MockDatabase::new(DatabaseBackend::Postgres)
+        .append_query_results([crate::test_support::segment_id_rows(&[1, 2])])
         .append_query_results([vec![unchanged_state(&fixture)]])
         .append_query_results([vec![audit(&fixture)], vec![audit(&fixture)]])
         .append_exec_results((0..2).map(|_| MockExecResult {
@@ -26,6 +27,7 @@ async fn unchanged_content_still_archives_its_provider_state_transition() {
         .unwrap();
     assert_eq!(change.status, ActivityStatus::Unchanged);
     assert_eq!(change.bike_activity_id, Some(fixture.activity().id));
+    assert_eq!(change.segment_ids, vec![1, 2]);
     transaction.commit().await.unwrap();
     let log = db.into_transaction_log();
     assert_eq!(log.len(), 1);
@@ -39,6 +41,7 @@ async fn unchanged_content_still_archives_its_provider_state_transition() {
 async fn failed_archive_does_not_acknowledge_an_unchanged_event() {
     let fixture = Fixture::new();
     let db = MockDatabase::new(DatabaseBackend::Postgres)
+        .append_query_results([crate::test_support::segment_id_rows(&[1, 2])])
         .append_query_results([vec![unchanged_state(&fixture)]])
         .append_exec_errors([sea_orm::DbErr::Custom("fixture archive unavailable".into())])
         .into_connection();

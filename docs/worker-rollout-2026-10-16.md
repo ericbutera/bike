@@ -1,5 +1,48 @@
 # Bike worker fail-forward rollout, 2026-10-16
 
+## Live rename and running-workflow inspection, 2026-10-17 01:17 UTC
+
+- A user-initiated title change for real Strava activity `20608722796` reached
+  Bike at 01:17:05.599 UTC and was submitted to Temporal at 01:17:06.159 UTC.
+  [UpdateActivity](https://temporal.nibelheim.dev/namespaces/bike/workflows/strava-52e5b689-1d46-479f-aff5-7d085ef8219c)
+  completed in **1.560244050 seconds**; Bike activity `1683` stored the new title.
+- Its Upsert child completed all nine Activities with zero failed/timed-out
+  events. Fitness rebuilt at 01:17:07.505 UTC and cleared its dirty day. All five
+  application deployments were ready; the worker's inspected 20-minute log window
+  contained 33 JSON records and zero warnings/errors.
+- Inspected all ten running `bike-task-*` executions: one fitness, one heatmap,
+  and eight segment coordinators from the retained-input canaries. Each had three
+  completed Activities, latest result `Published`, zero failures/timeouts, zero
+  pending Activities/Workflow Tasks, and zero open timers. Their last publications
+  were at 00:50:23–24 UTC. They wait indefinitely for another signal, so `Running`
+  does not mean work is outstanding. R08 now explicitly tracks drained completion
+  and safe native reuse of the stable resource Workflow ID.
+- The UI's five failed executions are retained October 14 runs: one scheduled
+  scan, its customer sync and Upsert child, plus an earlier Create/Upsert pair.
+  Their failure histories report `Resource Not Found` or the enclosing child
+  failure. None belongs to the October 16 rename. This was a read-only history
+  check; do not replay historical creation work over a newer deletion.
+- Strava still publishes derived outputs through its provider path. R07 owns
+  moving those producers to neutral shared handoffs; these ten coordinators were
+  not awaiting the renamed activity. This inspection changed no application data
+  and canceled no executions.
+
+## Read-only Strava confirmation, 2026-10-17 01:15 UTC
+
+- Inspected production SQL identity records and native Temporal descriptions;
+  submitted no new work and changed no application data.
+- The scheduled 00:00 UTC sync (October 16, 8:00 PM EDT),
+  `strava-d62bec3f-6e51-5997-a3ea-be225558c974`, completed in **3.270873047 seconds**
+  with zero imports and one unchanged activity. Its native status was `Completed`.
+- Child `strava-24124b0d-6276-50af-98bf-f2158014c975` completed in
+  **1.679757269 seconds**. Real Strava activity `20608722796` retained Bike activity
+  `1683` / import `1682`, sport `indoor_trainer_ride`. The provider create/update
+  records from October 16 were `Applied`; the scheduled repeat was `Unchanged`.
+- The SQL collection row still said `pending` although the native sync completed.
+  Temporal is authoritative for execution status; R09/R10 track retiring or
+  separating ambiguous legacy execution bookkeeping. This inspection confirms
+  recent base sync behavior, not R03's new race/retry fixes or another crash drill.
+
 ## Verified batching release and worker restart, 2026-10-17 00:50 UTC
 
 - PR #70 merged as `16ed60188310c69b3d90f72f30b66fa39f03c2fa` after
