@@ -107,8 +107,9 @@
   limits. [PR #74](https://github.com/ericbutera/bike/pull/74) uses deterministic
   span fixtures for exact fast/slow counts and the inclusive threshold, and keeps
   ORM wiring assertions valid under scheduling delays. All eight focused tracing
-  tests and required Rust hooks pass locally. Keep open for review; production
-  sampling caps and CI resource limits are unchanged.
+  tests and required Rust hooks pass locally. PR #74 merged as `1eef1aa9` after
+  CI 503 passed checks and all 83 browser cases. Production sampling caps and
+  CI resource limits are unchanged.
 - **Formatting integration:** PR #68 merged as `e401699a` with the user's
   explicit one-time coverage exception. CI 489 passed tests/lint/PostgreSQL
   checks, but counted rewrapped existing code below 80%: API 54.3%, worker 25%,
@@ -121,6 +122,15 @@
   mocks/fixtures to prove that an unready workload or HTTP 503 blocks success,
   and that ready workloads plus healthy HTTP pass. Keep this separate from
   Temporal's durable job acceptance and eventual output completion.
+  The owning CI/manual deployment tasks now run this native rollout/public-health
+  gate; all four shell fixture cases pass. It passed against live revision
+  `8fb5d9ff`, with the matching migration complete and all tested images ready.
+- **Runtime qualification, P1:** the 02:57 UTC lifecycle canary published all
+  outputs on attempt one, but later logs contain 250 ms slow-statement warnings
+  from metrics COUNTs, feature flags, and the handoff poll (0.27–1.2 seconds).
+  The eight-core node's load was 35.06 without memory/disk/PID pressure. Diagnose
+  the queries and contention before marking the runtime clean; preserve warning
+  thresholds and the operator's CI settings. Domain completion is already verified.
 - PR #66 merged as `7fa4f451`; main CI 471 deployed it after 83 browser checks.
   The real FIT canary returned 202 in 0.30 seconds and preserved activity/import
   IDs. The dated rollout record owns the observed outputs and retry limitation.
@@ -229,7 +239,11 @@
   a racing notification; mock drain, completion/signal race, and a later new run.
   The user prioritizes this correction before resuming source ordering. Lifecycle
   implementation passes 78 native units and SDK replay of all ten real histories;
-  deployment, graceful retirement, and a later live publication remain required.
+  PR #75 deployed as `8fb5d9ff`. All ten original runs gracefully completed, then
+  a real retained-source reprocess started fresh runs on the same resource IDs.
+  All ten published once and completed on attempt one; no Bike tasks remain
+  Running. Stored fitness, eight segment summaries, activity identity/efforts,
+  and the ready heatmap were verified. The remaining simplification below stays open.
   Return actual publication outcomes from domain operations instead of inferring
   them with surrounding reads. Remove unused `published` state and unsupported
   blocked/superseded behavior; retain resource, merged pending work, priority,
