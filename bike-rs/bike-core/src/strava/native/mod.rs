@@ -69,9 +69,13 @@ impl StravaOperations {
         event.validate_customer(&customer)
     }
 
-    pub async fn fetch_activity(&self, event: StravaEvent) -> Result<ActivitySource, WorkflowError> {
+    pub async fn fetch_activity(&self, mut event: StravaEvent) -> Result<ActivitySource, WorkflowError> {
         let id = event.activity_id()?;
         self.connection(&event).await?;
+        if event.source_version.is_some() {
+            event.source_version =
+                Some(crate::entities::strava_activity_states::Model::capture_version(&self.db, &event).await?);
+        }
         let source = self.provider.activity(&event).await?;
         let activity: StravaActivitySummary = self.store.read_json(&source).await?;
         if activity.id != id {

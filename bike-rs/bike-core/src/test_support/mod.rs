@@ -3,6 +3,8 @@
 //! Override scenario fields with struct update syntax. Use `new_activity_import`
 //! for database inserts so unrelated seeds never reuse the fixture primary key.
 mod accounts;
+mod strava;
+pub use strava::{strava_activity_state, strava_event_record};
 mod activity_history;
 pub use activity_history::{activity_history, activity_history_event};
 mod storage;

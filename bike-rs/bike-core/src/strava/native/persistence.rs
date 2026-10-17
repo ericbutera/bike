@@ -40,7 +40,7 @@ impl StravaOperations {
     ) -> Result<ActivityChange, WorkflowError> {
         let txn = self.db.begin().await?;
         strava_connections::Model::lock_event(&txn, &input.event).await?;
-        if let Some(change) = strava_events::Model::stored_mutation(&txn, &input.event).await? {
+        if let Some(change) = Self::resolve_source_conflict(&txn, &input.event).await? {
             txn.commit().await?;
             return Ok(change);
         }
@@ -82,6 +82,24 @@ impl StravaOperations {
         strava_events::Model::record_mutation(&txn, &change).await?;
         txn.commit().await?;
         Ok(change)
+    }
+
+    /// Called under the connection lock. A committed original result wins over
+    /// classification of a retry's older fetched snapshot.
+    async fn resolve_source_conflict(
+        db: &DatabaseTransaction,
+        event: &StravaEvent,
+    ) -> Result<Option<ActivityChange>, WorkflowError> {
+        if let Some(change) = strava_events::Model::stored_mutation(db, event).await? {
+            return Ok(Some(change));
+        }
+        if !strava_activity_states::Model::matches_version(db, event).await? {
+            return Ok(Some(ActivityChange::unchanged(
+                event.clone(),
+                ActivityStatus::SourceChanged,
+            )));
+        }
+        Ok(None)
     }
 
     async fn mark_fitness_change(
@@ -134,8 +152,11 @@ impl StravaOperations {
         Ok(change)
     }
 
-    pub async fn capture_deletion(&self, event: StravaEvent) -> Result<ActivityChange, WorkflowError> {
+    pub async fn capture_deletion(&self, mut event: StravaEvent) -> Result<ActivityChange, WorkflowError> {
         self.connection(&event).await?;
+        if event.source_version.is_some() {
+            event.source_version = Some(strava_activity_states::Model::capture_version(&self.db, &event).await?);
+        }
         let Some(activity) =
             activities::Model::strava_activity(&self.db, event.bike_user_id, event.activity_id()?).await?
         else {
@@ -171,7 +192,7 @@ impl StravaOperations {
         mut change: ActivityChange,
     ) -> Result<ActivityChange, WorkflowError> {
         let connection = strava_connections::Model::lock_event(txn, &change.event).await?;
-        if let Some(saved) = strava_events::Model::stored_mutation(txn, &change.event).await? {
+        if let Some(saved) = Self::resolve_source_conflict(txn, &change.event).await? {
             return Ok(saved);
         }
         if Self::deletion_superseded(txn, &change.event, &connection).await? {

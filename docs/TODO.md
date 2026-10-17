@@ -29,8 +29,9 @@
 - [x] Preserve historical migrations; append schema retirement separately.
 - [x] Use ordinary transactions/upserts and source ownership/deletion/privacy checks.
       Repeated computation, partial results, and an in-flight Activity finishing are acceptable.
-- [x] Keep the source-time/serialization proposals in #80/#81 out of this conversion.
-      No custom cancellation or commit protocol is required.
+- [x] Keep Strava source corrections separate from the Bike conversion. PR #80
+      repairs provider time and serializes source fetch/apply with a native child.
+      No generic execution ledger or shared-output coordinator is required.
 - Local validation covers workflow order, page continuation, child failures,
   replay after extraction/save, retained input retries, and PostgreSQL mock writes.
   Production evidence is recorded in the [cutover record](worker-rollout-2026-10-16.md#2026-10-17-simple-worker-cutover).
@@ -58,9 +59,9 @@
 
 ## Other backlog
 
-- [ ] Correct provider event time versus local sync time with a focused fixture
-      regression. Keep existing ownership, deletion, and connection checks;
-      choose the smallest fix for the observed bug.
+- [x] Correct provider event time versus local sync time and stale fetched writes
+      in PR #80. Preserve ownership/deletion/connection checks; cover source
+      contention, continuation, and the data repair with focused fixtures.
 - [ ] Repair checksumless legacy import metadata without replacing retained files.
 - [ ] Remove recording/provider bodies from SQL error diagnostics; retain useful
       operation names and IDs.

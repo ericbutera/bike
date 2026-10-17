@@ -113,5 +113,34 @@ impl StravaProvider for ProviderClient {
 }
 
 pub(super) fn object_key(event: &StravaEvent, resource: &str) -> String {
-    format!("strava/events/{}/{resource}", event.strava_event_id)
+    let prefix = format!("strava/events/{}", event.strava_event_id);
+    match &event.source_version {
+        Some(version) => {
+            let version = version
+                .updated_at
+                .map_or_else(|| "absent".into(), |at| at.timestamp_micros().to_string());
+            format!("{prefix}/source-{version}/{resource}")
+        }
+        None => format!("{prefix}/{resource}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refetch_uses_new_immutable_response_keys_after_the_source_version_changes() {
+        let mut event = super::super::strava_native_unit::fixture::Fixture::new().event;
+        let old_key = object_key(&event, "activity");
+        assert_eq!(old_key, format!("strava/events/{}/activity", event.strava_event_id));
+        event.source_version = Some(Default::default());
+        let absent_key = object_key(&event, "activity");
+        assert_ne!(absent_key, old_key);
+        event.source_version.as_mut().unwrap().updated_at = Some(event.connection_generation);
+        let captured_key = object_key(&event, "activity");
+        assert_ne!(captured_key, absent_key);
+        assert_ne!(captured_key, old_key);
+        assert_eq!(captured_key, object_key(&event, "activity"));
+    }
 }

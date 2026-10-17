@@ -46,11 +46,9 @@ impl Fixture {
             bike_activity_id: Some(self.activity().id),
             connection_generation: self.event.connection_generation,
             event_time: self.event.event_time,
-            applied_hash: None,
-            deleted: false,
-            deleted_at: None,
             updated_at: self.connection.created_at,
             applied_at: self.connection.created_at,
+            ..crate::test_support::strava_activity_state()
         }
     }
 
@@ -86,6 +84,16 @@ impl Fixture {
         event.correlation_id = event.strava_event_id;
         event.strava_activity_id = Some(99133701);
         event.event_time = now.timestamp();
+        event.webhook = Some(crate::strava::StravaWebhookEvent {
+            aspect_type: "delete".into(),
+            event_time: now.timestamp(),
+            object_id: event.activity_id().unwrap(),
+            object_type: "activity".into(),
+            owner_id: event.strava_athlete_id,
+            subscription_id: 1,
+            updates: None,
+            additional_fields: Default::default(),
+        });
         Self {
             customer,
             connection,
@@ -99,22 +107,11 @@ impl Fixture {
 
     pub fn row(&self, status: ActivityStatus) -> strava_events::Model {
         strava_events::Model {
-            id: self.event.strava_event_id.to_string(),
             event_key: "fixture-event".into(),
-            correlation_id: self.event.correlation_id.to_string(),
-            parent_event_id: None,
-            user_id: self.customer.id,
-            customer_id: self.customer.pid,
-            athlete_id: self.connection.athlete_id,
-            activity_id: self.event.strava_activity_id,
-            workflow_id: self.event.workflow_id(),
-            event: serde_json::to_value(&self.event).unwrap(),
             status,
-            mutation: None,
             accepted_at: self.connection.created_at,
-            submitted_at: None,
             next_attempt_at: self.connection.created_at,
-            handoff_error: None,
+            ..crate::test_support::strava_event_record(&self.event)
         }
     }
 
