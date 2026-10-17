@@ -100,6 +100,15 @@ flowchart TD
   canonical event deduplication handles another delivery.
 - The inbox is an existing provider adapter, not a model to reproduce for every
   Bike task. Keep the registered callback aliases and native relay.
+- The Strava connection extractors authenticate once and load the owned
+  connection once. Sync, backfill, and disconnect require that connection;
+  connection GET allows absence while retaining authentication failures.
+- User-requested Strava work accepts the extracted user and connection, validates
+  them, and commits the durable event without reloading either record. Sync and
+  backfill return that connection snapshot. OAuth completion reuses its newly
+  saved connection. Later deletion or a failed read cannot undo acceptance.
+- Connection response formatting is a pure mapping of the available connection
+  snapshot. Reading current state belongs to the connection GET operation.
 
 ## Idempotent effects and activity history
 

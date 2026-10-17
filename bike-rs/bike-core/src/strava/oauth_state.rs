@@ -222,4 +222,4 @@ fn invalid_state() -> WorkflowError {
 }
 
 #[cfg(test)]
-mod strava_oauth_unit;
+mod tests;

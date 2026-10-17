@@ -5,7 +5,7 @@ use dependencies::{object_key, ProviderClient};
 pub use dependencies::{ActivityStorage, StravaProvider};
 mod scan;
 #[cfg(test)]
-pub(crate) mod strava_native_unit;
+pub(crate) mod tests;
 mod types;
 pub use types::*;
 

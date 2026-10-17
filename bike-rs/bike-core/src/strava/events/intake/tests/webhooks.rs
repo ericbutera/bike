@@ -1,5 +1,5 @@
 use super::*;
-use crate::strava::native::{strava_native_unit::fixture::Fixture, ActivityStatus};
+use crate::strava::native::{tests::fixture::Fixture, ActivityStatus};
 use std::{collections::HashMap, sync::Mutex};
 
 struct Store {

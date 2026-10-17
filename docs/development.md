@@ -29,7 +29,8 @@ mise run compose:up
 - `COMPOSE_PROJECT_NAME` defaults to `bike`; preserve the existing project's
   database volume when switching checkouts.
 - `NEXT_PUBLIC_TEMPORAL_UI_URL` configures admin job links; default is localhost.
-- Run `mise run checks:docker test:tasks:unit` for the composed native unit suites.
+- Run `mise run test:rs` for `cargo test --workspace --locked`, with automatic
+  discovery of workspace tests. `mise run checks:docker test:rs` uses the same task.
   Activities and child workflows use fixture-backed mocks; no running database,
   HTTP service, or Temporal server is required.
 - Run `mise exec -- docker compose logs temporal-worker` to inspect correlated logs.

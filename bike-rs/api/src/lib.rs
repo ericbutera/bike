@@ -4,6 +4,7 @@ pub mod activity_reprocessing;
 pub mod app_error;
 pub mod controllers;
 mod database_metrics;
+pub mod extractors;
 pub mod feature_flags_keys;
 pub mod metrics;
 #[cfg(test)]

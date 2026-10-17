@@ -23,10 +23,10 @@ Track active Bike work in `docs/TODO.md`. Work one bounded task at a time and
 deliver its result for review on a feature branch. Preserve historical
 operational evidence unless a task explicitly retires it.
 
-Run only focused tests and lints for the changed area locally. Use CI/CD as the
-primary test and lint gate for full suites, workspace checks, coverage, production
-builds, and E2E testing. Do not repeat those longer CI checks locally during
-iteration. Keep required prek checks active; never bypass or weaken them.
+Run Rust tests with `cargo test --workspace --locked` through the owning mise
+task. Let Cargo discover tests; do not maintain test-name allowlists in tasks or
+CI. Keep coverage, production builds, and E2E checks in their owning CI gates.
+Keep required prek checks active; never bypass or weaken them.
 
 Run local validation, formatting, tests, and builds in Docker through the owning
 mise tasks. `mise run checks:docker <task>` provides the shared checks container.
@@ -145,6 +145,10 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
   checks for observed bugs. Distinguish local, CI, and deployed evidence.
 - Pair bug fixes with small unit tests that reproduce the failure and verify
   the corrected behavior. Reuse existing mocks and fixtures.
+- Use conventional `#[cfg(test)] mod tests` modules, `tests.rs`, or descriptive
+  files inside `tests/`. Do not introduce `_unit.rs` or `_tests.rs` filenames.
+- PR descriptions explain behavior and meaningful validation results. Execution
+  details such as Docker or a local environment do not belong in the description.
 - Backend unit tests use PostgreSQL SeaORM mocks and shared fixtures. Do not
   introduce SQLite databases, schema substitutes, timestamp massaging, or
   compatibility logic to maintain a second persistence implementation for tests.

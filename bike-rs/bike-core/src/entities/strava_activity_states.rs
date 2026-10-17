@@ -186,7 +186,7 @@ impl Model {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::strava::native::strava_native_unit::fixture::Fixture;
+    use crate::strava::native::tests::fixture::Fixture;
     use sea_orm::{DatabaseBackend, MockDatabase};
 
     #[test]

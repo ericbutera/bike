@@ -1,5 +1,5 @@
 use super::*;
-use crate::strava::{events::StravaOperation, native::strava_native_unit::fixture::audit};
+use crate::strava::{events::StravaOperation, native::tests::fixture::audit};
 
 const PREPARE: &str = "Prepare scheduled Strava syncs";
 const VALIDATE: &str = "Validate Strava connection and customer";

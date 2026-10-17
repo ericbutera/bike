@@ -7,11 +7,7 @@ use crate::{
 use sea_orm::{DatabaseTransaction, TransactionTrait};
 
 #[cfg(test)]
-mod strava_native_unit_deletion;
-#[cfg(test)]
-mod strava_native_unit_history;
-#[cfg(test)]
-mod strava_native_unit_retry;
+mod tests;
 
 impl StravaOperations {
     pub async fn persist_activity(&self, input: NormalizedActivity) -> Result<ActivityChange, WorkflowError> {

@@ -1,6 +1,6 @@
-use super::super::strava_native_unit::fixture::Fixture;
 use super::*;
 use crate::entities::strava_activity_states;
+use crate::strava::native::tests::fixture::Fixture;
 use sea_orm::{DatabaseBackend, MockDatabase, MockExecResult, Value};
 use std::collections::BTreeMap;
 

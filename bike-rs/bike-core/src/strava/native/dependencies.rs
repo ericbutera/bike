@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn a_refetch_uses_new_immutable_response_keys_after_the_source_version_changes() {
-        let mut event = super::super::strava_native_unit::fixture::Fixture::new().event;
+        let mut event = super::super::tests::fixture::Fixture::new().event;
         let old_key = object_key(&event, "activity");
         assert_eq!(old_key, format!("strava/events/{}/activity", event.strava_event_id));
         event.source_version = Some(Default::default());

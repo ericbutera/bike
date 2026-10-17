@@ -130,22 +130,27 @@ pub async fn accept_webhook(
 }
 
 #[cfg(test)]
-mod strava_webhook_unit;
+mod tests;
 
-pub async fn request_sync(db: &DatabaseConnection, user_id: i32) -> Result<strava_events::Model, WorkflowError> {
-    accept(db, user_event(db, user_id, StravaOperation::Sync).await?).await
+pub async fn request_sync(
+    db: &DatabaseConnection,
+    user: &users::Model,
+    connection: &strava_connections::Model,
+) -> Result<strava_events::Model, WorkflowError> {
+    accept(db, user_event(user, connection, StravaOperation::Sync)?).await
 }
 
 pub async fn request_backfill(
     db: &DatabaseConnection,
-    user_id: i32,
+    user: &users::Model,
+    connection: &strava_connections::Model,
     after: DateTime<Utc>,
     before: DateTime<Utc>,
 ) -> Result<strava_events::Model, WorkflowError> {
     if before <= after {
         return Err(WorkflowError::bad_request("Backfill must end after it starts"));
     }
-    let mut event = user_event(db, user_id, StravaOperation::Backfill).await?;
+    let mut event = user_event(user, connection, StravaOperation::Backfill)?;
     event.window = Some(super::super::native::ActivityWindow {
         after: after.timestamp() - 1,
         before: Some(before.timestamp()),
@@ -153,26 +158,26 @@ pub async fn request_backfill(
     accept(db, event).await
 }
 
-pub async fn request_disconnect(db: &DatabaseConnection, user_id: i32) -> Result<strava_events::Model, WorkflowError> {
-    let mut event = user_event(db, user_id, StravaOperation::Disconnect).await?;
+pub async fn request_disconnect(
+    db: &DatabaseConnection,
+    user: &users::Model,
+    connection: &strava_connections::Model,
+) -> Result<strava_events::Model, WorkflowError> {
+    let mut event = user_event(user, connection, StravaOperation::Disconnect)?;
     event.revoke_remote = true;
     accept(db, event).await
 }
 
-async fn user_event(
-    db: &DatabaseConnection,
-    user_id: i32,
+fn user_event(
+    user: &users::Model,
+    connection: &strava_connections::Model,
     operation: StravaOperation,
 ) -> Result<StravaEvent, WorkflowError> {
-    let connection = super::super::load_connection(db, user_id)
-        .await?
-        .ok_or_else(|| WorkflowError::not_found("Connect Strava first"))?;
     if matches!(operation, StravaOperation::Sync | StravaOperation::Backfill) {
-        super::super::ensure_connection_scopes_allow_activity_import(&connection)?;
+        super::super::ensure_connection_scopes_allow_activity_import(connection)?;
     }
-    let user = users::Model::find_by_id(db, user_id).await?;
-    let event = StravaEvent::new(&user, &connection, operation);
-    event.validate_connection(&connection)?;
+    let event = StravaEvent::new(user, connection, operation);
+    event.validate_connection(connection)?;
     Ok(event)
 }
 
