@@ -22,6 +22,7 @@ temporalio-sdk = { workspace = true }
 temporalio-common = { workspace = true }
 temporalio-client = { workspace = true }
 bike-core = { path = "../bike-core" }
+integrations = { path = "../integrations" }
 bike-temporal = { path = "../bike-temporal" }
 tokio = { workspace = true }
 tracing = { workspace = true }

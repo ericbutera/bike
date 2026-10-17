@@ -6,7 +6,7 @@ use super::{
     SyncActivities,
 };
 use crate::activities::ScanConnections;
-use bike_core::strava::{
+use integrations::strava::{
     events::StravaEvent,
     native::{ScanPage, ScanRequest},
 };

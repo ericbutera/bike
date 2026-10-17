@@ -26,7 +26,7 @@ pub struct ListOptions {
 impl Entity {
     pub async fn associate_activity(
         db: &impl ConnectionTrait,
-        event: &crate::strava::events::StravaEvent,
+        event: &crate::entities::strava_events::StravaEvent,
         activity_id: i32,
     ) -> Result<(), DbErr> {
         let row = Self::find()

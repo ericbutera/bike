@@ -1,12 +1,12 @@
 use super::options::run;
 use super::{options, UpsertActivity};
 use crate::activities::{AcceptChild, ListActivityPage};
-use bike_core::strava::{events::StravaOperation, native::*};
+use integrations::strava::{events::StravaOperation, native::*};
 use temporalio_sdk::{ChildWorkflowOptions, WorkflowContext, WorkflowResult};
 
 pub(super) enum CollectionStep {
     Completed(CollectionResult),
-    Continue(bike_core::strava::events::StravaEvent),
+    Continue(integrations::strava::events::StravaEvent),
 }
 
 pub(super) async fn upsert_pages<W>(
@@ -67,7 +67,7 @@ pub(super) async fn upsert_pages<W>(
 
 async fn upsert_activity<W>(
     ctx: &mut WorkflowContext<W>,
-    event: &bike_core::strava::events::StravaEvent,
+    event: &integrations::strava::events::StravaEvent,
     id: i64,
 ) -> WorkflowResult<ActivityChange> {
     let child = run(

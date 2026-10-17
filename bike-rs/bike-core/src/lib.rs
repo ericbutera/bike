@@ -33,7 +33,6 @@ pub mod provider_rate_limit;
 pub mod segment_regeneration;
 pub mod segment_support;
 pub mod services;
-pub mod strava;
 mod timestamps;
 pub mod training_data;
 pub mod training_profile;

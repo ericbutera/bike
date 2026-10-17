@@ -1,10 +1,9 @@
 #![cfg(feature = "test-fixtures")]
 
 use bike_core::{
-    entities::{strava_activity_states, strava_events},
-    strava::{
-        events::{SourceVersion, StravaEvent, StravaOperation},
-        native::{ActivityChange, ActivityStatus},
+    entities::{
+        strava_activity_states,
+        strava_events::{self, ActivityChange, ActivityStatus, SourceVersion, StravaEvent, StravaOperation},
     },
     test_support as fixtures,
 };

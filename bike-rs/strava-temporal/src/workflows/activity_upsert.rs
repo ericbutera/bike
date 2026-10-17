@@ -4,8 +4,8 @@ use crate::activities::{
     CompleteActivity, DeleteSource, FetchActivity, FetchStreams, NormalizeActivity, PersistActivity, PublishHeatmap,
     RebuildActivity, RebuildFitness, RebuildSegments,
 };
-use bike_core::strava::native::ActivityStatus;
-use bike_core::strava::{
+use integrations::strava::native::ActivityStatus;
+use integrations::strava::{
     events::StravaEvent,
     native::{ActivityChange, NormalizedActivity},
 };

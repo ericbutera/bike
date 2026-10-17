@@ -84,9 +84,9 @@ impl Entity {
 
     pub async fn native_strava_source(
         db: &impl ConnectionTrait,
-        event: &crate::strava::events::StravaEvent,
+        event: &crate::entities::strava_events::StravaEvent,
         existing_import_id: Option<i32>,
-        object: &crate::strava::objects::ObjectRef,
+        object: &crate::object_store::ObjectRef,
         upload: &crate::activity_import_pipeline::ActivityUploadPayload,
     ) -> Result<Model, DbErr> {
         let active = Self::active_for_strava(db, event.bike_user_id, existing_import_id).await?;
@@ -300,7 +300,7 @@ impl Model {
 impl ActiveModel {
     fn with_strava_source(
         self,
-        object: &crate::strava::objects::ObjectRef,
+        object: &crate::object_store::ObjectRef,
         upload: &crate::activity_import_pipeline::ActivityUploadPayload,
     ) -> Self {
         Self {

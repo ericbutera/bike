@@ -1,4 +1,4 @@
-use bike_core::strava::{
+use integrations::strava::{
     events::{StravaEvent, StravaOperation},
     native::*,
     objects::{checksum, ObjectRef},

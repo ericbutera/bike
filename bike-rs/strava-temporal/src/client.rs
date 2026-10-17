@@ -1,6 +1,6 @@
 //! Native Temporal registration and event handoff.
 use crate::{activities::StravaActivities, workflows::*};
-use bike_core::strava::events::{StravaEvent, StravaOperation};
+use integrations::strava::events::{StravaEvent, StravaOperation};
 use sea_orm::DatabaseConnection;
 use std::time::Duration;
 use temporalio_client::{
@@ -125,7 +125,7 @@ pub async fn start_event(
     config: &TemporalConfig,
     event: StravaEvent,
 ) -> Result<Option<String>, Error> {
-    bike_core::strava::payload::validate_temporal(&event)?;
+    integrations::strava::payload::validate_temporal(&event)?;
     let options = start_options(config, &event);
     let result = match event.operation {
         StravaOperation::Create => client

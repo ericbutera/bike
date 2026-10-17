@@ -1,5 +1,5 @@
 use super::{activity_delete, activity_upsert, logging, options};
-use bike_core::strava::{
+use integrations::strava::{
     events::{SourceVersion, StravaEvent, StravaOperation},
     native::{ActivityChange, ActivityStatus},
 };

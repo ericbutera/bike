@@ -43,6 +43,7 @@ tower-http = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 bike-core = { path = "../bike-core" }
+integrations = { path = "../integrations" }
 bike-temporal = { path = "../bike-temporal" }
 async-trait = "0.1"
 utoipa = { workspace = true }

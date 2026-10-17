@@ -1,7 +1,7 @@
 use super::{fixture::Fixture, logging::Logs, runtime::WorkflowMock};
 use crate::activities::StravaActivities;
 use crate::workflows::*;
-use bike_core::strava::{
+use integrations::strava::{
     events::{StravaEvent, StravaOperation},
     native::*,
 };

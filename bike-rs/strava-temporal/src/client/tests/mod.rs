@@ -66,7 +66,7 @@ fn config() -> TemporalConfig {
 fn row(event: &StravaEvent) -> bike_core::entities::strava_events::Model {
     let mut fixture = Fixture::new(event.operation);
     fixture.event = event.clone();
-    fixture.row(bike_core::strava::native::ActivityStatus::Pending)
+    fixture.row(integrations::strava::native::ActivityStatus::Pending)
 }
 
 #[test]

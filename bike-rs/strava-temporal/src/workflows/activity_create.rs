@@ -1,5 +1,5 @@
 use super::{logging, options, UpsertActivity};
-use bike_core::strava::{events::StravaEvent, native::ActivityChange};
+use integrations::strava::{events::StravaEvent, native::ActivityChange};
 use temporalio_macros::{workflow, workflow_methods};
 use temporalio_sdk::{WorkflowContext, WorkflowResult};
 

@@ -5,6 +5,10 @@
 mod accounts;
 mod strava;
 pub use strava::{strava_activity_state, strava_event_record};
+#[path = "strava/fixture.rs"]
+pub mod strava_fixture;
+pub const STRAVA_REAL_RIDE: &[u8] =
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/strava-real-ride.json"));
 mod activity_history;
 pub use activity_history::{activity_history, activity_history_event};
 mod storage;
@@ -38,8 +42,7 @@ pub use reprocessing::{
 mod persistence;
 pub use persistence::{insert, update};
 mod segments;
-#[cfg(test)]
-pub(crate) mod trace;
+pub mod trace;
 pub use segments::{segment, segment_summary, segment_user_summary};
 
 pub use accounts::{connection, customer, new_connection, new_customer};

@@ -1,6 +1,6 @@
 use super::fixture::Fixture;
 use crate::activities::StravaActivities;
-use bike_core::strava::{
+use integrations::strava::{
     events::StravaOperation,
     logging::{AttemptStatus, ExchangeContext, TemporalIds},
 };
@@ -105,7 +105,7 @@ fn handoff_success_and_failure_share_searchable_customer_remote_and_event_fields
 }
 
 fn stored_event(fixture: &Fixture) -> bike_core::entities::strava_events::Model {
-    use bike_core::strava::native::ActivityStatus;
+    use integrations::strava::native::ActivityStatus;
     let event = &fixture.event;
     bike_core::entities::strava_events::Model {
         id: event.strava_event_id.to_string(),
@@ -166,7 +166,7 @@ fn structured_attempt_and_exchange_logs_include_customer_remote_and_temporal_ids
     assert_eq!(rows[1]["fields"]["status"], 200);
 }
 
-fn assert_event_fields(fields: &serde_json::Value, event: &bike_core::strava::events::StravaEvent) {
+fn assert_event_fields(fields: &serde_json::Value, event: &integrations::strava::events::StravaEvent) {
     assert_eq!(fields["bike_customer_id"], event.bike_customer_id.to_string());
     assert_eq!(fields["bike_user_id"], event.bike_user_id);
     assert_eq!(

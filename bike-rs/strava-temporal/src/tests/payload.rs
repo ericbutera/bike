@@ -1,6 +1,6 @@
 use super::{fixture::Fixture, runtime::WorkflowMock};
 use crate::{activities::checked_output, workflows::UpsertActivity};
-use bike_core::strava::{
+use integrations::strava::{
     events::StravaOperation,
     payload::{validate_temporal, MAX_TEMPORAL_JSON_BYTES},
 };
@@ -23,10 +23,10 @@ fn payload_budget_accepts_the_boundary_and_counts_utf8_and_json_escaping() {
 #[test]
 fn growing_activity_dependencies_are_rejected_before_encoding_an_activity_result() {
     let fixture = Fixture::new(StravaOperation::Upsert);
-    let mut change = fixture.change(bike_core::strava::native::ActivityStatus::Applied);
+    let mut change = fixture.change(integrations::strava::native::ActivityStatus::Applied);
     change.segment_ids = vec![i32::MAX; 30_000];
     assert_eq!(checked_output(change).unwrap_err().status.as_u16(), 413);
-    checked_output(fixture.change(bike_core::strava::native::ActivityStatus::Applied)).unwrap();
+    checked_output(fixture.change(integrations::strava::native::ActivityStatus::Applied)).unwrap();
 }
 
 #[test]

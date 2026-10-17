@@ -8,6 +8,7 @@ workspace = true
 
 [dependencies]
 bike-core = { path = "../bike-core" }
+integrations = { path = "../integrations" }
 sea-orm = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -25,6 +26,7 @@ tonic = { workspace = true }
 prometheus = { workspace = true }
 
 [dev-dependencies]
+integrations = { path = "../integrations", features = ["test-fixtures"] }
 workflow-test-support = { path = "../workflow-test-support" }
 bike-core = { path = "../bike-core", features = ["test-fixtures"] }
 opentelemetry = { workspace = true }

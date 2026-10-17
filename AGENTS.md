@@ -6,6 +6,8 @@
 the backend's business rules and data handling. `bike-ui` is the shared Next.js
 and React Query frontend.
 `bike-rs` owns Strava callbacks, OAuth credentials, and provider workflows.
+`integrations::strava` owns provider operations and request acceptance;
+`bike-core` owns stored models, retained-file parsing, and shared domain rules.
 The Rust API owns map image access and caching; the separate Go
 map worker owns Chromium snapshots over gRPC.
 

@@ -135,7 +135,7 @@ impl ObjectStore {
 
     /// Explicit legacy domain deletion. TTL cleanup must use the coordinated
     /// reference-aware sweeper; eligibility alone cannot call this operation.
-    pub(crate) async fn remove(&self, key: &str) -> Result<(), WorkflowError> {
+    pub async fn remove(&self, key: &str) -> Result<(), WorkflowError> {
         let key = self.key(key)?;
         match self.backend.storage().await?.delete(&key).await {
             Ok(()) | Err(::object_store::Error::NotFound { .. }) => Ok(()),

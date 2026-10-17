@@ -1,6 +1,6 @@
-use crate::{
-    entities::{strava_activity_states, strava_events},
-    strava::{events::StravaEvent, native::ActivityStatus},
+use crate::entities::{
+    strava_activity_states,
+    strava_events::{self, ActivityStatus, StravaEvent},
 };
 
 pub fn strava_activity_state() -> strava_activity_states::Model {

@@ -4,8 +4,8 @@ use crate::activities::{
     CaptureDeletion, CompleteActivity, DeleteActivity as DeleteBikeActivity, DeleteSource, RebuildFitness,
     RebuildSegments,
 };
-use bike_core::strava::native::ActivityStatus;
-use bike_core::strava::{events::StravaEvent, native::ActivityChange};
+use integrations::strava::native::ActivityStatus;
+use integrations::strava::{events::StravaEvent, native::ActivityChange};
 use temporalio_macros::{workflow, workflow_methods};
 use temporalio_sdk::{WorkflowContext, WorkflowResult};
 

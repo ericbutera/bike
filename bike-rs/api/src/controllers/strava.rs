@@ -14,7 +14,7 @@ use bike_core::integration_events_service::{
     self as integration_events, NewIntegrationEvent, INTEGRATION_LEVEL_ERROR, INTEGRATION_LEVEL_INFO,
     INTEGRATION_PROVIDER_STRAVA,
 };
-use bike_core::strava;
+use integrations::strava;
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
 use std::sync::Arc;
@@ -58,7 +58,7 @@ pub struct StravaConnectionResponse {
     pub last_sync_failed_count: i32,
 }
 
-pub use bike_core::strava::oauth_state::AuthorizationCallback as StravaCallbackQuery;
+pub use integrations::strava::oauth_state::AuthorizationCallback as StravaCallbackQuery;
 
 pub fn routes() -> Router<Arc<AppStorage>> {
     Router::new()

@@ -4,7 +4,7 @@ use super::{
     runtime::WorkflowMock,
 };
 use crate::{activities::StravaActivities, workflows::*};
-use bike_core::strava::{events::StravaOperation, native::*};
+use integrations::strava::{events::StravaOperation, native::*};
 use temporalio_workflow::common::WorkflowDefinition;
 
 #[test]
@@ -32,7 +32,7 @@ fn server_history_suggestion_preserves_unprocessed_ids_inside_a_populated_page()
     workflow.suggest_continue_as_new();
     let mut workflow = workflow.restart::<SyncActivities>(fixture.event.clone());
     workflow.complete_child(seq, &change);
-    fixture.event = workflow.continued_input::<bike_core::strava::events::StravaEvent>();
+    fixture.event = workflow.continued_input::<integrations::strava::events::StravaEvent>();
     let progress = fixture.event.progress.as_ref().unwrap();
     assert_eq!(progress.imported, 1);
     assert_eq!(progress.pending_page.as_ref().unwrap().activity_ids, vec![ids[1]]);
@@ -81,7 +81,7 @@ fn pre_patch_history_finishes_the_populated_page_before_continuing() {
         change.event = event;
         workflow.complete_child(seq, &change);
     }
-    let continued = workflow.continued_input::<bike_core::strava::events::StravaEvent>();
+    let continued = workflow.continued_input::<integrations::strava::events::StravaEvent>();
     let progress = continued.progress.unwrap();
     assert_eq!(progress.imported, 2);
     assert_eq!(progress.next_page, 2);
@@ -106,7 +106,7 @@ fn large_collection(operation: StravaOperation) {
             collection_page(&mut workflow, &fixture, &input, page, latest);
         }
         if first_page < 51 {
-            let continued = workflow.continued_input::<bike_core::strava::events::StravaEvent>();
+            let continued = workflow.continued_input::<integrations::strava::events::StravaEvent>();
             let progress = continued.progress.as_ref().unwrap();
             assert_eq!(progress.next_page, first_page + 25);
             assert_eq!(progress.imported, (first_page + 24) * 50);
@@ -197,7 +197,7 @@ fn server_history_suggestion_continues_before_the_page_cap() {
             latest_started_at: None,
         },
     );
-    let continued = workflow.continued_input::<bike_core::strava::events::StravaEvent>();
+    let continued = workflow.continued_input::<integrations::strava::events::StravaEvent>();
     assert_eq!(continued.progress.unwrap().next_page, 2);
 }
 

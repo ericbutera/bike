@@ -1,6 +1,6 @@
 //! Provider assertions on the neutral SDK workflow harness.
 use bike_core::platform::temporal as policy;
-use bike_core::strava::events::StravaEvent;
+use integrations::strava::events::StravaEvent;
 use std::time::Duration;
 use temporalio_common::protos::coresdk::workflow_commands::{
     workflow_command, StartChildWorkflowExecution, WorkflowCommand,

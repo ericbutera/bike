@@ -168,6 +168,7 @@ dependencies = [
  "flate2",
  "hex",
  "hmac",
+ "integrations",
  "log",
  "once_cell",
  "opentelemetry",
@@ -614,7 +615,6 @@ dependencies = [
  "flate2",
  "hex",
  "hmac",
- "http-body-util",
  "jsonwebtoken",
  "log",
  "lru 0.12.5",
@@ -631,13 +631,11 @@ dependencies = [
  "prometheus",
  "prost",
  "reqwest 0.12.28",
- "reqwest-middleware",
  "roxmltree",
  "sea-orm",
  "serde",
  "serde_json",
  "sha2",
- "strava-sdk",
  "tempfile",
  "temporalio-client",
  "temporalio-common",
@@ -2431,6 +2429,41 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "integrations"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum 0.7.9",
+ "base64 0.22.1",
+ "bike-core",
+ "chrono",
+ "dotenvy",
+ "hex",
+ "hmac",
+ "http-body-util",
+ "object_store",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "reqwest 0.12.28",
+ "reqwest-middleware",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "sha2",
+ "strava-sdk",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "url",
+ "utoipa",
+ "uuid",
 ]
 
 [[package]]
@@ -5411,6 +5444,7 @@ dependencies = [
  "bike-core",
  "chrono",
  "futures",
+ "integrations",
  "opentelemetry",
  "opentelemetry_sdk",
  "prometheus",
@@ -7379,6 +7413,7 @@ dependencies = [
  "axum 0.7.9",
  "bike-core",
  "bike-temporal",
+ "integrations",
  "prometheus",
  "strava-temporal",
  "temporalio-client",

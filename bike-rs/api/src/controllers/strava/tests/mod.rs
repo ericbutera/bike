@@ -6,11 +6,11 @@ use axum::{
 use bike_core::{
     auth::entities::oauth_states,
     entities::{integration_events as audit, strava_events},
-    strava::{
-        events::{StravaEvent, StravaOperation},
-        oauth_state::*,
-    },
     workflow_error::WorkflowError,
+};
+use integrations::strava::{
+    events::{StravaEvent, StravaOperation},
+    oauth_state::*,
 };
 use sea_orm::{DatabaseBackend, MockDatabase, MockExecResult};
 use serde_json::{json, Value};

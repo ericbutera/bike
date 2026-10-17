@@ -75,11 +75,11 @@ pub(crate) fn apply_fields(
 impl Model {
     pub async fn save_parsed_strava(
         db: &impl ConnectionTrait,
-        event: &crate::strava::events::StravaEvent,
+        event: &crate::entities::strava_events::StravaEvent,
         import: &crate::entities::activity_imports::Model,
         parsed: &ParsedActivityData,
         profile: &TrainingProfile,
-        summary: &crate::strava::provider_payload::StravaActivitySummary,
+        summary: &crate::activity_parser::strava::StravaActivitySummary,
     ) -> Result<Self, WorkflowError> {
         let existing = Self::strava_activity(db, event.bike_user_id, event.activity_id()?).await?;
         let update = existing.is_some();
@@ -107,7 +107,7 @@ fn build_strava_save_data(
     parsed: &ParsedActivityData,
     filename: &str,
     profile: &TrainingProfile,
-    summary: &crate::strava::provider_payload::StravaActivitySummary,
+    summary: &crate::activity_parser::strava::StravaActivitySummary,
 ) -> Result<ActivitySaveData, WorkflowError> {
     let mut data = build_save_data(parsed, filename, profile)?;
     data.derived_data_json = data.derived_data_json.with_source_metadata(summary.source_metadata());
@@ -193,9 +193,9 @@ mod tests {
 
     #[test]
     fn summary_storage_preserves_gear_and_description_and_excludes_non_cycling_training() {
-        use crate::strava::provider_payload::{parse_strava_provider_payload, StoredStravaProviderPayload};
+        use crate::activity_parser::strava::{parse_strava_provider_payload, StoredStravaProviderPayload};
         let mut payload: StoredStravaProviderPayload =
-            serde_json::from_slice(crate::strava::fixtures::REAL_RIDE).unwrap();
+            serde_json::from_slice(crate::test_support::STRAVA_REAL_RIDE).unwrap();
         payload
             .activity
             .additional_fields

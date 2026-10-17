@@ -1,8 +1,8 @@
 use super::{fixture::Fixture, runtime::WorkflowMock};
 use crate::activities::StravaActivities;
 use crate::workflows::{DeleteActivity, DisconnectStrava};
-use bike_core::strava::native::ActivityStatus;
-use bike_core::strava::{
+use integrations::strava::native::ActivityStatus;
+use integrations::strava::{
     events::{StravaEvent, StravaOperation},
     native::ChildEvent,
 };

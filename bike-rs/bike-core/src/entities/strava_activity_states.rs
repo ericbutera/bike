@@ -1,4 +1,4 @@
-use crate::strava::events::{SourceVersion, StravaEvent};
+use crate::entities::strava_events::{SourceVersion, StravaEvent};
 use sea_orm::entity::prelude::*;
 use sea_orm::{sea_query::OnConflict, ConnectionTrait, Set};
 
@@ -186,7 +186,7 @@ impl Model {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::strava::native::tests::fixture::Fixture;
+    use crate::test_support::strava_fixture::Fixture;
     use sea_orm::{DatabaseBackend, MockDatabase};
 
     #[test]

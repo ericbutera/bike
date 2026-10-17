@@ -1,5 +1,5 @@
 use super::*;
-use crate::{strava::native::tests::fixture::Fixture, test_support as fixtures};
+use crate::{test_support as fixtures, test_support::strava_fixture::Fixture};
 use sea_orm::{DatabaseBackend, MockDatabase, MockExecResult, TransactionTrait};
 
 #[test]

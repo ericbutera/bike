@@ -1,8 +1,8 @@
 use super::{fixture::Fixture, logging::Logs, runtime::WorkflowMock};
 use crate::activities::StravaActivities;
 use crate::workflows::*;
-use bike_core::strava::native::ActivityStatus;
-use bike_core::strava::{events::StravaOperation, native::ActivityChange};
+use integrations::strava::native::ActivityStatus;
+use integrations::strava::{events::StravaOperation, native::ActivityChange};
 use temporalio_workflow::common::WorkflowDefinition;
 
 #[test]
@@ -154,7 +154,7 @@ fn busy_source_continues_with_original_input_before_history_grows_unbounded() {
                 }
                 workflow.activate(Variant::FireTimer(FireTimer { seq: timer.seq }));
             }
-            let continued = workflow.continued_input::<bike_core::strava::events::StravaEvent>();
+            let continued = workflow.continued_input::<integrations::strava::events::StravaEvent>();
             assert_eq!(
                 serde_json::to_value(&continued).unwrap(),
                 serde_json::to_value(&fixture.event).unwrap()

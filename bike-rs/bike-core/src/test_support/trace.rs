@@ -4,19 +4,19 @@ use std::future::Future;
 use tracing::{instrument::WithSubscriber, Instrument};
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
-pub(crate) struct CapturedTrace {
+pub struct CapturedTrace {
     provider: SdkTracerProvider,
     exporter: InMemorySpanExporter,
 }
 
 impl CapturedTrace {
-    pub(crate) fn spans(&self) -> Vec<SpanData> {
+    pub fn spans(&self) -> Vec<SpanData> {
         self.provider.force_flush().unwrap();
         self.exporter.get_finished_spans().unwrap()
     }
 }
 
-pub(crate) async fn capture(future: impl Future<Output = ()>) -> CapturedTrace {
+pub async fn capture(future: impl Future<Output = ()>) -> CapturedTrace {
     let exporter = InMemorySpanExporter::default();
     let provider = SdkTracerProvider::builder()
         .with_span_processor(crate::observability::database_spans::DatabaseSpanProcessor::new(
@@ -47,7 +47,7 @@ pub(crate) async fn capture(future: impl Future<Output = ()>) -> CapturedTrace {
     CapturedTrace { provider, exporter }
 }
 
-pub(crate) fn stage(trace: &CapturedTrace, name: &str) -> SpanData {
+pub fn stage(trace: &CapturedTrace, name: &str) -> SpanData {
     let spans = trace.spans();
     let request = spans.iter().find(|span| span.name == "request").unwrap();
     let stage = spans.iter().find(|span| span.name == name).unwrap();
@@ -74,7 +74,7 @@ pub(crate) fn stage(trace: &CapturedTrace, name: &str) -> SpanData {
     stage.clone()
 }
 
-pub(crate) fn attribute<'a>(span: &'a SpanData, key: &str) -> &'a opentelemetry::Value {
+pub fn attribute<'a>(span: &'a SpanData, key: &str) -> &'a opentelemetry::Value {
     &span
         .attributes
         .iter()

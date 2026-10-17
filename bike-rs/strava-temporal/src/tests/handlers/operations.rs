@@ -4,7 +4,7 @@ use bike_core::entities::{activities, integration_events, strava_activity_states
 use sea_orm::{MockExecResult, Value};
 use std::collections::BTreeMap;
 
-use bike_core::strava::test_fixtures as customer_fixture;
+use integrations::strava::test_fixtures as customer_fixture;
 
 fn connection_mock() -> MockDatabase {
     MockDatabase::new(DatabaseBackend::Postgres)

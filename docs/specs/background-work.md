@@ -103,6 +103,9 @@ flowchart TD
 - The Strava connection extractors authenticate once and load the owned
   connection once. Sync, backfill, and disconnect require that connection;
   connection GET allows absence while retaining authentication failures.
+- `integrations::strava` owns provider calls, OAuth, and request acceptance.
+  Core owns stored models, their event contracts, retained activity-file parsing,
+  and shared activity persistence; it does not depend on the integrations crate.
 - User-requested Strava work accepts the extracted user and connection, validates
   them, and commits the durable event without reloading either record. Sync and
   backfill return that connection snapshot. OAuth completion reuses its newly
@@ -261,7 +264,7 @@ flowchart TD
 - Activity `create` / `update` / `delete` start dedicated native workflows.
   Athlete `update` with `authorized=false` disconnects without remote revoke.
   Other combinations and unconnected athletes are acknowledged and ignored.
-  [Typed intake](../../bike-rs/bike-core/src/strava/events/intake.rs) and
+  [Typed intake](../../bike-rs/integrations/src/strava/events/intake.rs) and
   [client registration](../../bike-rs/strava-temporal/src/client.rs) own mapping;
   there is no generic Strava processor.
 - Retain all activity summaries, including manual entries and non-cycling sports,
@@ -488,7 +491,7 @@ flowchart TD
 | `strava_scan_connections`                                                                                                            | ScanRequest → ScanPage (up to 20 customer sync events)                       |
 
 - Typed domain values live in
-  [`strava/native/types.rs`](../../bike-rs/bike-core/src/strava/native/types.rs).
+  [the stored event contract](../../bike-rs/bike-core/src/entities/strava_events/contracts.rs).
   The table describes the existing provider Activity sequence. Changes must
   preserve retained-history compatibility; reuse domain operations without
   introducing a second execution accounting system.

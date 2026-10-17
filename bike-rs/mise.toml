@@ -106,7 +106,7 @@ run = ["mise install jq", "mise exec jq -- bash ../scripts/coverage-rust-report.
 
 [tasks.fmt]
 description = "Format the Rust workspace"
-run = "cargo fmt --package bike-core --package api --package worker --package migration --package strava-temporal --package bike-temporal --package workflow-test-support"
+run = "cargo fmt"
 
 [tasks."test:heatmaps:postgres"]
 description = "Run heatmap regressions against a disposable PostgreSQL database"
@@ -117,9 +117,7 @@ cargo test -p bike-core --test heatmaps_postgres -- --ignored
 
 [tasks."fmt:check"]
 description = "Check Rust formatting without writing changes"
-run = [
-  "cargo fmt --package bike-core --package api --package worker --package migration --package strava-temporal --package bike-temporal --package workflow-test-support --check",
-]
+run = "cargo fmt --check"
 
 [tasks.lint]
 description = "Run Rust Clippy checks"
@@ -166,5 +164,5 @@ if [ "${usage_cleanup:-false}" = "true" ]; then set -- "$@" --cleanup; fi
 if [ "${usage_withhold_unrecovered:-false}" = "true" ]; then set -- "$@" --withhold-unrecovered; fi
 if [ "${usage_refresh_recording:-false}" = "true" ]; then set -- "$@" --refresh-recording; fi
 if [ -n "${usage_register_manifest:-}" ]; then set -- "$@" --register-manifest "$usage_register_manifest"; fi
-cargo run -p bike-core --bin recover-generated-imports -- "$@"
+cargo run -p integrations --bin recover-generated-imports -- "$@"
 '''

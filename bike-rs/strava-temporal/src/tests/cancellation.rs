@@ -1,6 +1,6 @@
 use super::{collection, fixture::Fixture, runtime::WorkflowMock};
 use crate::{activities::StravaActivities, workflows::*};
-use bike_core::strava::{events::StravaOperation, native::*};
+use integrations::strava::{events::StravaOperation, native::*};
 use temporalio_common::protos::coresdk::workflow_commands::workflow_command;
 use temporalio_workflow::common::WorkflowDefinition;
 

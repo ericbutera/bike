@@ -1,12 +1,9 @@
 //! Each named Temporal activity calls one provider or Bike domain operation.
-use bike_core::{
-    platform::temporal as policy,
-    strava::{
-        events::StravaEvent,
-        logging::{AttemptStatus, ExchangeContext, TemporalIds},
-        native::*,
-    },
-    workflow_error::WorkflowError,
+use bike_core::{platform::temporal as policy, workflow_error::WorkflowError};
+use integrations::strava::{
+    events::StravaEvent,
+    logging::{AttemptStatus, ExchangeContext, TemporalIds},
+    native::*,
 };
 use std::{future::Future, sync::Arc};
 use temporalio_common::error::ApplicationFailure;
@@ -267,7 +264,7 @@ fn validate_execution(
     workflow_id: Option<&str>,
 ) -> Result<(), ActivityError> {
     use crate::workflows::*;
-    use bike_core::strava::events::StravaOperation;
+    use integrations::strava::events::StravaOperation;
     use temporalio_workflow::common::WorkflowDefinition;
     if workflow_type == Some(ReconcileActivity::run.name()) {
         let source_operation = matches!(
@@ -311,7 +308,7 @@ fn require_workflow_id(matches: bool) -> Result<(), ActivityError> {
 }
 
 pub(crate) fn checked_output<T: serde::Serialize>(output: T) -> Result<T, WorkflowError> {
-    bike_core::strava::payload::validate_temporal(&output)?;
+    integrations::strava::payload::validate_temporal(&output)?;
     Ok(output)
 }
 
@@ -340,7 +337,7 @@ mod tests {
     #[test]
     fn source_execution_requires_the_exact_owner_generation_and_remote_object() {
         use temporalio_workflow::common::WorkflowDefinition;
-        let fixture = crate::tests::fixture::Fixture::new(bike_core::strava::events::StravaOperation::Upsert);
+        let fixture = crate::tests::fixture::Fixture::new(integrations::strava::events::StravaOperation::Upsert);
         let workflow_type = Some(crate::workflows::ReconcileActivity::run.name());
         let workflow_id = fixture.event.source_workflow_id().unwrap();
         // A stored mutation from old history can omit its snapshot and still

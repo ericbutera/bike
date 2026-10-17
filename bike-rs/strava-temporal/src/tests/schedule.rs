@@ -1,7 +1,7 @@
 use super::{fixture::Fixture, logging::Logs, runtime::WorkflowMock};
 use crate::activities::StravaActivities;
 use crate::workflows::{ScheduledSync, SyncActivities};
-use bike_core::strava::{events::StravaOperation, native::*};
+use integrations::strava::{events::StravaOperation, native::*};
 use temporalio_workflow::common::WorkflowDefinition;
 
 #[test]
@@ -226,7 +226,11 @@ fn three_scan_pages_await_all_customers_and_accumulate_start_and_execution_failu
     }
 }
 
-fn customer_event(fixture: &Fixture, index: i32, correlation_id: uuid::Uuid) -> bike_core::strava::events::StravaEvent {
+fn customer_event(
+    fixture: &Fixture,
+    index: i32,
+    correlation_id: uuid::Uuid,
+) -> integrations::strava::events::StravaEvent {
     let mut event = fixture.event.clone();
     event.bike_user_id = index + 1;
     event.connection_id = index + 1;

@@ -4,7 +4,7 @@
 use super::{activities, strava_activity_states};
 use crate::{
     bike_tasks::{ImportExecution, ImportTarget},
-    strava::native::ActivityChange,
+    entities::strava_events::ActivityChange,
 };
 use sea_orm::{entity::prelude::*, sea_query::OnConflict, DatabaseTransaction, QueryOrder, QuerySelect, Set};
 #[cfg(test)]

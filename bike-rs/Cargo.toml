@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "bike-core",
+  "integrations",
   "api",
   "worker",
   "migration",

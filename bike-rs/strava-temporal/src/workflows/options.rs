@@ -1,6 +1,6 @@
 use super::logging::ChildLog;
 use bike_core::platform::temporal as policy;
-use bike_core::strava::events::StravaEvent;
+use integrations::strava::events::StravaEvent;
 use temporalio_common::data_converters::TemporalDeserializable;
 use temporalio_common::error::ActivityExecutionError;
 use temporalio_sdk::{
@@ -134,7 +134,7 @@ impl<'a, W> CommitBoundary<'a, W> {
 }
 
 pub(super) fn validate_input<W, T: serde::Serialize>(ctx: &WorkflowContext<W>, input: &T) -> WorkflowResult<()> {
-    match bike_core::strava::payload::validate_temporal(input) {
+    match integrations::strava::payload::validate_temporal(input) {
         Err(error) if ctx.patched("strava-payload-budget-v1") => Err(failure(error.to_string())),
         _ => Ok(()),
     }
@@ -161,7 +161,7 @@ pub(super) fn failure(message: impl Into<String>) -> WorkflowTermination {
     temporalio_common::error::ApplicationFailure::non_retryable(std::io::Error::other(message.into())).into()
 }
 
-pub(super) fn upsert_child(event: &bike_core::strava::events::StravaEvent) -> ChildWorkflowOptions {
+pub(super) fn upsert_child(event: &integrations::strava::events::StravaEvent) -> ChildWorkflowOptions {
     ChildWorkflowOptions::builder()
         .workflow_id(format!("{}:upsert", event.workflow_id()))
         .search_attributes(crate::client::search_attributes(event))

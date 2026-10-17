@@ -227,8 +227,8 @@ Paths are relative to `bike-rs`. Counts exclude owning entity implementations.
 | bike-core/src/segment_support.rs                          | 0 (complete) |
 | bike-core/src/services/reports.rs                         | 0 (complete) |
 | bike-core/src/services/training_goals.rs                  | 0 (complete) |
-| bike-core/src/strava/connection.rs                        | 0 (complete) |
-| bike-core/src/strava/native/persistence.rs                | 0 (complete) |
+| integrations/src/strava/connection.rs                     | 0 (complete) |
+| integrations/src/strava/native/persistence.rs             | 0 (complete) |
 | bike-core/src/training_profile.rs                         | 0 (complete) |
 | bike-core/src/xc_goal_backfill.rs                         | 0 (complete) |
 | worker/src/tasks/processors/process_activity_import.rs    | 0 (complete) |
@@ -301,7 +301,7 @@ Paths are relative to `bike-rs`. Counts exclude owning entity implementations.
 | ------------------------------------------- | -----------: |
 | api/src/controllers/user_preferences.rs     |            1 |
 | api/src/controllers/segments.rs             |            2 |
-| bike-core/src/strava/connection.rs          |            1 |
+| integrations/src/strava/connection.rs       |            1 |
 | bike-core/src/analytics.rs                  |            6 |
 | bike-core/src/activity_import_execution.rs  |            1 |
 | bike-core/src/archive_import.rs             |            4 |

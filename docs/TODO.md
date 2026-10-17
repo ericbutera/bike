@@ -118,6 +118,7 @@
 ## Strava
 
 - [x] Extract Strava connections once before accepting requests; verify authentication, connection reuse, and persistence failures with PostgreSQL mocks.
+- [x] Move Strava provider, OAuth, and request operations into `integrations::strava`; keep stored models and retained-file parsing in core.
 - [x] Define the new Temporal design and correlation fields in [the spec](specs/background-work.md#strava-protocol-and-workflows).
 - [x] Delete gateway code and designs; preserve registered external URLs as native handler aliases.
 - [x] Verify the registered URL and TLS live; preserve native callback aliases.

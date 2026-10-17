@@ -1,7 +1,7 @@
 use super::options::run;
 use super::{logging, options, DeleteActivity};
 use crate::activities::{AcceptChild, BeginDisconnect, RemoveConnection, RevokeConnection};
-use bike_core::strava::{
+use integrations::strava::{
     events::{StravaEvent, StravaOperation},
     native::ChildEvent,
 };
