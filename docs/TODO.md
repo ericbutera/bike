@@ -98,6 +98,19 @@
   and CI recovered with retained volumes intact. Reclaiming old Rust executables
   on the separate CI-cache disk does not establish the root-disk cause. Preserve
   the operator's reduced CI resource limits during further validation.
+- **CI reliability:** formatting CI 487 failed because the ORM tracing test
+  expected one sample but recorded two. The sampler intentionally retains extra
+  slow queries at 100 ms; that wiring test uses wall-clock durations under CPU
+  limits. [PR #74](https://github.com/ericbutera/bike/pull/74) uses deterministic
+  span fixtures for exact fast/slow counts and the inclusive threshold, and keeps
+  ORM wiring assertions valid under scheduling delays. All eight focused tracing
+  tests and required Rust hooks pass locally. Keep open for review; production
+  sampling caps and CI resource limits are unchanged.
+- **Formatting integration:** PR #68 merged as `e401699a` with the user's
+  explicit one-time coverage exception. CI 489 passed tests/lint/PostgreSQL
+  checks, but counted rewrapped existing code below 80%: API 54.3%, worker 25%,
+  core 55.54%. Images/E2E were skipped; this is not a new deployment verification.
+  The normal threshold remains unchanged. PR #74 owns the tracing test correction.
 - **Release readiness, P1:** CI 486 reported deployment success before the API
   rollout finished; an initial public health request returned 503 before recovery.
   Review API rollout availability, and make the owning release gate wait for all
@@ -132,7 +145,7 @@
 | ----- | ------ | -------- | ------------------------------------------------------- | --------------- |
 | 1     | R01    | P1       | Atomic fitness invalidation                             | Ready to verify |
 | 2     | R05    | P1       | Stable command identity through UI/API retries          | Pending         |
-| 3     | R03    | P1       | Strava duplicate outcomes and removed segment scope     | Pending         |
+| 3     | R03    | P1       | Strava duplicate outcomes and removed segment scope     | Ready to verify |
 | 4     | R02    | P1       | Source ordering and reconciliation                      | Pending         |
 | 5     | R04    | P1       | Cancellation boundary across provider parents/children  | Pending         |
 | 6     | R06    | P1       | Bounded webhook acceptance                              | Pending         |
@@ -164,6 +177,14 @@
   dependencies with the domain mutation, or use a justified broader rebuild.
   Mock a first lookup miss followed by another commit, and `{A,B}` → `{B,C}`
   followed by lost completion: retain the original outcome and refresh A/B/C.
+  Implemented the locked outcome recheck before classification. Existing Strava
+  mutation results now capture old memberships under the activity lock, including
+  unchanged sources; rematching unions them with current dependencies. No new
+  table, stage marker, or execution version. All 56 Strava domain tests pass in
+  Docker, including source-scope persistence and lost-rematch-completion scope.
+  The query-order contract and two source-update scope cases failed against the
+  original implementation. PostgreSQL isolation and live lost-reply drills remain
+  P01/P02; other legacy producer conversions remain R07.
 - **R02 — source ordering** (F3; U18–U21/P03).
   Separate provider event time from Bike sync/backfill/receive time. Route
   owned source reconciliation, including fetching/applying, through per-source
@@ -188,6 +209,11 @@
   new migrations. Mock native effects without pipeline writes and legacy adapters
   with their required recording; preserve historical migrations.
 - **R08 — debounce and domain outcomes** (U10/U15/U16).
+  Live inspection found ten idle output coordinators remaining `Running` after
+  successful publication, with no pending Activities, Workflow Tasks, timers, or
+  failures. Finish a drained coordinator and let native Signal-With-Start create
+  the next run for its stable resource key. Keep completion/reuse atomic across
+  a racing notification; mock drain, completion/signal race, and a later new run.
   Return actual publication outcomes from domain operations instead of inferring
   them with surrounding reads. Remove unused `published` state and unsupported
   blocked/superseded behavior; retain resource, merged pending work, priority,
@@ -243,14 +269,14 @@ behavior, not a new table design. Partial coverage in the reprocess review does
 not close other paths; 68 Bike/168 focused Strava mock passes at review were not
 database race or live recovery proof.
 
-| ID  | Finding / current scope                                                                                                                                                                 | Remaining correction and acceptance                                                                                                                    |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| F1  | [Strava persistence](../bike-rs/bike-core/src/strava/native/persistence.rs) rechecks stored outcome after content/supersession branches. Open in provider path.                         | Recheck under lock first; preserve original `Applied` outcome on overlapping retry. U07/U08/P01; no new ledger.                                        |
-| F2  | [Rematching](../bike-rs/bike-core/src/activity_lifecycle.rs) can lose removed segment scope on retry. Reprocess now retains minimal audit scope; other rematch paths remain open.       | Preserve/reconstruct old/new dependencies with a plan/version/scope or broader rebuild. U09/P02.                                                       |
-| F3  | [Sync event construction](../bike-rs/bike-core/src/strava/events.rs) mixes Bike time with [provider state ordering](../bike-rs/bike-core/src/entities/strava_activity_states.rs). Open. | Separate clocks/provenance; serialize/coalesce remote-object updates; reconcile equal-second and out-of-order fetches. U18–U21/P03.                    |
-| F4  | Original cancellation fixture suppressed handoffs after a late source commit without a safe cutoff. Reprocess now tests before-apply vs too-late cancellation.                          | Verify other converted paths accept cancellation only before apply/handoff or at safe batch boundaries; stop owned work after acceptance. U12–U14/P04. |
-| F5  | Original attempt wrapper lacked concrete source/API/worker adapters. The concrete review slice replaces it.                                                                             | Finish producer-wide cutover, deployment, recovery, and user acceptance before declaring conversion complete.                                          |
-| F6  | [Strava upsert](../bike-rs/strava-temporal/src/workflows/activity_upsert.rs) rebuilds per item. Open.                                                                                   | Neutral asynchronous shared outputs, coalescing/priority, source-only collection completion, and compatible history evolution. U15–U17/U22/P03.        |
+| ID  | Finding / current scope                                                                                                                                                                      | Remaining correction and acceptance                                                                                                                    |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| F1  | [Strava persistence](../bike-rs/bike-core/src/strava/native/persistence.rs) now rechecks stored outcome immediately after the existing lock. R03 implementation ready for verification.      | Preserve original `Applied` outcome on overlapping retry. U07/U08 mocks pass; P01 remains. No new ledger.                                              |
+| F2  | [Rematching](../bike-rs/bike-core/src/activity_lifecycle.rs): native reprocess retains audit scope; Strava now retains source mutation scope before rematching. Legacy producers remain R07. | Union captured and current dependencies so removed segments survive retry. U09 units pass; P02 remains.                                                |
+| F3  | [Sync event construction](../bike-rs/bike-core/src/strava/events.rs) mixes Bike time with [provider state ordering](../bike-rs/bike-core/src/entities/strava_activity_states.rs). Open.      | Separate clocks/provenance; serialize/coalesce remote-object updates; reconcile equal-second and out-of-order fetches. U18–U21/P03.                    |
+| F4  | Original cancellation fixture suppressed handoffs after a late source commit without a safe cutoff. Reprocess now tests before-apply vs too-late cancellation.                               | Verify other converted paths accept cancellation only before apply/handoff or at safe batch boundaries; stop owned work after acceptance. U12–U14/P04. |
+| F5  | Original attempt wrapper lacked concrete source/API/worker adapters. The concrete review slice replaces it.                                                                                  | Finish producer-wide cutover, deployment, recovery, and user acceptance before declaring conversion complete.                                          |
+| F6  | [Strava upsert](../bike-rs/strava-temporal/src/workflows/activity_upsert.rs) rebuilds per item. Open.                                                                                        | Neutral asynchronous shared outputs, coalescing/priority, source-only collection completion, and compatible history evolution. U15–U17/U22/P03.        |
 
 ### Coordination, storage, and archive follow-ups
 

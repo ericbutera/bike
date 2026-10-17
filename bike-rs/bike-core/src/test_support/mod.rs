@@ -17,7 +17,7 @@ mod analytics;
 mod defaults;
 pub use analytics::{
     activity_analytics, activity_id_row, analytics_user_state, fitness_day, new_fitness_day, new_segment_effort,
-    segment_effort,
+    segment_effort, segment_id_rows,
 };
 pub use defaults::user_preferences;
 pub use defaults::{background_task, new_background_task, new_feature_flag, new_user_preferences, task_attempt};
