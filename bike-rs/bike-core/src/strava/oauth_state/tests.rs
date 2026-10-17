@@ -45,7 +45,7 @@ impl AuthorizationExchange for Exchange {
         if self.fail {
             return Err(WorkflowError::internal("Fixture exchange failed"));
         }
-        Ok(crate::strava::native::strava_native_unit::fixture::Fixture::new().connection)
+        Ok(crate::strava::native::tests::fixture::Fixture::new().connection)
     }
 }
 

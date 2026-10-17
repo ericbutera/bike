@@ -1,4 +1,4 @@
-use crate::strava::events::StravaEvent;
+use crate::strava::events::{SourceVersion, StravaEvent};
 use sea_orm::entity::prelude::*;
 use sea_orm::{sea_query::OnConflict, ConnectionTrait, Set};
 
@@ -17,7 +17,7 @@ pub struct Model {
     /// Historical Bike PK; retain it when the activity is deleted.
     pub bike_activity_id: Option<i32>,
     pub connection_generation: DateTimeUtc,
-    /// Last accepted event timestamp in seconds; deletion wins an equal-time tie.
+    /// Greatest accepted provider timestamp, or zero when none is known.
     pub event_time: i64,
     pub applied_hash: Option<String>,
     pub deleted: bool,
@@ -33,6 +33,23 @@ pub struct Model {
 pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 impl Model {
+    pub async fn capture_version(db: &impl ConnectionTrait, event: &StravaEvent) -> Result<SourceVersion, DbErr> {
+        Ok(SourceVersion {
+            updated_at: Entity::find_by_id(Self::key_for_event(event)?)
+                .one(db)
+                .await?
+                .map(|state| state.updated_at),
+        })
+    }
+
+    pub async fn matches_version(db: &impl ConnectionTrait, event: &StravaEvent) -> Result<bool, DbErr> {
+        let Some(expected) = &event.source_version else {
+            // Retained workflow histories predate source snapshots.
+            return Ok(true);
+        };
+        Ok(*expected == Self::capture_version(db, event).await?)
+    }
+
     pub async fn matches_content(db: &impl ConnectionTrait, event: &StravaEvent, hash: &str) -> Result<bool, DbErr> {
         Self::matches_by_id(db, event, |state| state.matches_event_content(event, hash)).await
     }
@@ -70,7 +87,11 @@ impl Model {
     }
 
     fn is_newer_than(&self, event: &StravaEvent, deletion: bool) -> bool {
-        self.event_time > event.event_time || self.is_deletion_at(event.event_time, deletion)
+        let Some(provider_time) = event.provider_event_time() else {
+            // A local sync cannot undo a provider tombstone or advance its clock.
+            return self.deleted && !deletion;
+        };
+        self.event_time > provider_time || self.is_deletion_at(provider_time, deletion)
     }
 
     fn is_deletion_at(&self, event_time: i64, deletion: bool) -> bool {
@@ -89,21 +110,21 @@ impl Model {
 
     fn from_event(event: &StravaEvent, hash: Option<String>, deleted: bool) -> Result<Self, DbErr> {
         let (athlete_id, activity_id) = Self::key_for_event(event)?;
-        let deleted_at = if deleted {
-            Some(
-                chrono::DateTime::from_timestamp(event.event_time, 0)
-                    .ok_or_else(|| DbErr::Custom("Invalid Strava deletion event time".into()))?,
-            )
-        } else {
-            None
-        };
+        let deleted_at = event
+            .provider_event_time()
+            .filter(|_| deleted)
+            .map(|at| {
+                chrono::DateTime::from_timestamp(at, 0)
+                    .ok_or_else(|| DbErr::Custom("Invalid Strava deletion event time".into()))
+            })
+            .transpose()?;
         let now = chrono::Utc::now();
         Ok(Self {
             athlete_id,
             activity_id,
             bike_activity_id: event.bike_activity_id,
             connection_generation: event.connection_generation,
-            event_time: event.event_time,
+            event_time: event.provider_event_time().unwrap_or(0),
             applied_hash: hash,
             deleted,
             deleted_at,
@@ -112,18 +133,12 @@ impl Model {
         })
     }
     async fn save(self, db: &impl ConnectionTrait) -> Result<Self, DbErr> {
-        let mut updates = vec![
+        let updates = vec![
             Column::ConnectionGeneration,
-            Column::EventTime,
             Column::AppliedHash,
             Column::Deleted,
             Column::DeletedAt,
-            Column::UpdatedAt,
-            Column::AppliedAt,
         ];
-        if self.bike_activity_id.is_some() {
-            updates.push(Column::BikeActivityId);
-        }
         Entity::insert(ActiveModel {
             athlete_id: Set(self.athlete_id),
             activity_id: Set(self.activity_id),
@@ -139,17 +154,39 @@ impl Model {
         .on_conflict(
             OnConflict::columns([Column::AthleteId, Column::ActivityId])
                 .update_columns(updates)
+                .value(
+                    Column::BikeActivityId,
+                    Expr::cust(
+                        "CASE WHEN strava_activity_states.connection_generation = EXCLUDED.connection_generation \
+                     THEN COALESCE(EXCLUDED.bike_activity_id, strava_activity_states.bike_activity_id) \
+                     ELSE EXCLUDED.bike_activity_id END",
+                    ),
+                )
+                .value(
+                    Column::EventTime,
+                    Expr::cust(
+                        "CASE WHEN strava_activity_states.connection_generation = EXCLUDED.connection_generation \
+                     THEN GREATEST(strava_activity_states.event_time, EXCLUDED.event_time) \
+                     ELSE EXCLUDED.event_time END",
+                    ),
+                )
+                .value(Column::UpdatedAt, Self::next_write_version())
+                .value(Column::AppliedAt, Self::next_write_version())
                 .to_owned(),
         )
         .exec_with_returning(db)
         .await
+    }
+
+    fn next_write_version() -> Expr {
+        Expr::cust("GREATEST(strava_activity_states.updated_at + INTERVAL '1 microsecond', EXCLUDED.updated_at)")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::strava::native::strava_native_unit::fixture::Fixture;
+    use crate::strava::native::tests::fixture::Fixture;
     use sea_orm::{DatabaseBackend, MockDatabase};
 
     #[test]
@@ -267,5 +304,99 @@ mod tests {
             .await
             .is_err());
         assert!(Model::supersedes(&db, &fixture.event, false).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn local_sync_clock_never_supersedes_a_provider_event_or_restores_a_tombstone() {
+        let fixture = Fixture::new();
+        let mut stored = state(&fixture);
+        let mut event = fixture.event.clone();
+        event.webhook = None;
+        for local_time in [stored.event_time - 3600, stored.event_time + 3600] {
+            event.event_time = local_time;
+            assert!(!stored.supersedes_event(&event, false));
+            assert_eq!(Model::from_event(&event, None, false).unwrap().event_time, 0);
+        }
+        stored.deleted = true;
+        assert!(stored.supersedes_event(&event, false));
+        assert!(!stored.supersedes_event(&event, true));
+        assert_eq!(Model::from_event(&event, None, true).unwrap().deleted_at, None);
+    }
+
+    #[tokio::test]
+    async fn captured_source_version_fences_changed_or_newly_created_rows() {
+        let fixture = Fixture::new();
+        let stored = state(&fixture);
+        for (expected, current, matches) in [
+            (None, None, true),
+            (None, Some(stored.clone()), false),
+            (Some(stored.updated_at), Some(stored.clone()), true),
+            (
+                Some(stored.updated_at - chrono::Duration::microseconds(1)),
+                Some(stored.clone()),
+                false,
+            ),
+            (Some(stored.updated_at), None, false),
+        ] {
+            let event = StravaEvent {
+                source_version: Some(SourceVersion { updated_at: expected }),
+                ..fixture.event.clone()
+            };
+            let db = MockDatabase::new(DatabaseBackend::Postgres)
+                .append_query_results([current.into_iter().collect::<Vec<_>>()])
+                .into_connection();
+            assert_eq!(Model::matches_version(&db, &event).await.unwrap(), matches);
+        }
+        let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
+        assert!(Model::matches_version(&db, &fixture.event).await.unwrap());
+        assert!(db.into_transaction_log().is_empty());
+    }
+
+    #[tokio::test]
+    async fn state_write_preserves_provider_watermark_and_advances_the_existing_write_token() {
+        let fixture = Fixture::new();
+        let event = StravaEvent {
+            webhook: None,
+            event_time: i64::MAX,
+            ..fixture.event.clone()
+        };
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([vec![state(&fixture)]])
+            .into_connection();
+        Model::apply_event(&db, &event, None, false).await.unwrap();
+        let log = db.into_transaction_log();
+        let statement = &log[0].statements()[0];
+        assert!(statement
+            .sql
+            .contains("GREATEST(strava_activity_states.event_time, EXCLUDED.event_time)"));
+        assert!(statement
+            .sql
+            .contains("connection_generation = EXCLUDED.connection_generation"));
+        assert_eq!(
+            statement.sql.matches("updated_at + INTERVAL '1 microsecond'").count(),
+            2
+        );
+        assert!(!statement.values.as_ref().unwrap().0.contains(&i64::MAX.into()));
+    }
+
+    #[test]
+    fn provider_time_orders_deletion_while_distinct_equal_second_updates_reconcile() {
+        let fixture = Fixture::new();
+        let mut state = state(&fixture);
+        let mut event = fixture.event;
+        event.event_time = i64::MAX;
+        event.webhook.as_mut().unwrap().event_time = state.event_time - 1;
+        assert!(state.supersedes_event(&event, false));
+        event.event_time = i64::MIN;
+        event.webhook.as_mut().unwrap().event_time = state.event_time;
+        assert!(!state.supersedes_event(&event, false));
+        event.webhook.as_mut().unwrap().updates = Some(serde_json::json!({"title":"Distinct same-second update"}));
+        assert!(!state.supersedes_event(&event, false));
+        state.deleted = true;
+        assert!(state.supersedes_event(&event, false));
+        event.webhook.as_mut().unwrap().event_time += 1;
+        assert!(!state.supersedes_event(&event, false));
+        event.connection_generation += chrono::Duration::microseconds(1);
+        assert!(!state.supersedes_event(&event, false));
     }
 }

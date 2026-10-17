@@ -112,18 +112,27 @@ fn environment_with_database(
         calls: Mutex::default(),
     });
     let operations = StravaOperations::with_dependencies(db.into_connection(), provider.clone(), storage);
-    let workflow = match event.operation {
-        StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => UpsertActivity::run.name(),
-        StravaOperation::Delete => DeleteActivity::run.name(),
-        StravaOperation::Sync => SyncActivities::run.name(),
-        StravaOperation::Backfill => BackfillActivities::run.name(),
-        StravaOperation::Disconnect => DisconnectStrava::run.name(),
+    let workflow = if event.source_version.is_some() {
+        ReconcileActivity::run.name()
+    } else {
+        match event.operation {
+            StravaOperation::Create | StravaOperation::Update | StravaOperation::Upsert => UpsertActivity::run.name(),
+            StravaOperation::Delete => DeleteActivity::run.name(),
+            StravaOperation::Sync => SyncActivities::run.name(),
+            StravaOperation::Backfill => BackfillActivities::run.name(),
+            StravaOperation::Disconnect => DisconnectStrava::run.name(),
+        }
+    };
+    let workflow_id = if event.source_version.is_some() {
+        event.source_workflow_id().unwrap()
+    } else {
+        event.workflow_id()
     };
     let info = TestActivityInfoOptions::builder()
         .namespace("bike")
         .workflow_run_id(Some("child-native-run".into()))
         .workflow_type(Some(workflow.into()))
-        .workflow_id(Some(event.workflow_id()))
+        .workflow_id(Some(workflow_id))
         .deadline(None)
         .build();
     let environment = ActivityEnvironment::builder_with_default()

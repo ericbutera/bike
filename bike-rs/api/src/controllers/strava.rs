@@ -1,4 +1,5 @@
 use crate::app_error::{ApiErrorResponse, AppError};
+use crate::extractors::{OptionalStravaConnection, StravaConnection};
 use crate::storage::AppStorage;
 use axum::extract::{Query, State};
 use axum::http::{header, HeaderMap};
@@ -145,12 +146,9 @@ async fn authorize_response(db: &DatabaseConnection, config: &Config, user_id: i
     )
 )]
 pub async fn get_connection(
-    UserContext { user, .. }: UserContext<AppStorage>,
-    State(state): State<Arc<AppStorage>>,
+    OptionalStravaConnection { connection, .. }: OptionalStravaConnection,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    let connection = strava::load_connection(&state.db, user.id).await?;
-
-    Ok(Json(response_from_model(&state.db, connection.as_ref()).await?))
+    Ok(Json(response_from_model(connection.as_ref())))
 }
 
 #[utoipa::path(
@@ -170,15 +168,12 @@ pub async fn get_connection(
     )
 )]
 pub async fn queue_sync(
-    UserContext { user, .. }: UserContext<AppStorage>,
+    StravaConnection { user, connection }: StravaConnection,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    bike_core::strava::events::request_sync(&state.db, user.id).await?;
-    let connection = strava::load_connection(&state.db, user.id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Strava connection was removed"))?;
+    strava::events::request_sync(&state.db, &user, &connection).await?;
 
-    Ok(Json(response_from_model(&state.db, Some(&connection)).await?))
+    Ok(Json(response_from_model(Some(&connection))))
 }
 
 #[utoipa::path(
@@ -195,15 +190,12 @@ pub async fn queue_sync(
     security(("bearer_auth" = []))
 )]
 pub async fn queue_backfill(
-    UserContext { user, .. }: UserContext<AppStorage>,
+    StravaConnection { user, connection }: StravaConnection,
     State(state): State<Arc<AppStorage>>,
     Json(input): Json<StravaBackfillRequest>,
 ) -> Result<Json<StravaConnectionResponse>, AppError> {
-    bike_core::strava::events::request_backfill(&state.db, user.id, input.start_date, input.end_date).await?;
-    let connection = strava::load_connection(&state.db, user.id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Strava connection was removed"))?;
-    Ok(Json(response_from_model(&state.db, Some(&connection)).await?))
+    strava::events::request_backfill(&state.db, &user, &connection, input.start_date, input.end_date).await?;
+    Ok(Json(response_from_model(Some(&connection))))
 }
 
 #[derive(serde::Deserialize, utoipa::ToSchema)]
@@ -227,10 +219,10 @@ pub struct StravaBackfillRequest {
     )
 )]
 pub async fn disconnect_connection(
-    UserContext { user, .. }: UserContext<AppStorage>,
+    StravaConnection { user, connection }: StravaConnection,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<auth_openapi::schemas::MessageResponse>, AppError> {
-    bike_core::strava::events::request_disconnect(&state.db, user.id).await?;
+    strava::events::request_disconnect(&state.db, &user, &connection).await?;
     Ok(Json(auth_openapi::schemas::MessageResponse {
         message: "Strava disconnect queued.".to_string(),
     }))
@@ -385,25 +377,17 @@ pub async fn handle_webhook_event(
         .get("x-request-id")
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
-    bike_core::strava::events::accept_webhook(&state.db, &event, request_id).await?;
+    strava::events::accept_webhook(&state.db, &event, request_id).await?;
 
     Ok(Json(auth_openapi::schemas::MessageResponse {
         message: "ok".to_string(),
     }))
 }
 
-async fn response_from_model(
-    db: &DatabaseConnection,
-    model: Option<&strava_connections::Model>,
-) -> Result<StravaConnectionResponse, AppError> {
+fn response_from_model(connection: Option<&strava_connections::Model>) -> StravaConnectionResponse {
     let config = Config::get();
-    let resolved = match model {
-        Some(connection) => Some(strava::resolve_connection_sync_state(db, connection).await?),
-        None => None,
-    };
-    let connection = resolved.as_ref().map(|state| &state.connection);
 
-    Ok(StravaConnectionResponse {
+    StravaConnectionResponse {
         configured: config.strava_enabled(),
         connected: connection.is_some(),
         athlete_id: connection.map(|connection| connection.athlete_id),
@@ -429,7 +413,7 @@ async fn response_from_model(
         last_sync_failed_count: connection
             .map(|connection| connection.last_sync_failed_count)
             .unwrap_or_default(),
-    })
+    }
 }
 
 async fn record_strava_event_best_effort(

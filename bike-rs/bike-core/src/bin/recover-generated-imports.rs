@@ -131,7 +131,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     if run.refresh_recent && recent_gaps {
-        strava::events::request_sync(&db, run.user_id).await?;
+        let user = bike_core::auth::entities::users::Model::find_by_id(&db, run.user_id).await?;
+        let connection = strava::load_connection(&db, run.user_id)
+            .await?
+            .ok_or("Connect Strava first")?;
+        strava::events::request_sync(&db, &user, &connection).await?;
     }
     println!(
         "{}",

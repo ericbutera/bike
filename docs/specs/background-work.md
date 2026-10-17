@@ -100,6 +100,15 @@ flowchart TD
   canonical event deduplication handles another delivery.
 - The inbox is an existing provider adapter, not a model to reproduce for every
   Bike task. Keep the registered callback aliases and native relay.
+- The Strava connection extractors authenticate once and load the owned
+  connection once. Sync, backfill, and disconnect require that connection;
+  connection GET allows absence while retaining authentication failures.
+- User-requested Strava work accepts the extracted user and connection, validates
+  them, and commits the durable event without reloading either record. Sync and
+  backfill return that connection snapshot. OAuth completion reuses its newly
+  saved connection. Later deletion or a failed read cannot undo acceptance.
+- Connection response formatting is a pure mapping of the available connection
+  snapshot. Reading current state belongs to the connection GET operation.
 
 ## Idempotent effects and activity history
 
@@ -144,6 +153,9 @@ flowchart TD
   visible for retry from the retained source.
 - Completion means the workflow's own steps finished. It does not certify that
   every shared projection across Bike is simultaneously current.
+- Strava's provider-specific cancellation behavior is described below. Its
+  native cancellation tokens do not change Bike task cancellation or add a
+  database handshake, result ledger, or shared-output coordinator.
 
 ## Reprocessing implementation
 
@@ -195,6 +207,11 @@ flowchart TD
   extract at most 16 files, await their imports, and continue with the next offset.
 - A native schedule runs heatmap reconciliation every 15 seconds with overlap
   skipped. It pages pending projections and calls the ordinary heatmap child.
+- Unit fixtures execute the parent and child workflow code for archive processing
+  and user reprocessing, including their segment, heatmap, and fitness children.
+  Assert that parents remain pending until children finish, child failures stop
+  later work, and full pages continue only after their work completes. Keep
+  retained-file parsing and PostgreSQL write checks in the owning domain suites.
 
 ## Eventual consistency, debounce, and priority
 
@@ -261,14 +278,14 @@ flowchart TD
 | Workflow                        | Input                      | Source steps and result                                                    |
 | ------------------------------- | -------------------------- | -------------------------------------------------------------------------- |
 | CreateActivity / UpdateActivity | Strava event               | Await Upsert child; return Bike ID/status                                  |
-| UpsertActivity                  | Event + remote activity ID | Fetch activity → streams → normalize → persist → refresh; return ID/status |
-| DeleteActivity                  | Event + remote activity ID | Capture dependencies → delete → refresh; deleted/already absent            |
+| UpsertActivity / DeleteActivity | Event + remote activity ID | Await source-keyed ReconcileActivity; return ID/status                     |
+| ReconcileActivity              | Event + remote activity ID | Fetch → normalize → persist → refresh, or capture → delete → refresh       |
 | SyncActivities                  | Event + saved offset       | List pages → await upsert children → commit offset; counts/new offset      |
 | BackfillActivities              | Event + fixed range        | List range → await upsert children; counts without offset change           |
 | DisconnectStrava                | Event + revoke flag        | Delete children → optional revoke → remove connection                      |
 | ScheduledSync                   | Schedule context           | List connections → await sync children; per-connection results             |
 
-- These are the eight workflows (Create and Update are separate). Review
+- These are the nine workflows (Create and Update are separate). Review
   [their explicit implementations](../../bike-rs/strava-temporal/src/workflows.rs)
   and [typed Activities](../../bike-rs/strava-temporal/src/activities.rs).
   Call steps as `run(ctx, RevokeConnection, event).await?`; shared helpers adapt
@@ -276,6 +293,16 @@ flowchart TD
 - The workflow table describes the existing provider sequence. Keep its explicit
   fetch/normalize/persist/refresh shape when reusing Bike domain tasks. Per-item
   rebuilds are acceptable; shared-output coordination is not a conversion gate.
+- Provider single-event parents await request-owned children and preserve the
+  child's result: canceled preparation reports cancellation; a started mutation
+  reports its actual completion or failure. Collections settle the current child,
+  then stop before the next item or cursor update. Parent close requests child
+  cancellation and waits for the child to settle.
+- Native patch `strava-commit-boundary-v1` preserves retained histories. New
+  provider runs check cancellation before preparation and shield a started
+  mutation and its downstream steps with independent native cancellation tokens.
+  Disconnect shields its initial state write and final revoke/removal separately;
+  item boundaries remain cancellable. This does not promise atomic publication.
 - SQL import recovery, bulk replay, and historical source repair must exclude
   `strava_sync`, including interrupted native publication. Use native sync/backfill;
   do not call legacy processors or create SQL continuation/checkpoint tasks.
@@ -343,13 +370,28 @@ flowchart TD
 | ----------------------------------------------- | ------------------------------------------------------------ |
 | State `event_time`                              | Last accepted provider event, epoch seconds                  |
 | State `deleted_at`                              | Provider time of current deletion; cleared by a newer upsert |
-| State `updated_at` / compatibility `applied_at` | Bike write time; new writes keep them synchronized           |
+| State `updated_at` / compatibility `applied_at` | Synchronized local write version, advanced on every write    |
 | History `occurred_at`                           | Source event/manual change time                              |
 | History `recorded_at`                           | Bike archive time                                            |
 
 - Never compare local sync/backfill request/receive time with a provider watermark,
-  or use activity start time as event order. Correct the existing mixed-clock bug
-  with a focused regression and the smallest domain fix.
+  or use activity start time as event order. Derive provider time only from the
+  retained webhook; zero means unknown. Sync/backfill preserves the watermark,
+  and a new connection generation resets it. Repair old mixed values from
+  committed provider mutations, never from receipt or sync time.
+- Upsert/Delete await a request-owned `ReconcileActivity` child keyed by owner,
+  connection generation, athlete, and remote activity. A busy source retries
+  after a native timer; distinct events each fetch and apply rather than attaching
+  to another request's result. Continue a waiting parent after 128 attempts or
+  Temporal's history suggestion, preserving its original event and job identity.
+- Capture the source row version before provider I/O. Under the existing
+  connection lock, return any committed retry result, then check that version.
+  If the source changed, refetch using a response key containing the new version.
+  Atomically advance the existing timestamp token on writes; no new table or
+  execution ledger is required. A generation change clears an absent Bike mapping.
+- The native `strava-source-reconciliation-v1` patch preserves retained inline
+  histories. Drain started provider runs before the data repair and worker
+  transition; keep callback acceptance available during deployment.
 - Reject clearly older events within the same owner/object/generation. Deletion
   wins an equal-time upsert; only a strictly newer upsert restores it. Ignore
   deauthorization older than the connection; delayed old generations cannot write.

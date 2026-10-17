@@ -1,5 +1,5 @@
 use super::*;
-use crate::strava::native::strava_native_unit::fixture::{audit, Fixture};
+use crate::strava::native::tests::fixture::{audit, Fixture};
 use sea_orm::{DatabaseBackend, MockDatabase, MockExecResult};
 
 fn unchanged_state(fixture: &Fixture) -> strava_activity_states::Model {

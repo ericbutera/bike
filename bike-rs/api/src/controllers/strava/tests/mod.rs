@@ -8,7 +8,6 @@ use bike_core::{
     entities::{integration_events as audit, strava_events},
     strava::{
         events::{StravaEvent, StravaOperation},
-        native::ActivityStatus,
         oauth_state::*,
     },
     workflow_error::WorkflowError,
@@ -17,7 +16,7 @@ use sea_orm::{DatabaseBackend, MockDatabase, MockExecResult};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use bike_core::strava::test_fixtures as fixture;
+use bike_core::test_support as fixture;
 
 fn config() -> Config {
     let mut config = Config::get().clone();
@@ -31,17 +30,7 @@ fn config() -> Config {
 }
 
 fn audit() -> audit::Model {
-    audit::Model {
-        id: 1,
-        user_id: Some(7),
-        provider: "strava".into(),
-        event_type: "fixture".into(),
-        level: "info".into(),
-        message: "Fixture event".into(),
-        connection_id: Some(9),
-        payload: None,
-        created_at: chrono::Utc::now(),
-    }
+    fixture::integration_event()
 }
 
 fn state(db: sea_orm::DatabaseConnection) -> Arc<AppStorage> {
@@ -52,31 +41,13 @@ fn state(db: sea_orm::DatabaseConnection) -> Arc<AppStorage> {
 
 fn acceptance(operation: StravaOperation) -> strava_events::Model {
     let event = StravaEvent::new(&fixture::customer(), &fixture::connection(), operation);
-    strava_events::Model {
-        id: event.strava_event_id.to_string(),
-        event_key: event.strava_event_id.to_string(),
-        correlation_id: event.correlation_id.to_string(),
-        parent_event_id: None,
-        user_id: event.bike_user_id,
-        customer_id: event.bike_customer_id,
-        athlete_id: event.strava_athlete_id,
-        activity_id: event.strava_activity_id,
-        workflow_id: event.workflow_id(),
-        event: serde_json::to_value(event).unwrap(),
-        status: ActivityStatus::Pending,
-        mutation: None,
-        accepted_at: chrono::Utc::now(),
-        submitted_at: None,
-        next_attempt_at: chrono::Utc::now(),
-        handoff_error: None,
-    }
+    fixture::strava_event_record(&event)
 }
 
 fn acceptance_mock(operation: StravaOperation) -> MockDatabase {
     MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([vec![fixture::customer()]])
         .append_query_results([vec![fixture::connection()]])
-        .append_query_results([vec![fixture::customer()]])
         .append_query_results([vec![acceptance(operation)]])
         .append_query_results([vec![audit()]])
         .append_exec_results([MockExecResult {
@@ -86,8 +57,12 @@ fn acceptance_mock(operation: StravaOperation) -> MockDatabase {
 }
 
 async fn request(db: MockDatabase, method: &str, path: &str, body: Value) -> Response {
+    request_with_state(state(db.into_connection()), method, path, body).await
+}
+
+async fn request_with_state(state: Arc<AppStorage>, method: &str, path: &str, body: Value) -> Response {
     routes()
-        .with_state(state(db.into_connection()))
+        .with_state(state)
         .oneshot(
             Request::builder()
                 .method(method)
@@ -125,18 +100,77 @@ async fn connection_response_exposes_saved_customer_sync_details_and_disconnecte
 
 #[tokio::test]
 async fn sync_and_backfill_accept_durable_events_and_return_the_connection() {
-    for (operation, path, body) in [
+    for (operation, path, body) in collection_requests() {
+        let state = state(acceptance_mock(operation).into_connection());
+        let response = request_with_state(state.clone(), "POST", path, body).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json_body(response).await["athlete_id"],
+            fixture::connection().athlete_id
+        );
+        let log = state.db.clone().into_transaction_log();
+        let connection_reads = log
+            .iter()
+            .flat_map(|transaction| transaction.statements())
+            .filter(|statement| statement.sql.contains("FROM \"strava_connections\""))
+            .count();
+        assert_eq!(connection_reads, 1);
+        assert!(format!("{log:?}").contains("COMMIT"));
+    }
+}
+
+fn collection_requests() -> [(StravaOperation, &'static str, Value); 2] {
+    [
         (StravaOperation::Sync, "/sync", Value::Null),
         (
             StravaOperation::Backfill,
             "/backfill",
             json!({"start_date":"2026-09-01T00:00:00Z","end_date":"2026-10-01T00:00:00Z"}),
         ),
+    ]
+}
+
+#[tokio::test]
+async fn connection_extractors_preserve_authentication_for_reads_and_commands() {
+    for (method, path, body) in [
+        ("GET", "/connection", Value::Null),
+        ("POST", "/sync", Value::Null),
+        (
+            "POST",
+            "/backfill",
+            json!({"start_date":"2026-09-01T00:00:00Z","end_date":"2026-10-01T00:00:00Z"}),
+        ),
+        ("DELETE", "/connection", Value::Null),
     ] {
-        let db = acceptance_mock(operation).append_query_results([vec![fixture::connection()]]);
-        let response = request(db, "POST", path, body).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(json_body(response).await["athlete_id"], 123);
+        let storage = Arc::new(AppStorage::for_test(
+            MockDatabase::new(DatabaseBackend::Postgres).into_connection(),
+        ));
+        let response = request_with_state(storage.clone(), method, path, body).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(storage.db.clone().into_transaction_log().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn connection_extractor_rejects_missing_connections_before_accepting_commands() {
+    for (method, path, body) in [
+        ("POST", "/sync", Value::Null),
+        (
+            "POST",
+            "/backfill",
+            json!({"start_date":"2026-09-01T00:00:00Z","end_date":"2026-10-01T00:00:00Z"}),
+        ),
+        ("DELETE", "/connection", Value::Null),
+    ] {
+        let storage = state(
+            MockDatabase::new(DatabaseBackend::Postgres)
+                .append_query_results([vec![fixture::customer()]])
+                .append_query_results([Vec::<strava_connections::Model>::new()])
+                .into_connection(),
+        );
+        let response = request_with_state(storage.clone(), method, path, body).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert!(!format!("{:?}", storage.db.clone().into_transaction_log()).contains("INSERT INTO"));
     }
 }
 
@@ -154,17 +188,29 @@ async fn disconnect_accepts_an_event_without_calling_a_remote_provider() {
 }
 
 #[tokio::test]
-async fn connection_removed_after_acceptance_returns_not_found_for_sync_and_backfill() {
-    for (operation, path, body) in [
-        (StravaOperation::Sync, "/sync", Value::Null),
-        (
-            StravaOperation::Backfill,
-            "/backfill",
-            json!({"start_date":"2026-09-01T00:00:00Z","end_date":"2026-10-01T00:00:00Z"}),
-        ),
-    ] {
+async fn connection_removed_after_acceptance_does_not_reject_sync_or_backfill() {
+    for (operation, path, body) in collection_requests() {
         let db = acceptance_mock(operation).append_query_results([Vec::<strava_connections::Model>::new()]);
-        assert_eq!(request(db, "POST", path, body).await.status(), StatusCode::NOT_FOUND);
+        let response = request(db, "POST", path, body).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json_body(response).await["athlete_id"],
+            fixture::connection().athlete_id
+        );
+    }
+}
+
+#[tokio::test]
+async fn connection_read_failure_after_acceptance_does_not_reject_sync_or_backfill() {
+    for (operation, path, body) in collection_requests() {
+        let db = acceptance_mock(operation)
+            .append_query_errors([sea_orm::DbErr::Custom("connection became unavailable".into())]);
+        let response = request(db, "POST", path, body).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json_body(response).await["athlete_id"],
+            fixture::connection().athlete_id
+        );
     }
 }
 
@@ -209,7 +255,9 @@ async fn missing_connection_invalid_window_and_persistence_errors_are_http_error
         request(missing, "POST", "/sync", Value::Null).await.status(),
         StatusCode::NOT_FOUND
     );
-    let invalid = MockDatabase::new(DatabaseBackend::Postgres).append_query_results([vec![fixture::customer()]]);
+    let invalid = MockDatabase::new(DatabaseBackend::Postgres)
+        .append_query_results([vec![fixture::customer()]])
+        .append_query_results([vec![fixture::connection()]]);
     let dates = json!({"start_date":"2026-10-01T00:00:00Z","end_date":"2026-09-01T00:00:00Z"});
     assert_eq!(
         request(invalid, "POST", "/backfill", dates).await.status(),

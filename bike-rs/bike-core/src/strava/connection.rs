@@ -22,12 +22,6 @@ pub const STRAVA_SYNC_STATUS_RUNNING: &str = "running";
 pub const STRAVA_SYNC_STATUS_FAILED: &str = "failed";
 const STRAVA_REQUIRED_ACTIVITY_SCOPE: &str = "activity:read_all";
 
-#[derive(Debug, Clone)]
-pub struct ResolvedStravaConnectionSyncState {
-    pub connection: strava_connections::Model,
-    pub active_sync_status: Option<&'static str>,
-}
-
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct StravaWebhookSubscriptionQuery {
     #[serde(rename = "hub.mode")]
@@ -181,10 +175,9 @@ pub async fn exchange_code_for_connection(
 
         let connection = upsert_connection_from_token(db, verified_state.user_id, token_response).await?;
 
-        crate::strava::events::request_sync(db, connection.user_id).await?;
-        load_connection(db, connection.user_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("Strava connection was removed"))
+        let user = crate::auth::entities::users::Model::find_by_id(db, connection.user_id).await?;
+        crate::strava::events::request_sync(db, &user, &connection).await?;
+        Ok::<_, AppError>(connection)
     }
     .await;
 
@@ -316,16 +309,6 @@ pub(crate) fn build_activity_upload(
         mime_type: Some("application/json".into()),
         source_correlation_id: Some(activity.id.to_string()),
         bytes,
-    })
-}
-
-pub async fn resolve_connection_sync_state(
-    _db: &DatabaseConnection,
-    connection: &strava_connections::Model,
-) -> Result<ResolvedStravaConnectionSyncState, AppError> {
-    Ok(ResolvedStravaConnectionSyncState {
-        connection: connection.clone(),
-        active_sync_status: None,
     })
 }
 

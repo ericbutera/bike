@@ -188,7 +188,7 @@ impl Model {
 }
 
 #[cfg(test)]
-mod strava_native_unit {
+mod tests {
     use super::*;
 
     #[test]

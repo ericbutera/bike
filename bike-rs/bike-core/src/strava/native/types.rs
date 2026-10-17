@@ -21,6 +21,9 @@ pub enum ActivityStatus {
     AlreadyAbsent,
     #[sea_orm(string_value = "superseded")]
     Superseded,
+    /// Transient reconciliation result. Never persisted as an event outcome.
+    #[sea_orm(string_value = "source_changed")]
+    SourceChanged,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
