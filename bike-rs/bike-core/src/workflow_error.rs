@@ -11,6 +11,16 @@ pub struct WorkflowError {
 }
 
 impl WorkflowError {
+    /// Immutable input cannot succeed on retry without repairing its source.
+    pub fn invalid_data(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            message: message.into(),
+            errors: None,
+            retry_at: None,
+        }
+    }
+
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,

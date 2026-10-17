@@ -26,3 +26,25 @@ pub(crate) fn domain_error(
         temporalio_sdk::ApplicationFailure::new(error).into()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::domain_error;
+    use bike_core::workflow_error::WorkflowError;
+    use temporalio_sdk::activities::ActivityError;
+
+    #[test]
+    fn immutable_input_failures_are_terminal_and_backend_failures_retry() {
+        for (error, terminal) in [
+            (WorkflowError::invalid_data("checksum or size mismatch"), true),
+            (WorkflowError::bad_request("malformed retained file"), true),
+            (WorkflowError::not_found("retained file missing"), true),
+            (WorkflowError::internal("temporary storage failure"), false),
+        ] {
+            let ActivityError::Application(failure) = domain_error(error) else {
+                panic!("Expected a native application failure");
+            };
+            assert_eq!(failure.is_non_retryable(), terminal);
+        }
+    }
+}

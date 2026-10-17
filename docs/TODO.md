@@ -154,7 +154,7 @@
 | 6     | R06    | P1       | Bounded webhook acceptance                              | Pending         |
 | 7     | R09    | P2       | Separate legacy SQL bookkeeping from domain effects     | Pending         |
 | 8     | R08    | P2       | Simplify debounce state and return domain outcomes      | In progress     |
-| 9     | R11    | P2       | Permanent retained-input failures                       | Pending         |
+| 9     | R11    | P2       | Permanent retained-input failures                       | In progress     |
 | 10    | R10    | P2       | Native job diagnosis and causal context                 | Pending         |
 | 11    | R07    | P1       | One owner for shared outputs and all selected producers | Pending         |
 
@@ -239,6 +239,13 @@
   Distinguish immutable checksum/size/parse failures from transient backend
   failures with typed errors. Mock corrupt primary/supplemental bytes as terminal
   and temporary storage faults as retryable; do not repeatedly parse corrupt input.
+  Implementation uses the existing typed domain status and native error adapter:
+  integrity/retained JSON errors are terminal 422s, parser/missing-input client
+  errors remain terminal, and temporary backend failures remain retryable.
+  All 35 focused mock/fixture checks pass, including malformed primary/supplemental
+  sources with valid integrity, corrupt bytes/size, malformed retained JSON, and
+  native terminal/retry adaptation. The checksum regression fails with the old
+  server-error classification. Required hooks, CI, and live rollout remain open.
 - **R10 — native job diagnosis** (U14/U23/P04).
   Link returned native jobs to authenticated history or a thin authorized status
   endpoint. Display acceptance separately from completion/failure; preserve root

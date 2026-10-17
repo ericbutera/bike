@@ -23,13 +23,46 @@ async fn corrupt_missing_or_misreported_objects_cannot_be_reused() {
         bytes: object.bytes + 1,
         ..object.clone()
     };
-    assert!(store.read(&wrong_size).await.is_err());
+    assert_eq!(store.read(&wrong_size).await.unwrap_err().status.as_u16(), 422);
     let key = ObjectPath::parse(&object.path).unwrap();
     backend.put(&key, PutPayload::from_static(b"corrupt")).await.unwrap();
-    assert!(store.read(&object).await.is_err());
+    assert_eq!(store.read(&object).await.unwrap_err().status.as_u16(), 422);
     assert!(store.write("bike/tasks/7/source", b"original").await.is_err());
     backend.delete(&key).await.unwrap();
     assert!(store.read(&object).await.is_err());
+}
+
+#[test]
+fn backend_failures_remain_transient() {
+    let error = storage_error(::object_store::Error::Generic {
+        store: "fixture",
+        source: std::io::Error::new(std::io::ErrorKind::TimedOut, "temporary outage").into(),
+    });
+    assert!(error.status.is_server_error());
+}
+
+#[tokio::test]
+async fn malformed_retained_json_is_terminal_after_integrity_verification() {
+    let (store, _) = test_support::object_storage(ObjectOwner::BikeTasks);
+    let object = store.write("bike/tasks/7/source", b"malformed json").await.unwrap();
+    assert_eq!(
+        store
+            .read_json::<serde_json::Value>(&object)
+            .await
+            .unwrap_err()
+            .status
+            .as_u16(),
+        422
+    );
+    assert_eq!(
+        store
+            .load_json::<serde_json::Value>(&object.path)
+            .await
+            .unwrap_err()
+            .status
+            .as_u16(),
+        422
+    );
 }
 
 #[tokio::test]

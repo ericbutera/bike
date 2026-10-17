@@ -88,7 +88,7 @@ impl ObjectStore {
             .await?
             .ok_or_else(|| WorkflowError::not_found(format!("Saved object {} is unavailable", object.path)))?;
         if checksum(&bytes) != object.sha256 || bytes.len() != object.bytes {
-            return Err(WorkflowError::internal(format!(
+            return Err(WorkflowError::invalid_data(format!(
                 "Saved object {} failed checksum verification",
                 object.path
             )));
@@ -97,7 +97,7 @@ impl ObjectStore {
     }
 
     pub async fn read_json<T: DeserializeOwned>(&self, object: &ObjectRef) -> Result<T, WorkflowError> {
-        serde_json::from_slice(&self.read(object).await?).map_err(json_error)
+        serde_json::from_slice(&self.read(object).await?).map_err(invalid_json)
     }
 
     pub async fn write(&self, prefix: &str, bytes: &[u8]) -> Result<ObjectRef, WorkflowError> {
@@ -122,7 +122,7 @@ impl ObjectStore {
     pub async fn load_json<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, WorkflowError> {
         self.read_bytes(key)
             .await?
-            .map(|bytes| serde_json::from_slice(&bytes).map_err(json_error))
+            .map(|bytes| serde_json::from_slice(&bytes).map_err(invalid_json))
             .transpose()
     }
 
@@ -204,6 +204,10 @@ fn storage_error(error: ::object_store::Error) -> WorkflowError {
 
 fn json_error(error: serde_json::Error) -> WorkflowError {
     WorkflowError::internal(error.to_string())
+}
+
+fn invalid_json(error: serde_json::Error) -> WorkflowError {
+    WorkflowError::invalid_data(error.to_string())
 }
 
 #[cfg(test)]
