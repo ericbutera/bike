@@ -198,6 +198,11 @@ flowchart TD
   extract at most 16 files, await their imports, and continue with the next offset.
 - A native schedule runs heatmap reconciliation every 15 seconds with overlap
   skipped. It pages pending projections and calls the ordinary heatmap child.
+- Unit fixtures execute the parent and child workflow code for archive processing
+  and user reprocessing, including their segment, heatmap, and fitness children.
+  Assert that parents remain pending until children finish, child failures stop
+  later work, and full pages continue only after their work completes. Keep
+  retained-file parsing and PostgreSQL write checks in the owning domain suites.
 
 ## Eventual consistency, debounce, and priority
 

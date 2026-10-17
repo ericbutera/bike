@@ -1,25 +1,36 @@
 use super::*;
 use bike_core::test_support as fixtures;
 
-fn derived(mock: &mut WorkflowMock, imported: &ActivityImportResult) {
+pub(super) fn complete_derived_tasks(mock: &mut WorkflowMock, imported: &ActivityImportResult) {
     let task = imported.activity();
-    mock.activity("rebuild_activity_segments", &task, &vec![18_i32]);
-    let segment = SegmentChange {
-        segment_id: 18,
-        priority: imported.priority,
-    };
-    let child = mock.start_child("rebuild_segment_analytics", &segment);
-    mock.complete_child(child, &());
+    mock.activity("rebuild_activity_segments", &task, &vec![18_i32, 19]);
+    for segment_id in [18, 19] {
+        let segment = SegmentChange {
+            segment_id,
+            priority: imported.priority,
+        };
+        let child = mock.start_child("rebuild_segment_analytics", &segment);
+        mock.assert_pending();
+        let mut segments = WorkflowMock::new::<RebuildSegmentAnalytics>(segment.clone());
+        segments.activity("rebuild_segment_analytics", &segment, &());
+        mock.complete_child(child, &segments.result::<()>());
+    }
     mock.activity("rebuild_activity_achievements", &task, &());
-    let heatmap = mock.start_child("prepare_heatmap", &task);
-    mock.complete_child(heatmap, &());
+    let child = mock.start_child("prepare_heatmap", &task);
+    mock.assert_pending();
+    let mut heatmap = WorkflowMock::new::<PrepareHeatmap>(task.clone());
+    heatmap.activity("prepare_heatmap", &task, &());
+    mock.complete_child(child, &heatmap.result::<()>());
     mock.activity("rebuild_activity_training", &task, &());
     let fitness = FitnessChange {
         user_id: imported.user_id,
         priority: imported.priority,
     };
     let child = mock.start_child("rebuild_fitness_freshness", &fitness);
-    mock.complete_child(child, &());
+    mock.assert_pending();
+    let mut rebuild = WorkflowMock::new::<RebuildFitnessFreshness>(fitness.clone());
+    rebuild.activity("rebuild_fitness_freshness", &fitness, &());
+    mock.complete_child(child, &rebuild.result::<()>());
 }
 
 #[test]
@@ -28,7 +39,7 @@ fn import_saves_source_then_awaits_segments_achievements_heatmap_and_fitness() {
     let result = fixtures::import_result();
     let mut mock = WorkflowMock::new::<ProcessActivityImport>(command.source.clone());
     mock.activity("activity_import", &command, &result);
-    derived(&mut mock, &result);
+    complete_derived_tasks(&mut mock, &result);
     assert_eq!(mock.result::<ActivityImportResult>(), result);
 }
 
@@ -39,7 +50,7 @@ fn reprocessing_resumes_after_source_save_and_awaits_real_derived_children() {
     let mut mock = WorkflowMock::new::<ReprocessActivityImport>(input.clone());
     mock.activity("activity_import", &input.clone().into_command(), &result);
     let mut mock = mock.restart::<ReprocessActivityImport>(input);
-    derived(&mut mock, &result);
+    complete_derived_tasks(&mut mock, &result);
     assert_eq!(mock.result::<ActivityImportResult>(), result);
 }
 
@@ -170,4 +181,61 @@ fn replay_after_segment_completion_resumes_with_achievements() {
     );
     mock.complete_child(child, &());
     assert_eq!(mock.result::<ActivityImportResult>(), result);
+}
+
+fn saved_import_waiting_for_heatmap(reprocessing: bool) -> (WorkflowMock, ActivityImportResult, u32) {
+    let command = if reprocessing {
+        fixtures::reprocess_input().into_command()
+    } else {
+        fixtures::import_command()
+    };
+    let mut mock = if reprocessing {
+        WorkflowMock::new::<ReprocessActivityImport>(fixtures::reprocess_input())
+    } else {
+        WorkflowMock::new::<ProcessActivityImport>(command.source.clone())
+    };
+    let result = fixtures::import_result();
+    mock.activity("activity_import", &command, &result);
+    mock.activity("rebuild_activity_segments", &result.activity(), &Vec::<i32>::new());
+    mock.activity("rebuild_activity_achievements", &result.activity(), &());
+    let child = mock.start_child("prepare_heatmap", &result.activity());
+    mock.assert_pending();
+    (mock, result, child)
+}
+
+#[test]
+fn failed_heatmap_stops_processing_and_reprocessing_before_training() {
+    for reprocessing in [false, true] {
+        let (mut mock, _, child) = saved_import_waiting_for_heatmap(reprocessing);
+        mock.fail_child(child);
+        mock.assert_failure_message("Fixture child failed");
+    }
+}
+
+#[test]
+fn failed_fitness_prevents_processing_and_reprocessing_from_reporting_success() {
+    for reprocessing in [false, true] {
+        let (mut mock, result, child) = saved_import_waiting_for_heatmap(reprocessing);
+        mock.complete_child(child, &());
+        mock.activity("rebuild_activity_training", &result.activity(), &());
+        let child = mock.start_child(
+            "rebuild_fitness_freshness",
+            &FitnessChange {
+                user_id: result.user_id,
+                priority: result.priority,
+            },
+        );
+        mock.assert_pending();
+        mock.fail_child(child);
+        mock.assert_failure_message("Fixture child failed");
+    }
+}
+
+#[test]
+fn cancelled_child_cancels_processing_and_reprocessing_without_starting_later_work() {
+    for reprocessing in [false, true] {
+        let (mut mock, _, child) = saved_import_waiting_for_heatmap(reprocessing);
+        mock.cancel_child(child);
+        mock.assert_cancelled();
+    }
 }
