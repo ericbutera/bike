@@ -30,11 +30,16 @@
 - [x] After the corrected real-data canary, restore the CI 80% gate. Keep ordinary
       coverage reports and existing PostgreSQL/CI persistence checks required;
       mock contracts do not prove isolation, database defaults, or crash recovery.
-- [ ] Finish the production follow-up from the 22:58 UTC canary: all eight
-      concurrent segment Activities completed in one attempt, but three activity
-      row-lock waits exceeded 250 ms. Replace per-row projection inserts with
-      bounded model-owned bulk writes, then repeat the real canary and worker
-      stop/start check with clean diagnostics. Keep the existing thresholds.
+- [x] Finish the production follow-up from the 22:58 UTC canary. PR #70 merged as
+      `16ed6018` with model-owned 500-row bulk writes. The 00:50 UTC production
+      stop/start canary accepted work in 0.30 seconds while the worker was down;
+      all ten output Activities published on attempt one, with six segment
+      Activities overlapping at peak. API and both worker logs had no warnings
+      or errors. Thresholds and the operator's CI limits remained unchanged.
+- [x] Verify real retained-input reprocessing and eventual outputs in production:
+      stable job/run on retry, one audit, preserved activity/import identity and
+      business data, no SQL enqueue, fresh fitness, ready heatmap, and all eight
+      segment publications. This does not replace the admin UI vetting below.
 - [x] Implement the concrete retained-source adapter with model-owned conditional
       writes, preserved activity/import IDs, minimal committed refresh scope,
       removed-segment handoff, audit rollback, and lost-completion retry handling.
@@ -74,18 +79,32 @@
 
 ### Prioritized review follow-ups
 
-- **Live finding, P0:** the first native reprocess on 2026-10-16 exposed overlapping
+- **Resolved live finding, P0:** the first native reprocess on 2026-10-16 exposed overlapping
   segment refreshes replacing the same activity achievement rows. Five of eight
   Activities retried after PostgreSQL duplicate-key errors; all eventually
   published. PR #67 includes transactional projection replacement and consistent
   activity-first locking alongside R01. Seven PostgreSQL mock cases in
   `bike-core/src/analytics_projection_tests.rs` cover U27's transaction contract;
-  mocks do not establish concurrent database execution. Rerun the native case after
-  integration; do not treat recovery through retries as an error-free pass.
+  mocks do not establish concurrent database execution. After #67, all eight
+  overlapping segment Activities completed on attempt one; three slow lock waits
+  motivated #70's bulk writes. The final deployed canary published all eight on
+  attempt one, with six overlapping at peak and no application warnings/errors.
 - **Live finding, P1:** error spans can include bound recording JSON in SQL
   statement diagnostics. Remove recording/provider bodies from application error
   logs while retaining operation, parameterized SQL, and causal IDs. Keep
   diagnostic inspection bounded; no source bytes belong in workflow payloads.
+- **Operational follow-up, P1:** investigate the transient root-filesystem growth
+  that caused node DiskPressure during CI 481. Application, PostgreSQL, Temporal,
+  and CI recovered with retained volumes intact. Reclaiming old Rust executables
+  on the separate CI-cache disk does not establish the root-disk cause. Preserve
+  the operator's reduced CI resource limits during further validation.
+- **Release readiness, P1:** CI 486 reported deployment success before the API
+  rollout finished; an initial public health request returned 503 before recovery.
+  Review API rollout availability, and make the owning release gate wait for all
+  five deployments and healthy public HTTP before declaring success. Use shell
+  mocks/fixtures to prove that an unready workload or HTTP 503 blocks success,
+  and that ready workloads plus healthy HTTP pass. Keep this separate from
+  Temporal's durable job acceptance and eventual output completion.
 - PR #66 merged as `7fa4f451`; main CI 471 deployed it after 83 browser checks.
   The real FIT canary returned 202 in 0.30 seconds and preserved activity/import
   IDs. The dated rollout record owns the observed outputs and retry limitation.
