@@ -1,0 +1,290 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+        <title>Diff Coverage</title>
+        <style>
+            .src-snippet { margin-top: 2em; }
+            .src-name { font-weight: bold; }
+            .snippets {
+                border-top: 1px solid #bdbdbd;
+                border-bottom: 1px solid #bdbdbd;
+            }
+            pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.hll { background-color: #ffcccc }
+.c { color: #3D7B7B; font-style: italic } /* Comment */
+.err { border: 1px solid #F00 } /* Error */
+.k { color: #008000; font-weight: bold } /* Keyword */
+.o { color: #666 } /* Operator */
+.ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.cp { color: #9C6500 } /* Comment.Preproc */
+.cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.gd { color: #A00000 } /* Generic.Deleted */
+.ge { font-style: italic } /* Generic.Emph */
+.ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.gr { color: #E40000 } /* Generic.Error */
+.gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.gi { color: #008400 } /* Generic.Inserted */
+.go { color: #717171 } /* Generic.Output */
+.gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.gs { font-weight: bold } /* Generic.Strong */
+.gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.gt { color: #04D } /* Generic.Traceback */
+.kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.kp { color: #008000 } /* Keyword.Pseudo */
+.kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.kt { color: #B00040 } /* Keyword.Type */
+.m { color: #666 } /* Literal.Number */
+.s { color: #BA2121 } /* Literal.String */
+.na { color: #687822 } /* Name.Attribute */
+.nb { color: #008000 } /* Name.Builtin */
+.nc { color: #00F; font-weight: bold } /* Name.Class */
+.no { color: #800 } /* Name.Constant */
+.nd { color: #A2F } /* Name.Decorator */
+.ni { color: #717171; font-weight: bold } /* Name.Entity */
+.ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.nf { color: #00F } /* Name.Function */
+.nl { color: #767600 } /* Name.Label */
+.nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.nt { color: #008000; font-weight: bold } /* Name.Tag */
+.nv { color: #19177C } /* Name.Variable */
+.ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.w { color: #BBB } /* Text.Whitespace */
+.mb { color: #666 } /* Literal.Number.Bin */
+.mf { color: #666 } /* Literal.Number.Float */
+.mh { color: #666 } /* Literal.Number.Hex */
+.mi { color: #666 } /* Literal.Number.Integer */
+.mo { color: #666 } /* Literal.Number.Oct */
+.sa { color: #BA2121 } /* Literal.String.Affix */
+.sb { color: #BA2121 } /* Literal.String.Backtick */
+.sc { color: #BA2121 } /* Literal.String.Char */
+.dl { color: #BA2121 } /* Literal.String.Delimiter */
+.sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.s2 { color: #BA2121 } /* Literal.String.Double */
+.se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.sh { color: #BA2121 } /* Literal.String.Heredoc */
+.si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.sx { color: #008000 } /* Literal.String.Other */
+.sr { color: #A45A77 } /* Literal.String.Regex */
+.s1 { color: #BA2121 } /* Literal.String.Single */
+.ss { color: #19177C } /* Literal.String.Symbol */
+.bp { color: #008000 } /* Name.Builtin.Pseudo */
+.fm { color: #00F } /* Name.Function.Magic */
+.vc { color: #19177C } /* Name.Variable.Class */
+.vg { color: #19177C } /* Name.Variable.Global */
+.vi { color: #19177C } /* Name.Variable.Instance */
+.vm { color: #19177C } /* Name.Variable.Magic */
+.il { color: #666 } /* Literal.Number.Integer.Long */
+.diff-cover-covered-line { background-color: #ddffdd; }
+        </style>
+    </head>
+    <body>
+        <h1>Diff Coverage</h1>
+        <p>Diff: e401699acdc0b5280a64d13d689fc3efd11cdd43...HEAD, staged, unstaged and untracked changes</p>
+        <ul>
+            <li><b>Total</b>: 178 lines</li>
+            <li><b>Missing</b>: 14 lines</li>
+            <li><b>Coverage</b>: 92.13%</li>
+        </ul>
+        <table border="1">
+            <tr>
+                <th>Source File</th>
+                <th>Diff Coverage (%)</th>
+                <th>Missing Lines</th>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/activity_import_history.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/activity_reprocessing.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/app_error.rs</td>
+                <td>0.0%</td>
+                <td>232</td>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/controllers/activities.rs</td>
+                <td>97.4%</td>
+                <td>859</td>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/controllers/activity_import_history.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/controllers/activity_imports.rs</td>
+                <td>85.1%</td>
+                <td>266-274,279</td>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/controllers/admin.rs</td>
+                <td>98.3%</td>
+                <td>604</td>
+            </tr>
+            <tr>
+                <td>bike-rs/api/src/lib.rs</td>
+                <td>0.0%</td>
+                <td>147</td>
+            </tr>
+        </table>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/api/src/app_error.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/app_error.rs-228" name="bike-rs/api/src/app_error.rs-228"></a><span class="w">    </span><span class="p">}</span>
+<a id="bike-rs/api/src/app_error.rs-229" name="bike-rs/api/src/app_error.rs-229"></a><span class="p">}</span>
+<a id="bike-rs/api/src/app_error.rs-230" name="bike-rs/api/src/app_error.rs-230"></a>
+<a id="bike-rs/api/src/app_error.rs-231" name="bike-rs/api/src/app_error.rs-231"></a><span class="k">impl</span><span class="w"> </span><span class="nb">From</span><span class="o">&lt;</span><span class="n">bike_core</span><span class="p">::</span><span class="n">jobs</span><span class="p">::</span><span class="n">TaskError</span><span class="o">&gt;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">AppError</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/app_error.rs-232" name="bike-rs/api/src/app_error.rs-232"></a><span class="hll"><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">from</span><span class="p">(</span><span class="n">error</span><span class="p">:</span><span class="w"> </span><span class="nc">bike_core</span><span class="p">::</span><span class="n">jobs</span><span class="p">::</span><span class="n">TaskError</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Self</span><span class="w"> </span><span class="p">{</span>
+</span><a id="bike-rs/api/src/app_error.rs-233" name="bike-rs/api/src/app_error.rs-233"></a><span class="w">        </span><span class="bp">Self</span><span class="p">::</span><span class="n">internal</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">to_string</span><span class="p">())</span>
+<a id="bike-rs/api/src/app_error.rs-234" name="bike-rs/api/src/app_error.rs-234"></a><span class="w">    </span><span class="p">}</span>
+<a id="bike-rs/api/src/app_error.rs-235" name="bike-rs/api/src/app_error.rs-235"></a><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/api/src/controllers/activities.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">855</span>
+<span class="normal">856</span>
+<span class="normal">857</span>
+<span class="normal">858</span>
+<span class="normal">859</span>
+<span class="normal">860</span>
+<span class="normal">861</span>
+<span class="normal">862</span>
+<span class="normal">863</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/activities.rs-855" name="bike-rs/api/src/controllers/activities.rs-855"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">activity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">activities</span><span class="p">::</span><span class="n">Model</span><span class="p">::</span><span class="n">find_owned</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">user</span><span class="p">.</span><span class="n">id</span><span class="p">)</span>
+<a id="bike-rs/api/src/controllers/activities.rs-856" name="bike-rs/api/src/controllers/activities.rs-856"></a><span class="w">        </span><span class="p">.</span><span class="k">await</span><span class="o">?</span>
+<a id="bike-rs/api/src/controllers/activities.rs-857" name="bike-rs/api/src/controllers/activities.rs-857"></a><span class="w">        </span><span class="p">.</span><span class="n">ok_or_else</span><span class="p">(</span><span class="o">||</span><span class="w"> </span><span class="n">AppError</span><span class="p">::</span><span class="n">not_found</span><span class="p">(</span><span class="s">"Activity not found"</span><span class="p">))</span><span class="o">?</span><span class="p">;</span>
+<a id="bike-rs/api/src/controllers/activities.rs-858" name="bike-rs/api/src/controllers/activities.rs-858"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">activity</span><span class="p">.</span><span class="n">activity_import_id</span><span class="p">.</span><span class="n">is_none</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/activities.rs-859" name="bike-rs/api/src/controllers/activities.rs-859"></a><span class="hll"><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nb">Err</span><span class="p">(</span><span class="n">AppError</span><span class="p">::</span><span class="n">bad_request</span><span class="p">(</span><span class="s">"Only uploaded activities can be regenerated"</span><span class="p">));</span>
+</span><a id="bike-rs/api/src/controllers/activities.rs-860" name="bike-rs/api/src/controllers/activities.rs-860"></a><span class="w">    </span><span class="p">}</span>
+<a id="bike-rs/api/src/controllers/activities.rs-861" name="bike-rs/api/src/controllers/activities.rs-861"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">job</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">state</span>
+<a id="bike-rs/api/src/controllers/activities.rs-862" name="bike-rs/api/src/controllers/activities.rs-862"></a><span class="w">        </span><span class="p">.</span><span class="n">tasks</span>
+<a id="bike-rs/api/src/controllers/activities.rs-863" name="bike-rs/api/src/controllers/activities.rs-863"></a><span class="w">        </span><span class="p">.</span><span class="n">reprocess_activity_import</span><span class="p">(</span><span class="n">activity</span><span class="p">.</span><span class="n">id</span><span class="p">)</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/api/src/controllers/activity_imports.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/activity_imports.rs-262" name="bike-rs/api/src/controllers/activity_imports.rs-262"></a><span class="w">                </span><span class="p">.</span><span class="n">mark_processing</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="s">"raw_stored"</span><span class="p">,</span><span class="w"> </span><span class="nb">None</span><span class="p">,</span><span class="w"> </span><span class="n">Utc</span><span class="p">::</span><span class="n">now</span><span class="p">())</span>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-263" name="bike-rs/api/src/controllers/activity_imports.rs-263"></a><span class="w">                </span><span class="p">.</span><span class="k">await</span><span class="o">?</span>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-264" name="bike-rs/api/src/controllers/activity_imports.rs-264"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-265" name="bike-rs/api/src/controllers/activity_imports.rs-265"></a><span class="w">        </span><span class="nb">None</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-266" name="bike-rs/api/src/controllers/activity_imports.rs-266"></a><span class="hll"><span class="w">            </span><span class="n">store_activity_upload_import</span><span class="p">(</span>
+</span><a id="bike-rs/api/src/controllers/activity_imports.rs-267" name="bike-rs/api/src/controllers/activity_imports.rs-267"></a><span class="hll"><span class="w">                </span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/activity_imports.rs-268" name="bike-rs/api/src/controllers/activity_imports.rs-268"></a><span class="hll"><span class="w">                </span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">uploads_dir</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/activity_imports.rs-269" name="bike-rs/api/src/controllers/activity_imports.rs-269"></a><span class="hll"><span class="w">                </span><span class="o">&amp;</span><span class="n">user_storage_key</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/activity_imports.rs-270" name="bike-rs/api/src/controllers/activity_imports.rs-270"></a><span class="hll"><span class="w">                </span><span class="n">user</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/activity_imports.rs-271" name="bike-rs/api/src/controllers/activity_imports.rs-271"></a><span class="hll"><span class="w">                </span><span class="n">upload</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/activity_imports.rs-272" name="bike-rs/api/src/controllers/activity_imports.rs-272"></a><span class="hll"><span class="w">                </span><span class="s">"manual_upload"</span><span class="p">,</span>
+</span><a id="bike-rs/api/src/controllers/activity_imports.rs-273" name="bike-rs/api/src/controllers/activity_imports.rs-273"></a><span class="hll"><span class="w">            </span><span class="p">)</span>
+</span><a id="bike-rs/api/src/controllers/activity_imports.rs-274" name="bike-rs/api/src/controllers/activity_imports.rs-274"></a><span class="hll"><span class="w">            </span><span class="p">.</span><span class="k">await</span><span class="o">?</span>
+</span><a id="bike-rs/api/src/controllers/activity_imports.rs-275" name="bike-rs/api/src/controllers/activity_imports.rs-275"></a><span class="w">        </span><span class="p">}</span>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-276" name="bike-rs/api/src/controllers/activity_imports.rs-276"></a><span class="w">    </span><span class="p">};</span>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-277" name="bike-rs/api/src/controllers/activity_imports.rs-277"></a>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-278" name="bike-rs/api/src/controllers/activity_imports.rs-278"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Err</span><span class="p">(</span><span class="n">failure</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">tasks</span><span class="p">.</span><span class="n">process_activity_import</span><span class="p">(</span><span class="n">user</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">import</span><span class="p">.</span><span class="n">id</span><span class="p">).</span><span class="k">await</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-279" name="bike-rs/api/src/controllers/activity_imports.rs-279"></a><span class="hll"><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">AppError</span><span class="p">::</span><span class="n">internal</span><span class="p">(</span><span class="fm">format!</span><span class="p">(</span><span class="s">"Failed to queue activity import: {failure}"</span><span class="p">));</span>
+</span><a id="bike-rs/api/src/controllers/activity_imports.rs-280" name="bike-rs/api/src/controllers/activity_imports.rs-280"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">workflow_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">bike_core</span><span class="p">::</span><span class="n">workflow_error</span><span class="p">::</span><span class="n">WorkflowError</span><span class="p">::</span><span class="n">internal</span><span class="p">(</span><span class="n">error</span><span class="p">.</span><span class="n">message</span><span class="p">.</span><span class="n">clone</span><span class="p">());</span>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-281" name="bike-rs/api/src/controllers/activity_imports.rs-281"></a><span class="w">        </span><span class="n">mark_activity_import_failed</span><span class="p">(</span><span class="o">&amp;</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">import</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">import</span><span class="p">.</span><span class="n">processing_stage</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">workflow_error</span><span class="p">)</span>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-282" name="bike-rs/api/src/controllers/activity_imports.rs-282"></a><span class="w">            </span><span class="p">.</span><span class="k">await</span>
+<a id="bike-rs/api/src/controllers/activity_imports.rs-283" name="bike-rs/api/src/controllers/activity_imports.rs-283"></a><span class="w">            </span><span class="p">.</span><span class="n">map_err</span><span class="p">(</span><span class="n">AppError</span><span class="p">::</span><span class="n">from</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/api/src/controllers/admin.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span>
+<span class="normal">608</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/controllers/admin.rs-600" name="bike-rs/api/src/controllers/admin.rs-600"></a><span class="w">                </span><span class="p">}),</span>
+<a id="bike-rs/api/src/controllers/admin.rs-601" name="bike-rs/api/src/controllers/admin.rs-601"></a><span class="w">            </span><span class="p">)</span>
+<a id="bike-rs/api/src/controllers/admin.rs-602" name="bike-rs/api/src/controllers/admin.rs-602"></a><span class="w">        </span><span class="p">});</span>
+<a id="bike-rs/api/src/controllers/admin.rs-603" name="bike-rs/api/src/controllers/admin.rs-603"></a>
+<a id="bike-rs/api/src/controllers/admin.rs-604" name="bike-rs/api/src/controllers/admin.rs-604"></a><span class="hll"><span class="w">    </span><span class="n">result</span><span class="p">.</span><span class="n">map_err</span><span class="p">(</span><span class="nb">Into</span><span class="p">::</span><span class="n">into</span><span class="p">)</span>
+</span><a id="bike-rs/api/src/controllers/admin.rs-605" name="bike-rs/api/src/controllers/admin.rs-605"></a><span class="p">}</span>
+<a id="bike-rs/api/src/controllers/admin.rs-606" name="bike-rs/api/src/controllers/admin.rs-606"></a>
+<a id="bike-rs/api/src/controllers/admin.rs-607" name="bike-rs/api/src/controllers/admin.rs-607"></a><span class="cp">#[utoipa::path(</span>
+<a id="bike-rs/api/src/controllers/admin.rs-608" name="bike-rs/api/src/controllers/admin.rs-608"></a><span class="cp">    post,</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/api/src/lib.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/api/src/lib.rs-143" name="bike-rs/api/src/lib.rs-143"></a><span class="p">}</span>
+<a id="bike-rs/api/src/lib.rs-144" name="bike-rs/api/src/lib.rs-144"></a>
+<a id="bike-rs/api/src/lib.rs-145" name="bike-rs/api/src/lib.rs-145"></a><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">request_id_response_header</span><span class="p">(</span><span class="n">request</span><span class="p">:</span><span class="w"> </span><span class="nc">Request</span><span class="o">&lt;</span><span class="n">Body</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">next</span><span class="p">:</span><span class="w"> </span><span class="nc">Next</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Response</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/lib.rs-146" name="bike-rs/api/src/lib.rs-146"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">request_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">request</span><span class="p">.</span><span class="n">headers</span><span class="p">().</span><span class="n">get</span><span class="p">(</span><span class="o">&amp;</span><span class="n">REQUEST_ID_HEADER</span><span class="p">).</span><span class="n">cloned</span><span class="p">();</span>
+<a id="bike-rs/api/src/lib.rs-147" name="bike-rs/api/src/lib.rs-147"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">next</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">request</span><span class="p">).</span><span class="k">await</span><span class="p">;</span>
+</span><a id="bike-rs/api/src/lib.rs-148" name="bike-rs/api/src/lib.rs-148"></a>
+<a id="bike-rs/api/src/lib.rs-149" name="bike-rs/api/src/lib.rs-149"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">request_id</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">request_id</span><span class="w"> </span><span class="p">{</span>
+<a id="bike-rs/api/src/lib.rs-150" name="bike-rs/api/src/lib.rs-150"></a><span class="w">        </span><span class="n">response</span><span class="p">.</span><span class="n">headers_mut</span><span class="p">().</span><span class="n">insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">REQUEST_ID_HEADER</span><span class="p">,</span><span class="w"> </span><span class="n">request_id</span><span class="p">);</span>
+<a id="bike-rs/api/src/lib.rs-151" name="bike-rs/api/src/lib.rs-151"></a><span class="w">    </span><span class="p">}</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+    </body>
+</html>
