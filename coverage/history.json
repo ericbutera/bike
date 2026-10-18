@@ -1,5 +1,118 @@
 [
   {
+    "commit": "9fb0145033ddf2ce425dd1aa948c931b0f092cf8",
+    "created_at": "2026-10-18T19:22:08Z",
+    "base_revision": "da8d8660b09968fa11146ee8dd6184aa83366896",
+    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/587",
+    "minimum_changed_line_percent": 80,
+    "projects": {
+      "api": {
+        "name": "Bike API",
+        "language": "Rust",
+        "source": "bike-rs/api",
+        "lines": 5896,
+        "covered": 4076,
+        "percent": 69.13161465400272,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "worker": {
+        "name": "Bike worker",
+        "language": "Rust",
+        "source": "bike-rs/worker",
+        "lines": 303,
+        "covered": 227,
+        "percent": 74.91749174917491,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "integrations": {
+        "name": "Provider integrations",
+        "language": "Rust",
+        "source": "bike-rs/integrations",
+        "lines": 2705,
+        "covered": 1827,
+        "percent": 67.54158964879852,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "strava-temporal": {
+        "name": "Strava Temporal worker",
+        "language": "Rust",
+        "source": "bike-rs/strava-temporal",
+        "lines": 1030,
+        "covered": 1004,
+        "percent": 97.47572815533981,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "bike-core": {
+        "name": "Shared Bike core",
+        "language": "Rust",
+        "source": "bike-rs/bike-core",
+        "lines": 25283,
+        "covered": 18659,
+        "percent": 73.8005774631175,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "bike-temporal": {
+        "name": "Bike Temporal workflows",
+        "language": "Rust",
+        "source": "bike-rs/bike-temporal",
+        "lines": 786,
+        "covered": 728,
+        "percent": 92.6208651399491,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      },
+      "bike-ui": {
+        "name": "Bike UI",
+        "language": "Next.js",
+        "source": "bike-ui",
+        "lines": 5741,
+        "covered": 3762,
+        "percent": 65.52,
+        "changed": {
+          "lines": 241,
+          "covered": 234,
+          "percent": 97.1
+        }
+      },
+      "map-renderer": {
+        "name": "Map renderer",
+        "language": "Go",
+        "source": "map-renderer",
+        "lines": 444,
+        "covered": 361,
+        "percent": 81.30630630630631,
+        "changed": {
+          "lines": 0,
+          "covered": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  {
     "commit": "da8d8660b09968fa11146ee8dd6184aa83366896",
     "created_at": "2026-10-18T01:39:19Z",
     "base_revision": "394f518cc12ab5dd623b454f093dad77c20d3398",
@@ -947,106 +1060,6 @@
           "lines": 29,
           "covered": 27,
           "percent": 93.1
-        }
-      },
-      "map-renderer": {
-        "name": "Map renderer",
-        "language": "Go",
-        "source": "map-renderer",
-        "lines": 444,
-        "covered": 361,
-        "percent": 81.30630630630631,
-        "changed": {
-          "lines": 0,
-          "covered": 0,
-          "percent": 100.0
-        }
-      }
-    }
-  },
-  {
-    "commit": "6718a8f493d55e7c624283bedcba8a97808385c6",
-    "created_at": "2026-10-17T03:35:08Z",
-    "base_revision": "45140de33361a03bbf321b4513a1172ffca428b6",
-    "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/512",
-    "minimum_changed_line_percent": 80,
-    "projects": {
-      "api": {
-        "name": "Bike API",
-        "language": "Rust",
-        "source": "bike-rs/api",
-        "lines": 5943,
-        "covered": 3531,
-        "percent": 59.414437152953056,
-        "changed": {
-          "lines": 0,
-          "covered": 0,
-          "percent": 100.0
-        }
-      },
-      "worker": {
-        "name": "Bike worker",
-        "language": "Rust",
-        "source": "bike-rs/worker",
-        "lines": 869,
-        "covered": 429,
-        "percent": 49.36708860759494,
-        "changed": {
-          "lines": 0,
-          "covered": 0,
-          "percent": 100.0
-        }
-      },
-      "strava-temporal": {
-        "name": "Strava Temporal worker",
-        "language": "Rust",
-        "source": "bike-rs/strava-temporal",
-        "lines": 1132,
-        "covered": 1095,
-        "percent": 96.73144876325088,
-        "changed": {
-          "lines": 0,
-          "covered": 0,
-          "percent": 100.0
-        }
-      },
-      "bike-core": {
-        "name": "Shared Bike core",
-        "language": "Rust",
-        "source": "bike-rs/bike-core",
-        "lines": 35786,
-        "covered": 21967,
-        "percent": 61.38434024478846,
-        "changed": {
-          "lines": 75,
-          "covered": 75,
-          "percent": 100.0
-        }
-      },
-      "bike-temporal": {
-        "name": "Bike Temporal workflows",
-        "language": "Rust",
-        "source": "bike-rs/bike-temporal",
-        "lines": 1294,
-        "covered": 1224,
-        "percent": 94.5904173106646,
-        "changed": {
-          "lines": 0,
-          "covered": 0,
-          "percent": 100.0
-        }
-      },
-      "bike-ui": {
-        "name": "Bike UI",
-        "language": "Next.js",
-        "source": "bike-ui",
-        "lines": 5888,
-        "covered": 3805,
-        "percent": 64.62,
-        "changed": {
-          "lines": 0,
-          "covered": 0,
-          "percent": 100.0
         }
       },
       "map-renderer": {
