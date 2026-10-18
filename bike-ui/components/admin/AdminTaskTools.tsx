@@ -3,25 +3,17 @@
 import {
   useActivityArchiveImportJobs,
   useAdminBackfillAnalytics,
-  useAdminBackfillUserXcTraining,
   useCleanupUserDuplicateActivities,
   useImportActivityArchiveUrl,
   useRegenerateSegmentEfforts,
-  useRegenerateUserSegments,
-  useReprocessActivityImport,
-  useReprocessUserActivityImports,
   type ActivityArchiveImportJob,
   type AdminAnalyticsBackfillResponse,
   type CleanupUserDuplicateActivitiesResponse,
   type RegenerateSegmentEffortsResponse,
-  type RegenerateUserSegmentsResponse,
-  type ReprocessActivityImportResponse,
-  type ReprocessUserActivityImportsResponse,
 } from "@/lib/queries";
 import Link from "next/link";
 import { useState } from "react";
 import toast from "react-hot-toast";
-import TemporalLink from "../ui/TemporalLink";
 
 export default function AdminTaskTools() {
   const { backfillAsync, isPending } = useAdminBackfillAnalytics();
@@ -34,45 +26,19 @@ export default function AdminTaskTools() {
     useImportActivityArchiveUrl();
   const { cleanupAsync, isPending: isCleanupPending } =
     useCleanupUserDuplicateActivities();
-  const { reprocessAsync, isPending: isReprocessPending } =
-    useReprocessUserActivityImports();
-  const {
-    reprocessAsync: reprocessActivityAsync,
-    isPending: isActivityReprocessPending,
-  } = useReprocessActivityImport();
-  const {
-    regenerateAsync: regenerateUserSegmentsAsync,
-    isPending: isUserSegmentRegenerationPending,
-  } = useRegenerateUserSegments();
   const {
     regenerateAsync: regenerateSegmentEffortsAsync,
     isPending: isSegmentEffortRegenerationPending,
   } = useRegenerateSegmentEfforts();
-  const {
-    backfillAsync: backfillXcTrainingAsync,
-    isPending: isXcBackfillPending,
-  } = useAdminBackfillUserXcTraining();
   const [result, setResult] = useState<AdminAnalyticsBackfillResponse | null>(
     null,
   );
   const [archiveUrl, setArchiveUrl] = useState("");
   const [archiveResult, setArchiveResult] =
     useState<ActivityArchiveImportJob | null>(null);
-  const [reprocessUserId, setReprocessUserId] = useState("");
-  const [reprocessResult, setReprocessResult] =
-    useState<ReprocessUserActivityImportsResponse | null>(null);
-  const [activityReprocessId, setActivityReprocessId] = useState("");
-  const [activityReprocessResult, setActivityReprocessResult] =
-    useState<ReprocessActivityImportResponse | null>(null);
-  const [userSegmentUserId, setUserSegmentUserId] = useState("");
-  const [userSegmentResult, setUserSegmentResult] =
-    useState<RegenerateUserSegmentsResponse | null>(null);
   const [segmentEffortSegmentId, setSegmentEffortSegmentId] = useState("");
   const [segmentEffortResult, setSegmentEffortResult] =
     useState<RegenerateSegmentEffortsResponse | null>(null);
-  const [xcBackfillUserId, setXcBackfillUserId] = useState("");
-  const [xcBackfillResult, setXcBackfillResult] =
-    useState<ReprocessUserActivityImportsResponse | null>(null);
   const [cleanupUserId, setCleanupUserId] = useState("");
   const [cleanupResult, setCleanupResult] =
     useState<CleanupUserDuplicateActivitiesResponse | null>(null);
@@ -92,57 +58,6 @@ export default function AdminTaskTools() {
       setArchiveResult(response);
     } catch {
       setArchiveResult(null);
-    }
-  }
-
-  async function handleReprocessImports() {
-    const numericUserId = Number(reprocessUserId);
-
-    if (!Number.isFinite(numericUserId) || numericUserId < 1) {
-      setReprocessResult(null);
-      toast.error("Enter a valid user id.");
-      return;
-    }
-
-    try {
-      const response = await reprocessAsync(numericUserId);
-      setReprocessResult(response);
-    } catch {
-      setReprocessResult(null);
-    }
-  }
-
-  async function handleActivityReprocess() {
-    const numericActivityId = Number(activityReprocessId);
-
-    if (!Number.isFinite(numericActivityId) || numericActivityId < 1) {
-      setActivityReprocessResult(null);
-      toast.error("Enter a valid activity id.");
-      return;
-    }
-
-    try {
-      const response = await reprocessActivityAsync(numericActivityId);
-      setActivityReprocessResult(response);
-    } catch {
-      setActivityReprocessResult(null);
-    }
-  }
-
-  async function handleUserSegmentRegeneration() {
-    const numericUserId = Number(userSegmentUserId);
-
-    if (!Number.isFinite(numericUserId) || numericUserId < 1) {
-      setUserSegmentResult(null);
-      toast.error("Enter a valid user id.");
-      return;
-    }
-
-    try {
-      const response = await regenerateUserSegmentsAsync(numericUserId);
-      setUserSegmentResult(response);
-    } catch {
-      setUserSegmentResult(null);
     }
   }
 
@@ -180,131 +95,20 @@ export default function AdminTaskTools() {
     }
   }
 
-  async function handleXcTrainingBackfill() {
-    const numericUserId = Number(xcBackfillUserId);
-
-    if (!Number.isFinite(numericUserId) || numericUserId < 1) {
-      setXcBackfillResult(null);
-      toast.error("Enter a valid user id.");
-      return;
-    }
-
-    try {
-      const response = await backfillXcTrainingAsync(numericUserId);
-      setXcBackfillResult(response);
-    } catch {
-      setXcBackfillResult(null);
-    }
-  }
-
   return (
     <div className="grid gap-6">
-      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">
-          Reprocess one imported activity
-        </h2>
-        <p className="mt-2 max-w-3xl text-sm text-base-content/70">
-          Queue a focused rebuild for one activity from its stored source file.
-          This refreshes segment efforts, segment analytics, activity analytics,
-          XC training analysis, and fitness freshness without rerunning every
-          activity for the rider.
-        </p>
-
-        <label className="form-control mt-5 max-w-sm">
-          <div className="label">
-            <span className="label-text font-medium">Activity id</span>
-            <span className="label-text-alt">Required</span>
-          </div>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            inputMode="numeric"
-            className="input input-bordered"
-            placeholder="1647"
-            value={activityReprocessId}
-            onChange={(event) => {
-              setActivityReprocessId(event.target.value);
-            }}
-          />
-          <div className="label">
-            <span className="label-text-alt text-base-content/60">
-              The activity must be linked to a stored import file.
-            </span>
-          </div>
-        </label>
-
-        <div className="mt-5 flex flex-wrap gap-3">
-          <button
-            className="btn btn-primary"
-            disabled={!activityReprocessId.trim() || isActivityReprocessPending}
-            onClick={handleActivityReprocess}
-          >
-            {isActivityReprocessPending
-              ? "Queueing reprocess..."
-              : "Queue activity reprocess"}
-          </button>
-          <Link href="/admin/tasks" className="btn btn-ghost">
-            View background tasks
-          </Link>
-          <Link href="/admin/integrations" className="btn btn-ghost">
-            View processing events
-          </Link>
-        </div>
-
-        {activityReprocessResult ? (
-          <div className="mt-5 rounded-2xl bg-base-200 p-5">
-            <div className="text-sm text-base-content/60">
-              Activity reprocess accepted
-            </div>
-            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
-              <SummaryItem
-                label="Activity id"
-                value={activityReprocessResult.activity_id}
-              />
-              <SummaryItem
-                label="Import id"
-                value={activityReprocessResult.activity_import_id}
-              />
-              <SummaryItem
-                label="User id"
-                value={activityReprocessResult.user_id}
-              />
-              <SummaryTextItem
-                label="Job id"
-                value={activityReprocessResult.job.job_id}
-              />
-              <SummaryTextItem
-                label="Status"
-                value={activityReprocessResult.status}
-              />
-              <SummaryTextItem
-                label="Message"
-                value={activityReprocessResult.message}
-              />
-            </dl>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <Link
-                href={`/admin/integrations?provider=activity_processing&user_id=${activityReprocessResult.user_id}&activity_id=${activityReprocessResult.activity_id}`}
-                className="btn btn-sm btn-outline"
-              >
-                Activity events
-              </Link>
-              <Link
-                href={`/admin/integrations?provider=activity_processing&user_id=${activityReprocessResult.user_id}&import_id=${activityReprocessResult.activity_import_id}`}
-                className="btn btn-sm btn-outline"
-              >
-                Import events
-              </Link>
-              <TemporalLink
-                workflowId={activityReprocessResult.job.job_id}
-                namespace={activityReprocessResult.job.namespace}
-              />
-            </div>
-          </div>
-        ) : null}
-      </section>
-
+      <p className="text-sm text-base-content/75">
+        Run activity and user tasks from the gear menus on the{" "}
+        <Link className="link" href="/admin/activities">
+          Activities
+        </Link>{" "}
+        and{" "}
+        <Link className="link" href="/admin/users">
+          Users
+        </Link>{" "}
+        grids. These tools handle segment, archive, duplicate cleanup, and
+        global maintenance.
+      </p>
       <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
         <h2 className="text-lg font-semibold">Regenerate segment efforts</h2>
         <p className="mt-2 max-w-3xl text-sm text-base-content/70">
@@ -374,70 +178,6 @@ export default function AdminTaskTools() {
               <SummaryTextItem
                 label="Message"
                 value={segmentEffortResult.message}
-              />
-            </dl>
-          </div>
-        ) : null}
-      </section>
-
-      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">Regenerate user segments</h2>
-        <p className="mt-2 max-w-3xl text-sm text-base-content/70">
-          Rebuild segment matching for one rider from stored activities. This is
-          broader than the targeted segment tool and should be used when one
-          rider needs all effort matches refreshed.
-        </p>
-
-        <label className="form-control mt-5 max-w-sm">
-          <div className="label">
-            <span className="label-text font-medium">User id</span>
-            <span className="label-text-alt">Required</span>
-          </div>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            inputMode="numeric"
-            className="input input-bordered"
-            placeholder="42"
-            value={userSegmentUserId}
-            onChange={(event) => {
-              setUserSegmentUserId(event.target.value);
-            }}
-          />
-        </label>
-
-        <div className="mt-5 flex flex-wrap gap-3">
-          <button
-            className="btn btn-primary"
-            disabled={
-              !userSegmentUserId.trim() || isUserSegmentRegenerationPending
-            }
-            onClick={handleUserSegmentRegeneration}
-          >
-            {isUserSegmentRegenerationPending
-              ? "Queueing regeneration..."
-              : "Regenerate user segments"}
-          </button>
-          <Link href="/admin/users" className="btn btn-ghost">
-            Find user ids
-          </Link>
-        </div>
-
-        {userSegmentResult ? (
-          <div className="mt-5 rounded-2xl bg-base-200 p-5">
-            <div className="text-sm text-base-content/60">
-              Segment regeneration request
-            </div>
-            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
-              <SummaryItem label="User id" value={userSegmentResult.user_id} />
-              <SummaryTextItem
-                label="Status"
-                value={userSegmentResult.status}
-              />
-              <SummaryTextItem
-                label="Message"
-                value={userSegmentResult.message}
               />
             </dl>
           </div>
@@ -640,142 +380,6 @@ export default function AdminTaskTools() {
             <div className="mt-4 rounded-xl border border-base-300 bg-base-100 px-4 py-3 text-sm text-base-content/80">
               {cleanupResult.message}
             </div>
-          </div>
-        ) : null}
-      </section>
-
-      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">Backfill XC training history</h2>
-        <p className="mt-2 max-w-3xl text-sm text-base-content/70">
-          Queue the XC training-history backfill for one rider. This rebuilds
-          cached historical training metrics from the stored activity records
-          without rerunning full activity import reprocessing, and is the same
-          workflow the XC page now requests automatically when a start date
-          changes.
-        </p>
-
-        <label className="form-control mt-5 max-w-sm">
-          <div className="label">
-            <span className="label-text font-medium">User id</span>
-            <span className="label-text-alt">Required</span>
-          </div>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            inputMode="numeric"
-            className="input input-bordered"
-            placeholder="42"
-            value={xcBackfillUserId}
-            onChange={(event) => {
-              setXcBackfillUserId(event.target.value);
-            }}
-          />
-          <div className="label">
-            <span className="label-text-alt text-base-content/60">
-              Use this when one rider needs historical XC trend data rebuilt.
-            </span>
-          </div>
-        </label>
-
-        <div className="mt-5 flex flex-wrap gap-3">
-          <button
-            className="btn btn-primary"
-            disabled={!xcBackfillUserId.trim() || isXcBackfillPending}
-            onClick={handleXcTrainingBackfill}
-          >
-            {isXcBackfillPending
-              ? "Queueing XC backfill..."
-              : "Queue XC backfill"}
-          </button>
-          <Link href="/admin/users" className="btn btn-ghost">
-            Find user ids
-          </Link>
-          <Link href="/admin/tasks" className="btn btn-ghost">
-            View background tasks
-          </Link>
-        </div>
-
-        {xcBackfillResult ? (
-          <div className="mt-5 rounded-2xl bg-base-200 p-5">
-            <div className="text-sm text-base-content/60">
-              XC backfill request
-            </div>
-            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
-              <SummaryItem label="User id" value={xcBackfillResult.user_id} />
-              <SummaryTextItem label="Status" value={xcBackfillResult.status} />
-              <SummaryTextItem
-                label="Message"
-                value={xcBackfillResult.message}
-              />
-            </dl>
-          </div>
-        ) : null}
-      </section>
-
-      <section className="rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">
-          Reprocess imported activity files
-        </h2>
-        <p className="mt-2 max-w-3xl text-sm text-base-content/70">
-          Queue a stored-file reprocess for one rider. This reuses the same
-          per-activity import files created by archive imports and reruns the
-          normal import pipeline instead of taking a separate admin-only path.
-        </p>
-
-        <label className="form-control mt-5 max-w-sm">
-          <div className="label">
-            <span className="label-text font-medium">User id</span>
-            <span className="label-text-alt">Required</span>
-          </div>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            inputMode="numeric"
-            className="input input-bordered"
-            placeholder="42"
-            value={reprocessUserId}
-            onChange={(event) => {
-              setReprocessUserId(event.target.value);
-            }}
-          />
-          <div className="label">
-            <span className="label-text-alt text-base-content/60">
-              Use the admin users page if you need to look up a rider id.
-            </span>
-          </div>
-        </label>
-
-        <div className="mt-5 flex flex-wrap gap-3">
-          <button
-            className="btn btn-primary"
-            disabled={!reprocessUserId.trim() || isReprocessPending}
-            onClick={handleReprocessImports}
-          >
-            {isReprocessPending
-              ? "Queueing reprocess..."
-              : "Queue import reprocess"}
-          </button>
-          <Link href="/admin/users" className="btn btn-ghost">
-            Find user ids
-          </Link>
-          <Link href="/admin/tasks" className="btn btn-ghost">
-            View background tasks
-          </Link>
-        </div>
-
-        {reprocessResult ? (
-          <div className="mt-5 rounded-2xl bg-base-200 p-5">
-            <div className="text-sm text-base-content/60">Queued reprocess</div>
-            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
-              <SummaryItem label="User id" value={reprocessResult.user_id} />
-              <SummaryTextItem label="Status" value={reprocessResult.status} />
-              <SummaryTextItem
-                label="Message"
-                value={reprocessResult.message}
-              />
-            </dl>
           </div>
         ) : null}
       </section>

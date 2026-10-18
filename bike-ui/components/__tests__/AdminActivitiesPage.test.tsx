@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import AdminActivitiesPage from "../../app/admin/activities/page";
 import type { AdminActivity } from "../../lib/queries";
+import { adminActivity } from "@/tests/fixtures/adminTasks";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 vi.mock("../../lib/queries", () => ({ useAdminActivities: vi.fn() }));
 vi.mock("../admin/LocalAdminLayout", () => ({
@@ -16,13 +19,21 @@ vi.mock("../ui/GenericList", () => ({
   }) => (
     <>
       {[
-        { id: 42, title: "Linked ride", activity_import_id: 1676 },
-        { id: 43, title: "Legacy ride", activity_import_id: null },
+        adminActivity({
+          id: 42,
+          title: "Linked ride",
+          activity_import_id: 1676,
+        }),
+        adminActivity({
+          id: 43,
+          title: "Legacy ride",
+          activity_import_id: null,
+        }),
       ].map((activity) => (
         <div key={activity.id}>
           {columns
             .find((column) => column.key === "actions")
-            ?.render?.(activity as AdminActivity)}
+            ?.render?.(activity)}
         </div>
       ))}
     </>
@@ -30,16 +41,16 @@ vi.mock("../ui/GenericList", () => ({
 }));
 
 describe("admin activity processing", () => {
-  it("links retained import details without reconstructing task graphs", () => {
+  it("offers task menus on every activity row", () => {
     render(<AdminActivitiesPage />);
     expect(
-      screen.getByRole("link", {
-        name: "View import details for Linked ride",
+      screen.getByRole("button", {
+        name: "Tasks for Linked ride (#42)",
       }),
-    ).toHaveAttribute("href", "/admin/imports/1676");
+    ).toHaveAttribute("aria-haspopup", "menu");
     expect(
-      screen.queryByRole("button", { name: /Legacy ride/ }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: /Legacy ride/ }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

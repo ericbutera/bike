@@ -1,6 +1,6 @@
 //! Submit accepted provider events directly to Temporal before acknowledging requests.
 use super::{StravaEvent, StravaOperation};
-use bike_core::{entities::strava_events, workflow_error::WorkflowError};
+use bike_core::{bike_tasks::JobReference, entities::strava_events, workflow_error::WorkflowError};
 use sea_orm::DatabaseConnection;
 use std::time::Duration;
 use temporalio_client::{
@@ -83,15 +83,7 @@ pub async fn start_event(
 ) -> Result<Option<String>, Error> {
     crate::strava::payload::validate_temporal(&event)?;
     let options = start_options(config, &event);
-    let workflow = match event.operation {
-        StravaOperation::Create => "CreateActivity",
-        StravaOperation::Update => "UpdateActivity",
-        StravaOperation::Upsert => "UpsertActivity",
-        StravaOperation::Delete => "DeleteActivity",
-        StravaOperation::Sync => "SyncActivities",
-        StravaOperation::Backfill => "BackfillActivities",
-        StravaOperation::Disconnect => "DisconnectStrava",
-    };
+    let workflow = workflow_type(event.operation);
     let result = client
         .start_workflow(
             UntypedWorkflow::new(workflow),
@@ -103,6 +95,18 @@ pub async fn start_event(
     match result {
         Ok(run_id) | Err(temporalio_client::errors::WorkflowStartError::AlreadyStarted { run_id, .. }) => Ok(run_id),
         Err(error) => Err(error.into()),
+    }
+}
+
+fn workflow_type(operation: StravaOperation) -> &'static str {
+    match operation {
+        StravaOperation::Create => "CreateActivity",
+        StravaOperation::Update => "UpdateActivity",
+        StravaOperation::Upsert => "UpsertActivity",
+        StravaOperation::Delete => "DeleteActivity",
+        StravaOperation::Sync => "SyncActivities",
+        StravaOperation::Backfill => "BackfillActivities",
+        StravaOperation::Disconnect => "DisconnectStrava",
     }
 }
 
@@ -122,16 +126,26 @@ pub async fn submit_accepted(
     config: &TemporalConfig,
     db: &DatabaseConnection,
     row: strava_events::Model,
-) -> Result<(), WorkflowError> {
+) -> Result<JobReference, WorkflowError> {
     let span = handoff_span(&row, config);
     async {
         // A duplicate webhook must use the original accepted event and workflow ID.
-        let event =
+        let event: StravaEvent =
             serde_json::from_value(row.event.clone()).map_err(|error| WorkflowError::internal(error.to_string()))?;
-        let run_id = start_event(client, config, event).await.map_err(submission_error)?;
+        let workflow_type = workflow_type(event.operation).to_string();
+        let run_id = start_event(client, config, event)
+            .await
+            .map_err(submission_error)?
+            .ok_or_else(|| WorkflowError::internal("Temporal did not acknowledge a run ID"))?;
         tracing::info!(temporal_run_id = run_id, "Strava event handed to Temporal");
+        let job = JobReference {
+            job_id: row.workflow_id.clone(),
+            namespace: config.namespace.clone(),
+            run_id,
+            workflow_type,
+        };
         row.submitted(db).await?;
-        Ok(())
+        Ok(job)
     }
     .instrument(span)
     .await

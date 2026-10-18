@@ -59,7 +59,7 @@ function AdminIntegrationsContent() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (provider) params.set("provider", provider);
+    params.set("provider", provider);
     Object.entries(deferredIds).forEach(([key, value]) => {
       if (value.trim() && validId(value)) params.set(key, value.trim());
     });

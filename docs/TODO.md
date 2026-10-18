@@ -16,6 +16,8 @@
       the original workflow ID without duplicate activities. Confirm an idle
       worker creates no reconciliation jobs or SQL dispatch scans. Schedule/history
       deletion alone did not verify this request path.
+      Include the Activities and Users gear menus: confirm task-specific inputs,
+      native job links, unchanged-command retry, and integration-event history.
 - [ ] Deploy and verify the updated Worker, Overview, System Health, Strava, and
       Traces Grafana dashboards plus retired inbox-alert removal through their
       owning infrastructure resources. Check both worker endpoints, both queues,

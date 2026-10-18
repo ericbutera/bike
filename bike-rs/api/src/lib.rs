@@ -1,6 +1,8 @@
 pub mod activity_import_history;
 pub mod activity_location;
 pub mod activity_reprocessing;
+pub mod admin_task_history;
+pub mod admin_tasks;
 pub mod app_error;
 pub mod controllers;
 mod database_metrics;

@@ -11,6 +11,8 @@ use std::time::Duration;
 
 /// Leaves half a second of Strava's callback budget for HTTP handling/transport.
 const WEBHOOK_ACCEPTANCE_TIMEOUT: Duration = Duration::from_millis(1500);
+mod manual;
+pub use manual::{request_manual, ManualOperation, ManualRequest};
 
 #[derive(Clone)]
 pub struct StravaIntake {

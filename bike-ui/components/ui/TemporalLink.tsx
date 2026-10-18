@@ -4,9 +4,11 @@ import { config } from "../../lib/config";
 
 export default function TemporalLink({
   workflowId,
+  runId,
   namespace = "bike",
 }: {
   workflowId?: string;
+  runId?: string;
   namespace?: string;
 }) {
   const baseUrl = config.TEMPORAL_UI_URL;
@@ -19,7 +21,7 @@ export default function TemporalLink({
       rel="noreferrer"
       href={
         workflowId
-          ? `${workflowsUrl}/${encodeURIComponent(workflowId)}`
+          ? `${workflowsUrl}/${encodeURIComponent(workflowId)}${runId ? `/${encodeURIComponent(runId)}` : ""}`
           : workflowsUrl
       }
     >

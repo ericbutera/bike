@@ -19,6 +19,20 @@ pub struct JobQueue {
 }
 
 impl JobQueue {
+    pub(super) async fn client(&self) -> Result<&Client, super::native::Error> {
+        self.client.get_or_try_init(super::native::connect).await
+    }
+
+    pub async fn submit_command(
+        &self,
+        task: super::MaintenanceTask,
+        command_id: uuid::Uuid,
+    ) -> Result<crate::bike_tasks::JobReference, super::native::Error> {
+        task.validate()?;
+        let client = self.client.get_or_try_init(super::native::connect).await?;
+        super::native::submit_command(client, task, command_id).await
+    }
+
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             db,

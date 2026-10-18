@@ -11,6 +11,7 @@ import {
   type AdminUser,
 } from "../../lib/queries";
 import { useKeyedState } from "../../lib/useKeyedState";
+import { UserTaskMenu } from "./AdminTaskMenu";
 
 type AdminUsersGridParams = {
   q?: string;
@@ -83,6 +84,12 @@ export default function AdminUsersPageContent() {
             {userDisabled(user) ? "Disabled" : "Active"}
           </span>
         ),
+      },
+      {
+        key: "actions",
+        header: "",
+        className: "w-12 whitespace-nowrap",
+        render: (user) => <UserTaskMenu user={user} />,
       },
     ],
     [],

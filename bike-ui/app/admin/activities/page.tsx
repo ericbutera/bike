@@ -2,8 +2,7 @@
 
 import { type AdminActivity, useAdminActivities } from "@/lib/queries";
 import GenericList, { type Column } from "@/components/ui/GenericList";
-import { faGear } from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { ActivityTaskMenu } from "../../../components/admin/AdminTaskMenu";
 import { Suspense, useMemo } from "react";
 import Link from "next/link";
 import { ACTIVITY_SPORT_OPTIONS } from "@/lib/activitySports";
@@ -114,17 +113,7 @@ function AdminActivitiesContent() {
         key: "actions",
         header: "",
         className: "w-12 whitespace-nowrap",
-        render: (activity) =>
-          activity.activity_import_id ? (
-            <Link
-              className="btn btn-ghost btn-square btn-sm"
-              href={`/admin/imports/${activity.activity_import_id}`}
-              aria-label={`View import details for ${activity.title}`}
-              title="Import details"
-            >
-              <FontAwesomeIcon icon={faGear} className="h-4 w-4" />
-            </Link>
-          ) : null,
+        render: (activity) => <ActivityTaskMenu activity={activity} />,
       },
     ],
     [],
