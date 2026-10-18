@@ -12,6 +12,9 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 fn command_options(id: String, priority: Priority, user_id: i32) -> WorkflowStartOptions {
     WorkflowStartOptions::new(TASK_QUEUE, id)
+        .search_attributes(bike_core::jobs::native::user_search_attributes(
+            &serde_json::json!({"user_id": user_id}),
+        ))
         .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
         .id_reuse_policy(WorkflowIdReusePolicy::RejectDuplicate)
         .priority(options::priority(priority, format!("user-{user_id}")))

@@ -1,4 +1,6 @@
 use chrono::{Duration, Utc};
+mod admin;
+mod sessions;
 
 #[tokio::test]
 async fn oidc_exchange_validates_missing_mismatched_and_expired_nonce() {

@@ -18,6 +18,8 @@
 - Fixture preparation explicitly starts PostgreSQL and Temporal and waits for
   both health checks before starting the API. Warm resets preserve both services;
   runtime identity checks require Temporal to remain running across attempts.
+- Register the `BikeUserId` Keyword search attribute when the disposable Temporal
+  server starts, before the API can submit owned workflows or filter task history.
 - Only the E2E workflow starts a disposable Docker daemon. It verifies generated
   Strava SDK freshness before browser tests using that same daemon. Unit tests
   and their reusable verification receipts do not depend on a Docker engine.

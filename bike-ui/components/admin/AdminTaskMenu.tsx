@@ -6,6 +6,12 @@ import type { AdminActivity, AdminUser } from "../../lib/queries";
 import type { TaskTarget } from "../../lib/adminTasks";
 import ActionMenu, { type ActionMenuItem } from "../ui/ActionMenu";
 import AdminTaskDialog from "./AdminTaskDialog";
+import AdminUserDetailsDialog from "./AdminUserDetailsDialog";
+import AdminUserEditDialog from "./AdminUserEditDialog";
+import AdminUserAuditDialog from "./AdminUserAuditDialog";
+import UserMaintenanceDialog, {
+  type UserMaintenanceAction,
+} from "./UserMaintenanceDialog";
 import {
   activityTaskOptions,
   userTaskOptions,
@@ -50,16 +56,66 @@ export function ActivityTaskMenu({ activity }: { activity: AdminActivity }) {
 }
 
 export function UserTaskMenu({ user }: { user: AdminUser }) {
+  const [maintenance, setMaintenance] = useState<UserMaintenanceAction>();
+  const [view, setView] = useState<"details" | "edit" | "audit">();
   return (
-    <TaskMenu
-      target={{
-        kind: "user",
-        id: user.id,
-        userId: user.id,
-        label: `${user.name || user.email} (#${user.id})`,
-      }}
-      options={userTaskOptions}
-    />
+    <div className="inline-flex" onClick={(event) => event.stopPropagation()}>
+      <TaskMenu
+        target={{
+          kind: "user",
+          id: user.id,
+          userId: user.id,
+          label: `${user.name || user.email} (#${user.id})`,
+        }}
+        options={userTaskOptions}
+        extraItems={[
+          {
+            section: "Viewing",
+            label: "View details",
+            onSelect: () => setView("details"),
+          },
+          {
+            section: "Viewing",
+            label: "View audit events",
+            onSelect: () => setView("audit"),
+          },
+          {
+            section: "Editing",
+            label: "Edit user",
+            onSelect: () => setView("edit"),
+          },
+          {
+            section: "Task management",
+            label: "Fetch provider export archives",
+            onSelect: () => setMaintenance("archive"),
+          },
+          {
+            section: "Task management",
+            label: "Clean up duplicate activities",
+            onSelect: () => setMaintenance("duplicates"),
+          },
+        ]}
+      />
+      {view === "details" ? (
+        <AdminUserDetailsDialog
+          user={user}
+          onClose={() => setView(undefined)}
+        />
+      ) : null}
+      {view === "edit" ? (
+        <AdminUserEditDialog user={user} onClose={() => setView(undefined)} />
+      ) : null}
+      {view === "audit" ? (
+        <AdminUserAuditDialog user={user} onClose={() => setView(undefined)} />
+      ) : null}
+      {maintenance ? (
+        <UserMaintenanceDialog
+          user={user}
+          action={maintenance}
+          onClose={() => setMaintenance(undefined)}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -80,13 +136,18 @@ function TaskMenu({
       <ActionMenu
         label={`Tasks for ${target.label}`}
         items={[
+          ...extraItems.filter((item) => item.section === "Viewing"),
+          ...extraItems.filter((item) => item.section === "Editing"),
           ...options.map((option) => ({
             label: option.label,
+            section: target.kind === "user" ? "Task management" : undefined,
             disabled: !!disabledReason?.(option),
             explanation: disabledReason?.(option),
             onSelect: () => setSelected(option),
           })),
-          ...extraItems,
+          ...extraItems.filter(
+            (item) => !["Viewing", "Editing"].includes(item.section ?? ""),
+          ),
         ]}
       />
       {selected ? (

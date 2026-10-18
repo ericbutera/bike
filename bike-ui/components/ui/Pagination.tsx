@@ -2,20 +2,26 @@
 
 export default function Pagination({
   page,
-  perPage,
+  perPage = 1,
   total,
+  cursor,
+  disabled = false,
   onPageChange,
   className = "",
   visiblePages = 5,
 }: {
   page: number;
-  perPage: number;
-  total: number;
+  perPage?: number;
+  total?: number;
+  cursor?: { knownPages: number; hasNextPage: boolean };
+  disabled?: boolean;
   onPageChange: (page: number) => void;
   className?: string;
   visiblePages?: number;
 }) {
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const totalPages = cursor
+    ? Math.max(cursor.knownPages, page + Number(cursor.hasNextPage))
+    : Math.max(1, Math.ceil((total ?? 0) / perPage));
   if (totalPages <= 1) return null;
 
   const handlePageClick = (nextPage: number) => {
@@ -36,7 +42,7 @@ export default function Pagination({
 
   return (
     <div className={`flex justify-center ${className}`}>
-      <div className="join">
+      <fieldset disabled={disabled} className="join" aria-label="Pagination">
         {hasHiddenPages && page > 1 ? (
           <>
             <button
@@ -81,17 +87,19 @@ export default function Pagination({
             >
               ›
             </button>
-            <button
-              type="button"
-              aria-label="Last page"
-              className="join-item btn"
-              onClick={() => handlePageClick(totalPages)}
-            >
-              »
-            </button>
+            {!cursor ? (
+              <button
+                type="button"
+                aria-label="Last page"
+                className="join-item btn"
+                onClick={() => handlePageClick(totalPages)}
+              >
+                »
+              </button>
+            ) : null}
           </>
         ) : null}
-      </div>
+      </fieldset>
     </div>
   );
 }

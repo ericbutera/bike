@@ -36,13 +36,22 @@ test("admin users filter and account status match in Bike", async ({
     await table
       .locator("tbody tr")
       .filter({ hasText: "active-rider@bike.local" })
+      .getByRole("button", { name: /^Tasks for / })
+      .click();
+    await page.getByText("Editing", { exact: true }).click();
+    await page
+      .getByRole("menuitem", { name: "Edit user", exact: true })
       .click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Disable Account" }).click();
     await expect(
       dialog.getByRole("button", { name: "Account Disabled" }),
-    ).toBeVisible();
+    ).toBeDisabled();
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(
+      table.locator("tbody tr").filter({ hasText: "active-rider@bike.local" }),
+    ).toContainText("Disabled");
     await context.close();
   }
 });

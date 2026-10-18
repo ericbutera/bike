@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 it("passes status and opaque pagination to the authenticated history API", async () => {
-  const { result } = renderHook(() => useTaskHistory("Completed", "0102"), {
+  const { result } = renderHook(() => useTaskHistory("Completed", "0102", 7), {
     wrapper,
   });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -38,6 +38,7 @@ it("passes status and opaque pagination to the authenticated history API", async
   expect(url.pathname).toBe("/api/admin/tasks");
   expect(url.searchParams.get("status")).toBe("Completed");
   expect(url.searchParams.get("page_token")).toBe("0102");
+  expect(url.searchParams.get("user_id")).toBe("7");
   expect(init.credentials).toBe("include");
   expect(result.current.data?.executions[0].status).toBe("Completed");
 });

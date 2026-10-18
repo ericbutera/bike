@@ -1,24 +1,8 @@
 import type { ReactNode } from "react";
+import StatusBadge from "./StatusBadge";
 
 export function ProcessingStatus({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    completed: "badge-success",
-    processed: "badge-success",
-    available: "badge-success",
-    published: "badge-success",
-    failed: "badge-error",
-    running: "badge-info",
-    processing: "badge-info",
-    reused: "badge-info",
-    queued: "badge-warning",
-    retrying: "badge-warning",
-  };
-  const color = colors[status];
-  return (
-    <span className={`badge badge-outline badge-sm ${color ?? ""}`}>
-      {status.replaceAll("_", " ")}
-    </span>
-  );
+  return <StatusBadge status={status} label={status.replaceAll("_", " ")} />;
 }
 
 export function ProcessingFacts({

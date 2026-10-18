@@ -170,12 +170,19 @@ impl JobQueue {
         self.user_page("backfill_user_xc_training", user_id).await
     }
 
-    pub async fn archive_activity_import(&self, job_id: i32) -> Result<(), String> {
+    pub async fn archive_activity_import(&self, job_id: i32, user_id: i32) -> Result<(), String> {
         if job_id <= 0 {
             return Err("Archive ID must be positive".into());
         }
-        self.submit("activity_archive_import", &ArchiveInput { job_id, cursor: None })
-            .await
-            .map(|_| ())
+        self.submit(
+            "activity_archive_import",
+            &ArchiveInput {
+                job_id,
+                user_id: Some(user_id),
+                cursor: None,
+            },
+        )
+        .await
+        .map(|_| ())
     }
 }

@@ -1,3 +1,4 @@
+use super::auth_events;
 use crate::auth::error::AuthError;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
@@ -40,6 +41,12 @@ pub enum Relation {}
 
 crate::timestamps::impl_timestamps!(ActiveModel);
 
+#[derive(Debug)]
+pub struct AdminUserDetails {
+    pub user: Model,
+    pub last_login_at: Option<DateTime<Utc>>,
+}
+
 impl Model {
     pub async fn count_created_since(db: &DatabaseConnection, since: DateTime<Utc>) -> Result<u64, DbErr> {
         crate::platform::aggregator::Aggregator::created_since::<Entity>(db, Column::CreatedAt, since).await
@@ -74,6 +81,14 @@ impl Model {
         let paginator = query.paginate(db, per_page);
         let total = paginator.num_items().await?;
         Ok((paginator.fetch_page(page - 1).await?, total))
+    }
+
+    pub async fn admin_details(self, db: &DatabaseConnection) -> Result<AdminUserDetails, DbErr> {
+        let last_login_at = auth_events::Model::last_login(db, self.id).await?;
+        Ok(AdminUserDetails {
+            user: self,
+            last_login_at,
+        })
     }
 
     pub async fn find_by_id(db: &DatabaseConnection, id: i32) -> Result<Self, AuthError> {

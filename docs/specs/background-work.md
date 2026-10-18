@@ -660,7 +660,14 @@ flowchart TD
 
 - `/admin/tasks` provides a small read-only history table for retained Bike and
   Strava workflow runs, including children: task type, native status, start/end
-  times, status filter, cursor paging, refresh, and original input parameters.
+  times, status and user filters, cursor paging, refresh, and original input parameters.
+- Apply the positive-integer `user_id` filter in Temporal visibility using
+  `BikeUserId` before pagination. New owned Bike submissions and children record
+  that keyword, as Strava submissions already do. Historical runs without the
+  attribute and tasks with no single owner appear only in the unfiltered list.
+- Use the shared bottom pagination control with known page numbers and the next
+  cursor. Never claim an unknown total or last page. Reset cursors when filters
+  change; use the Users page's compact right-aligned Search/Clear toolbar.
 - Administrator-only `GET /admin/tasks` reads Temporal visibility in the
   configured namespace and the two worker queues. Fetch 25 executions per page,
   in [Temporal's native order](https://docs.temporal.io/list-filter): running

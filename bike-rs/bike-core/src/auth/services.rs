@@ -96,7 +96,14 @@ impl SessionService {
         Ok(())
     }
 
-    pub async fn issue_tokens(&self, db: &DatabaseConnection, user: &users::Model) -> Result<TokenResponse, AuthError> {
+    pub async fn login(&self, db: &DatabaseConnection, user: &users::Model) -> Result<TokenResponse, AuthError> {
+        let tokens = self.issue_tokens(db, user).await?;
+        self.record_event(auth_events::EventType::LoginSucceeded, Some(user), None)
+            .await;
+        Ok(tokens)
+    }
+
+    async fn issue_tokens(&self, db: &DatabaseConnection, user: &users::Model) -> Result<TokenResponse, AuthError> {
         user.ensure_enabled()?;
         let access_token = generate_access_token(user, &self.jwt_secret)?;
         let (refresh_token, _) = generate_refresh_token();

@@ -1,6 +1,32 @@
 //! Shared account and provider-connection fixtures.
 use super::timestamp;
-use crate::{auth::entities::users, entities::strava_connections};
+use crate::{
+    auth::entities::{auth_events, refresh_tokens, users},
+    entities::strava_connections,
+};
+
+pub fn refresh_token() -> refresh_tokens::Model {
+    refresh_tokens::Model {
+        token: "fixture-session-token".into(),
+        user_pid: customer().pid,
+        expires_at: (timestamp() + chrono::Duration::days(7)).timestamp(),
+        created_at: timestamp(),
+    }
+}
+
+pub fn auth_event() -> auth_events::Model {
+    auth_events::Model {
+        id: 1,
+        ts: timestamp(),
+        event_type: "login_succeeded".into(),
+        user_id: Some(customer().id),
+        email: Some(customer().email),
+        ip: Some("127.0.0.1".into()),
+        user_agent: Some("Fixture browser".into()),
+        reason: None,
+        meta: None,
+    }
+}
 
 pub fn customer() -> users::Model {
     let at = timestamp();

@@ -49,7 +49,7 @@ export const userTaskOptions: TaskOption[] = [
   },
   {
     task: "rebuild_segments",
-    label: "Rebuild user segments",
+    label: "Regenerate segment efforts",
     description:
       "Rematch this user's cycling activities and refresh segment results and achievements.",
   },

@@ -54,7 +54,6 @@ function AdminIntegrationsContent() {
         : null,
     enabled: Object.values(deferredIds).every(validId),
     limit: 100,
-    refetchIntervalMs: 5000,
   });
 
   useEffect(() => {

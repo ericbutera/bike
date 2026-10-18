@@ -38,6 +38,8 @@ afterEach(() => {
 async function choose(label: string) {
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /Tasks for/ }));
+  const section = screen.queryByText("Task management");
+  if (section) await user.click(section);
   await user.click(screen.getByRole("menuitem", { name: label }));
   return user;
 }
@@ -107,7 +109,7 @@ describe("activity task menu", () => {
 describe("user task menu", () => {
   it.each([
     ["Rebuild fitness / freshness", "rebuild_fitness"],
-    ["Rebuild user segments", "rebuild_segments"],
+    ["Regenerate segment efforts", "rebuild_segments"],
     ["Backfill XC training", "backfill_xc_training"],
     ["Sync Strava", "strava_sync"],
   ])("submits %s without opening the account editor", async (label, task) => {

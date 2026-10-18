@@ -3,6 +3,37 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import ActionMenu from "../ui/ActionMenu";
 
+it("navigates section summaries and skips actions inside collapsed sections", async () => {
+  const select = vi.fn();
+  const user = userEvent.setup();
+  render(
+    <ActionMenu
+      label="User actions"
+      items={[
+        { section: "Viewing", label: "View details", onSelect: select },
+        { section: "Editing", label: "Edit user", onSelect: select },
+      ]}
+    />,
+  );
+  await user.click(screen.getByRole("button", { name: "User actions" }));
+  expect(screen.getByText("Viewing")).toHaveFocus();
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getByRole("menuitem", { name: "View details" })).toHaveFocus();
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getByText("Editing")).toHaveFocus();
+  expect(screen.getByRole("menuitem", { name: "Edit user" })).not.toBeVisible();
+  await user.click(screen.getByText("Editing"));
+  expect(screen.getByText("Editing").closest("details")).toHaveAttribute(
+    "open",
+  );
+  expect(screen.getByText("Editing")).toHaveFocus();
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getByRole("menuitem", { name: "Edit user" })).toHaveFocus();
+  await user.keyboard("{Enter}");
+  expect(select).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+});
+
 it("renders outside clipped rows and supports keyboard selection without row clicks", async () => {
   const select = vi.fn();
   const rowClick = vi.fn();

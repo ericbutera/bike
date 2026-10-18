@@ -24,7 +24,7 @@ services:
   temporal:
     image: ${BIKE_TEMPORAL_TOOLS_IMAGE:?Run Compose through mise}
     entrypoint: [temporal]
-    command: [server, start-dev, --ip, 0.0.0.0, --namespace, bike]
+    command: [server, start-dev, --ip, 0.0.0.0, --namespace, bike, --search-attribute, BikeUserId=Keyword]
     healthcheck:
       test: [CMD, temporal, --address, localhost:7233, operator, cluster, health]
       interval: 2s

@@ -7,6 +7,7 @@ import { ProcessingFacts, ProcessingStatus } from "../ui/ProcessingDetails";
 import { ErrorCard, LoadingCard } from "../ui/QueryState";
 import TemporalLink from "../ui/TemporalLink";
 import { formatTaskDate } from "../../lib/taskTiming";
+import RefreshButton from "../ui/RefreshButton";
 
 export default function ImportDetail({ importId }: { importId: string }) {
   const query = useAdminActivityImport(importId);
@@ -20,14 +21,10 @@ export default function ImportDetail({ importId }: { importId: string }) {
         <h1 className="text-2xl font-semibold">
           {imported?.original_filename ?? `Import #${importId}`}
         </h1>
-        <button
-          type="button"
-          className="btn btn-outline"
+        <RefreshButton
           disabled={query.isFetching}
           onClick={() => void query.refetch()}
-        >
-          Refresh
-        </button>
+        />
       </div>
       {query.isLoading ? <LoadingCard /> : null}
       {query.error ? (

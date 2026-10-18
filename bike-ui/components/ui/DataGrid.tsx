@@ -13,6 +13,7 @@ export function ListCard({
   title,
   actions,
   filters,
+  filterActions,
   onSearch,
   onClear,
   children,
@@ -20,6 +21,7 @@ export function ListCard({
   title?: ReactNode;
   actions?: ReactNode;
   filters?: ReactNode;
+  filterActions?: ReactNode;
   onSearch?: () => void;
   onClear?: () => void;
   children: ReactNode;
@@ -67,6 +69,7 @@ export function ListCard({
                     </button>
                   ) : null}
                 </div>
+                {filterActions}
               </form>
             ) : null}
           </div>

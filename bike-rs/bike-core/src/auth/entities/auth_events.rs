@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{NotSet, Set};
+use sea_orm::{FromQueryResult, NotSet, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
@@ -24,7 +24,40 @@ pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 
+#[derive(FromQueryResult)]
+struct LastLoginRow {
+    last_login_at: Option<DateTime<Utc>>,
+}
+
 impl Model {
+    pub async fn last_login(db: &DatabaseConnection, user_id: i32) -> Result<Option<DateTime<Utc>>, DbErr> {
+        let row = Entity::find()
+            .select_only()
+            .column_as(Column::Ts.max(), "last_login_at")
+            .filter(Column::EventType.eq(EventType::LoginSucceeded.to_string()))
+            .filter(Column::UserId.eq(user_id))
+            .into_model::<LastLoginRow>()
+            .one(db)
+            .await?;
+        Ok(row.and_then(|row| row.last_login_at))
+    }
+
+    pub async fn for_user_page(
+        db: &DatabaseConnection,
+        user_id: i32,
+        page: u64,
+        per_page: u64,
+    ) -> Result<(Vec<Self>, u64), DbErr> {
+        use sea_orm::{PaginatorTrait, QueryOrder};
+        let paginator = Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .order_by_desc(Column::Ts)
+            .order_by_desc(Column::Id)
+            .paginate(db, per_page);
+        let total = paginator.num_items().await?;
+        Ok((paginator.fetch_page(page - 1).await?, total))
+    }
+
     pub async fn insert_event(db: &DatabaseConnection, am: ActiveModel) -> Result<(), DbErr> {
         Entity::insert(am).exec(db).await.map(|_| ())
     }

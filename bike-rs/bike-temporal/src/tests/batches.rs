@@ -125,6 +125,7 @@ fn archive_cursor() -> ArchiveCursor {
 fn archive_replay_reuses_extracted_page_then_continues_with_a_small_cursor() {
     let input = ArchiveInput {
         job_id: 7,
+        user_id: None,
         cursor: None,
     };
     let cursor = archive_cursor();
@@ -165,6 +166,7 @@ fn failed_archive_child_stops_before_advancing_or_marking_complete() {
     let source = fixtures::import_command().source;
     let mut mock = WorkflowMock::new::<ActivityArchiveImport>(ArchiveInput {
         job_id: 7,
+        user_id: None,
         cursor: Some(archive_cursor()),
     });
     mock.activity(

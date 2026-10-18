@@ -1,14 +1,23 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminActivitiesPage from "../../app/admin/activities/page";
 import AdminIntegrationsPage from "../../app/admin/integrations/page";
 import Nav from "../admin/Nav";
+import AdminUsersPageContent from "../admin/AdminUsersPageContent";
+import { adminUser } from "@/tests/fixtures/adminTasks";
 
 const mocks = vi.hoisted(() => ({
   activities: vi.fn(),
   events: vi.fn(),
+  users: vi.fn(),
   replace: vi.fn(),
   push: vi.fn(),
   refetch: vi.fn(),
@@ -23,6 +32,11 @@ vi.mock("next/navigation", () => ({
 vi.mock("../../lib/queries", () => ({
   useAdminActivities: mocks.activities,
   useAdminIntegrationEvents: mocks.events,
+  useAdminUsers: mocks.users,
+  useAdminUser: vi.fn(),
+  useAdminUserAuditEvents: vi.fn(),
+  useUpdateAdminUser: () => ({ isPending: false }),
+  useDisableAdminUser: () => ({ isPending: false }),
 }));
 vi.mock("../admin/LocalAdminLayout", () => ({
   LocalAdminLayout: ({ children }: { children: ReactNode }) => children,
@@ -71,6 +85,38 @@ beforeEach(() => {
 });
 
 describe("admin list grids", () => {
+  it("keeps the Users status reference as filled pills with semantic colors", () => {
+    mocks.users.mockReturnValue({
+      data: [
+        adminUser(),
+        adminUser({ id: 8, disabled: true, email_verified: false }),
+      ],
+    });
+    render(<AdminUsersPageContent />);
+    const table = within(screen.getByRole("table", { name: "Users" }));
+    expect(table.getByText("Active")).toHaveClass("badge", "badge-success");
+    expect(
+      table.getByRole("cell", { name: "Verified" }).firstElementChild,
+    ).toHaveClass("badge-success");
+    expect(table.getByText("Disabled")).toHaveClass("badge-error");
+    expect(table.getByText("Unverified")).toHaveClass("badge-warning");
+    expect(table.getByText("Active")).not.toHaveClass("badge-outline");
+    expect(
+      table
+        .getAllByRole("columnheader")
+        .slice(-2)
+        .map((cell) => cell.textContent),
+    ).toEqual(["Created", ""]);
+    expect(
+      table.queryByRole("columnheader", { name: "Last login" }),
+    ).not.toBeInTheDocument();
+    const userCells = within(table.getAllByRole("row")[1]).getAllByRole("cell");
+    expect(userCells.at(-2)).toHaveTextContent("2026");
+    expect(
+      within(userCells.at(-1)!).getByRole("button", { name: /Tasks for/ }),
+    ).toBeVisible();
+  });
+
   it("puts activity filters above the grid and separates compact activity fields", () => {
     render(<AdminActivitiesPage />);
     const input = screen.getByRole("searchbox", { name: "Search activities" });
@@ -94,6 +140,25 @@ describe("admin list grids", () => {
       screen.getByRole("link", { name: "A long hill ride title" }),
     ).toHaveAttribute("title", "A long hill ride title");
     expect(screen.getByText("processed")).toHaveAttribute("title", "complete");
+    expect(screen.getByText("processed")).toHaveClass("badge", "badge-success");
+    expect(screen.getByText("processed")).not.toHaveClass("badge-outline");
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .slice(-2)
+        .map((cell) => cell.textContent),
+    ).toEqual(["Started", ""]);
+    const activityCells = within(
+      within(table).getAllByRole("row")[1],
+    ).getAllByRole("cell");
+    expect(activityCells.at(-2)).toHaveTextContent("2026");
+    expect(
+      within(activityCells.at(-1)!).getByRole("button", { name: /Tasks for/ }),
+    ).toBeVisible();
+    expect(
+      within(table).getByRole("cell", { name: "manual_upload" })
+        .firstElementChild,
+    ).toBeNull();
   });
 
   it("resets activity pagination when searching and sends URL filters to the API", async () => {
@@ -151,6 +216,8 @@ describe("admin list grids", () => {
     render(<AdminIntegrationsPage />);
     const provider = screen.getByLabelText("Provider");
     const table = screen.getByRole("table");
+    expect(screen.getByText("success")).toHaveClass("badge", "badge-success");
+    expect(screen.getByText("success")).not.toHaveClass("badge-outline");
     expect(provider.closest(".card")).toBe(table.closest(".card"));
     expect(
       provider.compareDocumentPosition(table) &
@@ -174,7 +241,9 @@ describe("admin list grids", () => {
     await user.click(screen.getByRole("button", { name: "Clear" }));
     expect(provider).toHaveValue("");
     expect(screen.getByLabelText("User ID")).toHaveValue(null);
-    expect(screen.getByText("Imported ride")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Inspect event 1" }),
+    ).toBeVisible();
   });
 
   it("rejects fractional integration IDs instead of querying an unrelated population", () => {
@@ -204,15 +273,14 @@ describe("admin list grids", () => {
     expect(mocks.replace).not.toHaveBeenCalled();
   });
 
-  it("removes analytics from navigation and keeps manual maintenance tools", () => {
+  it("removes retired analytics and manual task pages from navigation", () => {
     render(<Nav />);
     expect(
       screen.queryByRole("link", { name: "Analytics" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manual tasks" })).toHaveAttribute(
-      "href",
-      "/admin/manual-tasks",
-    );
+    expect(
+      screen.queryByRole("link", { name: "Manual tasks" }),
+    ).not.toBeInTheDocument();
   });
 
   it("blocks Search for invalid integration IDs and resumes with a valid owner", async () => {

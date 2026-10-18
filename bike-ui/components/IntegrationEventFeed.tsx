@@ -2,8 +2,14 @@
 
 import { formatActivityTimestamp } from "@/lib/activityFormatting";
 import type { IntegrationEvent } from "@/lib/queries";
+import { useState } from "react";
+import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import Modal from "./ui/Modal";
+import StravaIcon from "./ui/StravaIcon";
 import StravaEventHistory from "./StravaEventHistory";
 import TemporalLink from "./ui/TemporalLink";
+import StatusBadge from "./ui/StatusBadge";
 import { CenteredLoading, ErrorCard } from "./ui/QueryState";
 
 type IntegrationEventFeedProps = {
@@ -59,50 +65,42 @@ export default function IntegrationEventFeed({
       <table className="table table-zebra w-full">
         <thead>
           <tr>
-            <th className="w-40">When</th>
             <th className="w-28">Level</th>
             <th className="w-40">Event</th>
             {showProvider ? <th className="w-28">Provider</th> : null}
             {showUserId ? <th className="w-28">User</th> : null}
             <th className="w-36">Connection</th>
-            <th className="min-w-[24rem]">Details</th>
+            <th className="w-40">When</th>
+            <th className="w-12">
+              <span className="sr-only">Inspect</span>
+            </th>
           </tr>
         </thead>
         <tbody>
           {events.map((event) => {
-            const payload = event.payload ?? null;
-            const payloadMetrics = buildPayloadMetrics(payload);
-            const hasPayload =
-              payload != null && Object.keys(payload).length > 0;
-
             return (
               <tr key={event.id} className="align-top">
-                <td className="whitespace-nowrap text-sm text-base-content/60">
-                  {formatActivityTimestamp(event.created_at)}
+                <td className="align-top">
+                  <StatusBadge status={event.level} />
                 </td>
                 <td className="align-top">
-                  <span className={levelBadgeClassName(event.level)}>
-                    {event.level}
-                  </span>
-                </td>
-                <td className="align-top">
-                  <span className="badge badge-ghost badge-sm uppercase">
+                  <span className="text-xs uppercase">
                     {formatEventType(event.event_type)}
                   </span>
                 </td>
                 {showProvider ? (
                   <td className="align-top whitespace-nowrap">
-                    <span className="badge badge-outline badge-sm uppercase">
-                      {event.provider}
-                    </span>
+                    {event.provider === "strava" ? (
+                      <StravaIcon />
+                    ) : (
+                      event.provider
+                    )}
                   </td>
                 ) : null}
                 {showUserId ? (
                   <td className="align-top whitespace-nowrap text-sm">
                     {event.user_id != null ? (
-                      <span className="badge badge-outline badge-sm">
-                        User {event.user_id}
-                      </span>
+                      <span>User {event.user_id}</span>
                     ) : (
                       <span className="text-base-content/40">-</span>
                     )}
@@ -110,47 +108,16 @@ export default function IntegrationEventFeed({
                 ) : null}
                 <td className="align-top whitespace-nowrap text-sm">
                   {event.connection_id != null ? (
-                    <span className="badge badge-outline badge-sm">
-                      Connection {event.connection_id}
-                    </span>
+                    <span>Connection {event.connection_id}</span>
                   ) : (
                     <span className="text-base-content/40">-</span>
                   )}
                 </td>
+                <td className="whitespace-nowrap text-sm text-base-content/60">
+                  {formatActivityTimestamp(event.created_at)}
+                </td>
                 <td className="align-top">
-                  <div className="min-w-[20rem] space-y-3">
-                    <p className="text-sm leading-6 text-base-content/80">
-                      {event.message}
-                    </p>
-                    {typeof payload?.temporal_workflow_id === "string" ? (
-                      <TemporalLink
-                        workflowId={payload.temporal_workflow_id}
-                        namespace={String(payload.temporal_namespace ?? "bike")}
-                      />
-                    ) : null}
-                    {payloadMetrics.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {payloadMetrics.map((metric) => (
-                          <span
-                            key={`${event.id}-${metric.label}`}
-                            className="badge badge-ghost badge-sm"
-                          >
-                            {metric.label}: {metric.value}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                    {hasPayload ? (
-                      <details>
-                        <summary className="cursor-pointer text-xs uppercase tracking-[0.18em] text-base-content/50">
-                          Payload
-                        </summary>
-                        <pre className="mt-2 overflow-x-auto rounded-xl bg-base-200 p-3 text-xs text-base-content/70">
-                          {JSON.stringify(payload, null, 2)}
-                        </pre>
-                      </details>
-                    ) : null}
-                  </div>
+                  <IntegrationEventInspector event={event} />
                 </td>
               </tr>
             );
@@ -161,17 +128,64 @@ export default function IntegrationEventFeed({
   );
 }
 
-function levelBadgeClassName(level: string) {
-  switch (level) {
-    case "success":
-      return "badge badge-success badge-outline badge-sm uppercase";
-    case "warning":
-      return "badge badge-warning badge-outline badge-sm uppercase";
-    case "error":
-      return "badge badge-error badge-outline badge-sm uppercase";
-    default:
-      return "badge badge-info badge-outline badge-sm uppercase";
-  }
+function IntegrationEventInspector({ event }: { event: IntegrationEvent }) {
+  const [open, setOpen] = useState(false);
+  const payload = event.payload ?? null;
+  const payloadMetrics = buildPayloadMetrics(payload);
+  const hasPayload = payload != null && Object.keys(payload).length > 0;
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-ghost btn-xs btn-square"
+        aria-label={`Inspect event ${event.id}`}
+        title="Inspect event"
+        onClick={() => setOpen(true)}
+      >
+        <FontAwesomeIcon icon={faMagnifyingGlass} className="h-3 w-3" />
+      </button>
+      {open ? (
+        <Modal
+          title={`Integration event #${event.id}`}
+          onClose={() => setOpen(false)}
+        >
+          <div className="space-y-3">
+            <p className="text-sm leading-6 text-base-content/80">
+              {event.message}
+            </p>
+            {typeof payload?.temporal_workflow_id === "string" ? (
+              <TemporalLink
+                workflowId={payload.temporal_workflow_id}
+                namespace={String(payload.temporal_namespace ?? "bike")}
+              />
+            ) : null}
+            {payloadMetrics.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {payloadMetrics.map((metric) => (
+                  <span
+                    key={`${event.id}-${metric.label}`}
+                    className="badge badge-ghost badge-sm"
+                  >
+                    {metric.label}: {metric.value}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {hasPayload ? (
+              <details>
+                <summary className="cursor-pointer text-xs uppercase tracking-[0.18em] text-base-content/50">
+                  Payload
+                </summary>
+                <pre className="mt-2 overflow-x-auto rounded-xl bg-base-200 p-3 text-xs text-base-content/70">
+                  {JSON.stringify(payload, null, 2)}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+        </Modal>
+      ) : null}
+    </>
+  );
 }
 
 function formatEventType(value: string) {

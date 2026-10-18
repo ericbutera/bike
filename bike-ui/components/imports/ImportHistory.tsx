@@ -5,6 +5,8 @@ import { useState } from "react";
 import { useActivityImportHistory } from "../../lib/queries";
 import { DataGrid, ListCard, type Column } from "../ui/DataGrid";
 import Pagination from "../ui/Pagination";
+import RefreshButton from "../ui/RefreshButton";
+import StatusBadge from "../ui/StatusBadge";
 
 type ImportItem = NonNullable<
   ReturnType<typeof useActivityImportHistory>["data"]
@@ -46,12 +48,16 @@ const columns: Column<ImportItem>[] = [
       </span>
     ),
   },
-  { key: "status", header: "Outcome", render: (item) => item.status },
+  {
+    key: "status",
+    header: "Outcome",
+    render: (item) => <StatusBadge status={item.status} />,
+  },
   {
     key: "stage",
     header: "Stage",
     className: "whitespace-nowrap",
-    render: (item) => item.processing_stage,
+    render: (item) => <StatusBadge status={item.processing_stage} />,
   },
   {
     key: "error",
@@ -69,12 +75,6 @@ const columns: Column<ImportItem>[] = [
     ),
   },
   {
-    key: "received",
-    header: "Received",
-    className: "whitespace-nowrap",
-    render: (item) => new Date(item.created_at).toLocaleString(),
-  },
-  {
     key: "activity",
     header: "Activity",
     className: "whitespace-nowrap",
@@ -86,6 +86,12 @@ const columns: Column<ImportItem>[] = [
       ) : (
         "No activity yet"
       ),
+  },
+  {
+    key: "received",
+    header: "Received",
+    className: "whitespace-nowrap",
+    render: (item) => new Date(item.created_at).toLocaleString(),
   },
 ];
 
@@ -114,20 +120,11 @@ export default function ImportHistory({
   return (
     <ListCard
       title="Import history"
-      actions={
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="btn btn-sm btn-outline"
-            disabled={query.isFetching || !validUserId}
-            onClick={() => void query.refetch()}
-          >
-            Refresh
-          </button>
-          <Link href="/upload" className="btn btn-sm btn-primary">
-            Upload activity
-          </Link>
-        </div>
+      filterActions={
+        <RefreshButton
+          disabled={query.isFetching || !validUserId}
+          onClick={() => void query.refetch()}
+        />
       }
       onSearch={() => {
         if (validUserId) void query.refetch();

@@ -454,6 +454,38 @@ export interface paths {
     patch: operations["update_user"];
     trace?: never;
   };
+  "/admin/users/{id}/archive-imports": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["import_user_archive"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/users/{id}/audit-events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_user_audit_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/users/{id}/disable": {
     parameters: {
       query?: never;
@@ -1746,6 +1778,18 @@ export interface components {
        */
       user_id: number;
     };
+    AdminUserAuditEventResponse: {
+      event_type: string;
+      /** Format: int64 */
+      id: number;
+      ip?: string | null;
+      occurred_at: string;
+      reason?: string | null;
+      user_agent?: string | null;
+    };
+    AdminUserDetailsResponse: components["schemas"]["AdminUserResponse"] & {
+      last_login_at?: string | null;
+    };
     AdminUserResponse: {
       created_at: string;
       disabled: boolean;
@@ -2459,6 +2503,13 @@ export interface components {
     };
     OAuthProvidersResponse: {
       providers: components["schemas"]["OAuthProviderMetadata"][];
+    };
+    /** @description Standard paginated response wrapper */
+    PaginatedResponse: {
+      /** @description Recordset */
+      data: components["schemas"]["AdminUserAuditEventResponse"][];
+      /** @description Pagination metadata */
+      metadata: components["schemas"]["PaginationMetadata"];
     };
     /** @description Standard paginated response wrapper */
     PaginatedResponse_ActivityResponse: {
@@ -6292,6 +6343,7 @@ export interface operations {
       query?: {
         status?: null | components["schemas"]["TaskStatus"];
         page_token?: string | null;
+        user_id?: number | null;
       };
       header?: never;
       path?: never;
@@ -6515,7 +6567,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["AdminUserResponse"];
+          "application/json": components["schemas"]["AdminUserDetailsResponse"];
         };
       };
       /** @description Forbidden */
@@ -6557,6 +6609,95 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["AdminUserResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description User not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  import_user_archive: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ArchiveUrlImportRequest"];
+      };
+    };
+    responses: {
+      /** @description Archive import queued for the selected user */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActivityArchiveImportJobResponse"];
+        };
+      };
+      /** @description Invalid archive URL */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrator required or target disabled */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description User not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_user_audit_events: {
+    parameters: {
+      query?: {
+        /** @description Page number (1-based) */
+        page?: number;
+        /** @description Number of items per page */
+        per_page?: number;
+      };
+      header?: never;
+      path: {
+        /** @description User ID */
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description User audit events, newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedResponse"];
         };
       };
       /** @description Forbidden */
