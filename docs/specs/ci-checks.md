@@ -1,7 +1,11 @@
 # CI checks
 
-- Local Docker checks, prek hooks, and CI call the owning mise tasks with pinned
-  tooling. Formatter, compiler, and linter warnings fail checks.
+- Local host checks, prek hooks, and CI call the owning mise tasks with pinned
+  tooling. Run lint, formatting, type checks, builds, and tests on the host by
+  default. Docker is an explicit fallback for checks requiring a container
+  environment. Formatter, compiler, and linter warnings fail checks.
+- Use `mise run coverage:unit` for native unit coverage.
+  `mise run checks:docker <task>` remains available for explicit Linux checks.
 - `lint:maps` and `format:check` cover JavaScript under `map-renderer/`.
   Retire the obsolete script glob with the removed byte-guard scanner.
   Require every selected source pattern to exist;
@@ -85,6 +89,8 @@
   that is identical to its upstream base; it adds no application behavior,
   cannot produce useful build-cache layers, and can trigger missing local
   distribution-source metadata warnings when registry blobs already exist.
-- Validate this retirement by running the actual renderer lint and formatting
-  tasks, native Woodpecker validation, and release image-plan resolution in
-  Docker. CI owns the full suites, coverage, builds, and browser tests.
+- Validate this retirement with the owning renderer lint and formatting tasks,
+  native Woodpecker validation, and release image-plan resolution. Run native
+  tasks on the host; use Docker for image/runtime operations that require it.
+  CI remains the required release gate; full suites, coverage, builds, and
+  browser tests may also run locally through the owning mise tasks.

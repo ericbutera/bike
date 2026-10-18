@@ -55,7 +55,8 @@ pass_filenames = false
 id = "rust-ci-reuse"
 name = "Rust CI input and result reuse regression"
 language = "system"
-entry = "mise run ci:rust:cache:test"
+# This fixture exercises Linux's os-release, sha256sum, and flock behavior.
+entry = "mise run checks:docker ci:rust:cache:test"
 files = "^scripts/(ci-rust.*|ci-engine-stop|coverage-transfer|test-worker-postgres)\\.sh$|^\\.woodpecker/.*\\.yaml$|^(bike-rs/)?mise\\.toml$|^prek\\.toml$"
 pass_filenames = false
 

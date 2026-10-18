@@ -30,11 +30,11 @@ task. Let Cargo discover tests; do not maintain test-name allowlists in tasks or
 CI. Keep coverage, production builds, and E2E checks in their owning CI gates.
 Keep required prek checks active; never bypass or weaken them.
 
-Run local validation, formatting, tests, and builds in Docker through the owning
-mise tasks. `mise run checks:docker <task>` provides the shared checks container.
-Git and GitHub commands may run on the host. Keep tool, dependency, and build
-caches in Docker volumes. Containers are disposable; source remains in the task
-worktree and reports are temporary generated output.
+Run local lint, formatting, type checks, tests, and builds on the host through
+the owning mise tasks. Use Docker only for dependencies or checks that require
+a container environment; `mise run checks:docker <task>` is an explicit fallback.
+Git and GitHub commands run on the host. Keep native and Linux build caches
+separate, and treat generated reports as temporary output.
 
 Put regression tests in Bike's existing Rust or UI test paths so the owning CI
 tasks discover them. Keep CI and focused local tasks on the same tooling and
@@ -69,6 +69,14 @@ approved workspace. Keep each task's worktree path fixed until cleanup.
 Make PRs for work and update them continuously during review. Keep them
 open for review unless the user explicitly requests integration or a production
 fix. Do not leave authorized PR updates only in a local commit.
+
+Requests to create, update, fix, or finish a PR authorize the commits,
+amendments, pushes, and PR updates needed to complete that work. Do not ask
+for separate confirmation to commit or push. Updating an existing PR also
+authorizes rewriting its feature branch with `--force-with-lease` against a
+freshly verified remote head. Honor explicit instructions such as "do not
+commit", "commit locally", or "do not push". Merge or deploy only when the
+user authorizes those actions.
 
 Check the primary checkout's branch and status before starting and before the
 final response. Preserve any existing task branch and its staged, unstaged,
@@ -120,7 +128,7 @@ verify the deployment before declaring that request complete.
 Keep implementation, corrections, and tests in one coherent feature commit;
 amend locally during review. Separate specifications when requested. Prepare
 history consolidation and production image ancestry implications locally;
-use `--force-with-lease` only after an approved remote rewrite.
+update the remote PR branch under the standing authorization above.
 
 Do not start commits with the word add (eg: `feat: added architecture diagram`), instead use `feat: architecture diagram`.
 
