@@ -70,6 +70,14 @@ Make PRs for work and update them continuously during review. Keep them
 open for review unless the user explicitly requests integration or a production
 fix. Do not leave authorized PR updates only in a local commit.
 
+Requests to create, update, fix, or finish a PR authorize the commits,
+amendments, pushes, and PR updates needed to complete that work. Do not ask
+for separate confirmation to commit or push. Updating an existing PR also
+authorizes rewriting its feature branch with `--force-with-lease` against a
+freshly verified remote head. Honor explicit instructions such as "do not
+commit", "commit locally", or "do not push". Merge or deploy only when the
+user authorizes those actions.
+
 Check the primary checkout's branch and status before starting and before the
 final response. Preserve any existing task branch and its staged, unstaged,
 and untracked changes in a separate worktree before restoring `main`. Report
@@ -120,7 +128,7 @@ verify the deployment before declaring that request complete.
 Keep implementation, corrections, and tests in one coherent feature commit;
 amend locally during review. Separate specifications when requested. Prepare
 history consolidation and production image ancestry implications locally;
-use `--force-with-lease` only after an approved remote rewrite.
+update the remote PR branch under the standing authorization above.
 
 Do not start commits with the word add (eg: `feat: added architecture diagram`), instead use `feat: architecture diagram`.
 
