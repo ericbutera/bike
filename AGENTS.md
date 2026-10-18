@@ -15,20 +15,9 @@ Use each project's `mise.toml` for language and package-manager versions and
 tasks. Root tasks delegate to their owning projects. Preserve unrelated work
 in other checkouts.
 
-Keep controllers thin: adapt HTTP input/output and call a service. Services
-compose application workflows and delegate meaningful steps to named helpers.
-Put database queries on their owning entity/model modules. Prefer mature,
-type-safe frameworks and ORMs when they reduce duplicated infrastructure.
-Historical migrations are append-only; preserve their order and contents.
-
 Track active Bike work in `docs/TODO.md`. Work one bounded task at a time and
 deliver its result for review on a feature branch. Preserve historical
 operational evidence unless a task explicitly retires it.
-
-Run Rust tests with `cargo test --workspace --locked` through the owning mise
-task. Let Cargo discover tests; do not maintain test-name allowlists in tasks or
-CI. Keep coverage, production builds, and E2E checks in their owning CI gates.
-Keep required prek checks active; never bypass or weaken them.
 
 Run local lint, formatting, type checks, tests, and builds on the host through
 the owning mise tasks. Use Docker only for dependencies or checks that require
@@ -36,27 +25,13 @@ a container environment; `mise run checks:docker <task>` is an explicit fallback
 Git and GitHub commands run on the host. Keep native and Linux build caches
 separate, and treat generated reports as temporary output.
 
-Put regression tests in Bike's existing Rust or UI test paths so the owning CI
-tasks discover them. Keep CI and focused local tasks on the same tooling and
-warning-as-error policy. Report local results separately from CI status.
+## specs
 
-Keep provider calls behind the generated SDK wrapper and use fixtures/fakes for
-ordinary workflow checks. Native HTTP integration tests live in
-`bike-rs/api/tests`; browser tests belong to
-`bike-ui/tests/e2e`. Reserve Playwright for focused activity, segment, and
-race-viewer flows; use owning unit, functional, or SQL suites for workflow rules.
+specs are the source of truth- not code. code is disposable now. do not release features without updating specs. if there isn't a spec, make one. prefer using bullet lists over blobs of text. use mermaid diagrams where appropriate.
+
+always update specs before writing code. make sure features aren't described multiple times throughout specs. make sure specs don't drift from implementation.
 
 ## git
-
-Never commit directly to `main` or `master`. Create or use a feature branch
-before changing code. Either deliver a pull request when publication is
-authorized or leave changes uncommitted for review. If the user asks for no
-commits, do not create or amend commits or open a PR that requires committing.
-
-Keep the user's primary/editor checkout on `main`. Create or reuse a separate
-Git worktree for feature, test, and documentation branches, and perform edits,
-builds, tests, and commits there. Do not switch the primary checkout to a task
-branch unless the user explicitly requests it.
 
 Use the existing workspace-level `.worktrees/` directory inside the approved
 workspace, with a unique repository/task name such as `.worktrees/bike-<task>`.
@@ -66,9 +41,7 @@ Reuse an assigned worktree; do not create another worktree inside it. Do not
 create sibling project directories, additional clones, or worktrees outside the
 approved workspace. Keep each task's worktree path fixed until cleanup.
 
-Make PRs for work and update them continuously during review. Keep them
-open for review unless the user explicitly requests integration or a production
-fix. Do not leave authorized PR updates only in a local commit.
+Create PRs for work. Keep PR descriptions & remote code updated for review when you've completed work.
 
 Requests to create, update, fix, or finish a PR authorize the commits,
 amendments, pushes, and PR updates needed to complete that work. Do not ask
@@ -77,14 +50,6 @@ authorizes rewriting its feature branch with `--force-with-lease` against a
 freshly verified remote head. Honor explicit instructions such as "do not
 commit", "commit locally", or "do not push". Merge or deploy only when the
 user authorizes those actions.
-
-Check the primary checkout's branch and status before starting and before the
-final response. Preserve any existing task branch and its staged, unstaged,
-and untracked changes in a separate worktree before restoring `main`. Report
-where pending work is preserved. Once a task's changes are committed, pushed,
-and verified against the remote PR head, remove its clean local worktree.
-Keep branches needed by an open PR until integration. Preserve dirty or
-unpublished work; never discard unreviewed changes to clean up.
 
 Always use conventional commit format.
 
@@ -99,16 +64,7 @@ types:
 - test
 - ci
 
-Keep a clean history. Do not make multiple commits for the same thing, use amend & force with lease instead.
-
-Permission to commit a task also authorizes pushing its completed commits and
-cleaning up its finished local worktree after remote verification. Keep PRs open
-for review unless the user explicitly requests integration or a production fix.
-When integration is authorized, run the relevant checks, freshly fetch the
-remote default branch, merge through the required PR workflow, verify remote
-and local `main`, and delete finished local and remote task branches. Complete
-authorized push, integration, and cleanup without asking for separate approval.
-Leave the primary/editor checkout clean on `main`.
+Keep a clean, linear history. Do not make multiple commits for the same thing, use amend & force with lease instead.
 
 Treat `.artifacts` as temporary generated output, not a code archive. Do not
 retain source snapshots, Git bundles, deployment clones, or copied worktrees
@@ -117,13 +73,6 @@ owning specs and runbooks; Git holds source history. At completion, remove task
 scratch output and leftover worktree directories, including directories no
 longer registered with Git. Preserve explicitly requested deliverables such
 as published coverage reports and other active tasks' output.
-
-Explicit instructions such as "commit locally", "do not push", "leave the PR
-open", "keep the worktree", or "do not commit" override the corresponding
-steps. Without commit or publication authorization, keep work local for review.
-Passing checks, requests to continue, and a previous feature's approval alone
-do not authorize publishing a new task. Deploy when the user requests it and
-verify the deployment before declaring that request complete.
 
 Keep implementation, corrections, and tests in one coherent feature commit;
 amend locally during review. Separate specifications when requested. Prepare
@@ -134,6 +83,7 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
 
 ## code standards
 
+- Keep controllers thin: adapt HTTP input/output and call a service. Services compose application workflows and delegate meaningful steps to named helpers.  Put database queries on their owning entity/model modules. Prefer mature, type-safe frameworks and ORMs when they reduce duplicated infrastructure.  Historical migrations are append-only; preserve their order and contents.
 - Notices and warnings are hard errors in compiler, linter, test,
   browser-console, and hook output. A zero exit code alone is insufficient.
 - Run the affected project's linters, formatter, type checks, relevant build,
@@ -149,22 +99,19 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
   limits. Split cohesive steps; avoid vague helpers and parameter bags.
 - Use at most two comparisons or predicate calls in a boolean condition.
   Express ownership and identity policy through named model predicates.
-- Keep workflow steps explicit. Reuse a typed activity-execution helper for
-  SDK invocation and error adaptation instead of repeating that plumbing.
-- Verify changed behavior with focused happy-path coverage and regression
-  checks for observed bugs. Distinguish local, CI, and deployed evidence.
-- Pair bug fixes with small unit tests that reproduce the failure and verify
-  the corrected behavior. Reuse existing mocks and fixtures.
+- Use third party SDKs instead of writing custom clients
+- Verify changed behavior with focused happy-path coverage
+- Bugs must have a unit test added before fixing to prevent future regressions
 - Use conventional `#[cfg(test)] mod tests` modules, `tests.rs`, or descriptive
   files inside `tests/`. Do not introduce `_unit.rs` or `_tests.rs` filenames.
-- PR descriptions explain behavior and meaningful validation results. Execution
-  details such as Docker or a local environment do not belong in the description.
+- PR descriptions explain behavior and intenent. Execution details such as Docker or a local environment do not belong in the description.
 - Backend unit tests use PostgreSQL SeaORM mocks and shared fixtures. Do not
   introduce SQLite databases, schema substitutes, timestamp massaging, or
   compatibility logic to maintain a second persistence implementation for tests.
 - Keep prek commands, filters, tool/version pins, and required hook stages
   aligned with mise tasks and CI. Update affected enforcement in the same
   change as quality tooling; validate and run hooks without bypassing them.
+- Keep provider calls behind the generated SDK wrapper and use fixtures/fakes for ordinary workflow checks. Native HTTP integration tests live in `bike-rs/api/tests`; browser tests belong to `bike-ui/tests/e2e`. Reserve Playwright for focused activity, segment, and race-viewer flows; use owning unit, functional, or SQL suites for workflow rules.
 
 These repository instructions and the
 [model and fixture specification](docs/specs/model-boundaries.md) define the
