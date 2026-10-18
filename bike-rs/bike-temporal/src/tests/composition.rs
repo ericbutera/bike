@@ -18,6 +18,7 @@ fn archive_calls_processing_which_awaits_its_derived_subtasks() {
     };
     let mut archive = WorkflowMock::new::<ActivityArchiveImport>(ArchiveInput {
         job_id: cursor.job_id,
+        user_id: None,
         cursor: Some(cursor.clone()),
     });
     archive.activity(

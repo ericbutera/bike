@@ -40,6 +40,11 @@ async fn repeated_submission_returns_the_existing_job_without_history_reads() {
     assert_eq!(start.task_queue.as_ref().unwrap().name, crate::TASK_QUEUE);
     assert!(start.retry_policy.is_none());
     assert_eq!(start.priority.as_ref().unwrap().priority_key, 1);
+    assert_eq!(
+        serde_json::from_slice::<String>(&start.search_attributes.as_ref().unwrap().indexed_fields["BikeUserId"].data)
+            .unwrap(),
+        fixtures::customer().id.to_string()
+    );
 }
 
 #[tokio::test]
@@ -72,7 +77,7 @@ async fn domain_producers_start_native_workflows_without_sql_queue_writes() {
     queue.reprocess_user_activity_imports(12).await.unwrap();
     queue.reprocess_archive_fit_activity_imports(12).await.unwrap();
     queue.backfill_user_xc_training(12).await.unwrap();
-    queue.archive_activity_import(7).await.unwrap();
+    queue.archive_activity_import(7, 12).await.unwrap();
     let starts = &requests.lock().unwrap().starts;
     let names: Vec<_> = starts
         .iter()
@@ -108,7 +113,7 @@ async fn direct_producer_reports_a_rejected_native_start() {
     let queue =
         bike_core::jobs::JobQueue::with_client(fixtures::postgres_mock().into_connection(), client(requests).await);
     assert!(queue
-        .archive_activity_import(7)
+        .archive_activity_import(7, 12)
         .await
         .unwrap_err()
         .contains("fixture start refused"));

@@ -58,7 +58,6 @@ export const frontendRoutes = [
     path: "/admin/integrations?provider=strava",
     surface: "admin",
   },
-  { name: "admin-manual-tasks", path: "/admin/manual-tasks", surface: "admin" },
   { name: "admin-tasks", path: "/admin/tasks", surface: "admin" },
   { name: "admin-users", path: "/admin/users", surface: "admin" },
 ];

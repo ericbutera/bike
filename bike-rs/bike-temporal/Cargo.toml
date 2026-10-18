@@ -13,6 +13,7 @@ futures = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 sea-orm = { workspace = true }
 tokio = { workspace = true }
 temporalio-client = { workspace = true }
@@ -23,7 +24,6 @@ temporalio-workflow = { workspace = true }
 tonic = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
 bike-core = { path = "../bike-core", features = ["test-fixtures"] }
 prost = "0.14"
 workflow-test-support = { path = "../workflow-test-support" }

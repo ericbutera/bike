@@ -3,7 +3,7 @@ use crate::controllers::activity_import_history;
 use crate::storage::AppStorage;
 use crate::xc_goal_backfill::queue_user_xc_goal_backfill;
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -70,6 +70,7 @@ pub fn routes() -> Router<Arc<AppStorage>> {
         .route("/activity-imports/history", get(activity_import_history::history))
         .route("/activity-imports/:id", get(activity_import_history::detail))
         .route("/activities", get(list_admin_activities))
+        .route("/users/:id/archive-imports", post(import_user_archive))
         .route("/analytics/backfill", post(backfill_analytics))
         .route("/training/xc-backfill", post(backfill_user_xc_training))
         .route("/segments/regenerate", post(regenerate_user_segments))
@@ -81,6 +82,34 @@ pub fn routes() -> Router<Arc<AppStorage>> {
             post(cleanup_user_duplicate_activities),
         )
         .route("/activity-imports/archive", post(import_activity_archive))
+}
+
+#[utoipa::path(
+    post, path = "/admin/users/{id}/archive-imports", params(("id" = i32, Path)),
+    request_body = super::activity_imports::ArchiveUrlImportRequest,
+    responses((status = 202, description = "Archive import queued for the selected user", body = super::activity_imports::ActivityArchiveImportJobResponse),
+        (status = 400, description = "Invalid archive URL"), (status = 403, description = "Administrator required or target disabled"), (status = 404, description = "User not found")),
+    tag = "admin", security(("bearer_auth" = []))
+)]
+pub async fn import_user_archive(
+    _admin: AdminUserContext<AppStorage>,
+    State(state): State<Arc<AppStorage>>,
+    Path(user_id): Path<i32>,
+    Json(request): Json<super::activity_imports::ArchiveUrlImportRequest>,
+) -> Result<
+    (
+        StatusCode,
+        Json<super::activity_imports::ActivityArchiveImportJobResponse>,
+    ),
+    AppError,
+> {
+    let job = crate::admin_user_maintenance::import_archive(&state, user_id, &request.archive_url).await?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(super::activity_imports::ActivityArchiveImportJobResponse::from_model(
+            job,
+        )),
+    ))
 }
 
 #[utoipa::path(

@@ -10,6 +10,7 @@ export type ActionMenuItem = {
   onSelect: () => void;
   disabled?: boolean;
   explanation?: string;
+  section?: string;
 };
 
 export default function ActionMenu({
@@ -27,6 +28,15 @@ export default function ActionMenu({
     right: number;
   } | null>(null);
   const isOpen = position !== null;
+  const sections = new Map<string, ActionMenuItem[]>();
+  for (const item of items) {
+    const section = item.section ?? "Actions";
+    const entries = sections.get(section) ?? [];
+    entries.push(item);
+    sections.set(section, entries);
+  }
+  const grouped = items.some((item) => item.section);
+  const rowCount = items.length + (grouped ? sections.size : 0);
 
   function close() {
     setPosition(null);
@@ -35,9 +45,7 @@ export default function ActionMenu({
 
   useEffect(() => {
     if (!isOpen) return;
-    menu.current
-      ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
-      ?.focus({ preventScroll: true });
+    menuControls(menu.current)[0]?.focus({ preventScroll: true });
     function dismiss(event: MouseEvent) {
       if (menu.current?.contains(event.target as Node)) return;
       if (trigger.current?.contains(event.target as Node)) return;
@@ -48,7 +56,7 @@ export default function ActionMenu({
         return;
       if (trigger.current)
         setPosition(
-          menuPosition(trigger.current.getBoundingClientRect(), items.length),
+          menuPosition(trigger.current.getBoundingClientRect(), rowCount),
         );
     };
     document.addEventListener("mousedown", dismiss);
@@ -59,7 +67,7 @@ export default function ActionMenu({
       window.removeEventListener("resize", reposition);
       window.removeEventListener("scroll", reposition, true);
     };
-  }, [isOpen, items.length]);
+  }, [isOpen, rowCount]);
 
   function navigate(event: KeyboardEvent) {
     if (event.key === "Escape") {
@@ -72,14 +80,8 @@ export default function ActionMenu({
       close();
       return;
     }
-    const buttons = Array.from(
-      menu.current?.querySelectorAll<HTMLButtonElement>(
-        "button:not(:disabled)",
-      ) ?? [],
-    );
-    const current = buttons.indexOf(
-      document.activeElement as HTMLButtonElement,
-    );
+    const buttons = menuControls(menu.current);
+    const current = buttons.indexOf(document.activeElement as HTMLElement);
     const next = {
       ArrowDown: (current + 1) % buttons.length,
       ArrowUp: (current - 1 + buttons.length) % buttons.length,
@@ -106,7 +108,7 @@ export default function ActionMenu({
         onClick={() => {
           if (position) return close();
           const rect = trigger.current!.getBoundingClientRect();
-          setPosition(menuPosition(rect, items.length));
+          setPosition(menuPosition(rect, rowCount));
         }}
       >
         <FontAwesomeIcon icon={faGear} className="h-4 w-4" />
@@ -123,30 +125,69 @@ export default function ActionMenu({
               onKeyDown={navigate}
               onClick={(event) => event.stopPropagation()}
             >
-              {items.map((item) => (
-                <button
-                  key={item.label}
-                  role="menuitem"
-                  type="button"
-                  disabled={item.disabled}
-                  title={item.explanation}
-                  className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-base-200 focus:bg-base-200 disabled:opacity-50"
-                  onClick={() => {
-                    close();
-                    item.onSelect();
-                  }}
-                >
-                  {item.label}
-                  {item.disabled && item.explanation ? (
-                    <span className="block text-xs">{item.explanation}</span>
-                  ) : null}
-                </button>
-              ))}
+              {grouped ? (
+                <ul className="menu menu-vertical w-full p-0" role="none">
+                  {Array.from(sections, ([section, entries]) => (
+                    <li key={section} role="none">
+                      <details open={section === "Viewing"}>
+                        <summary tabIndex={0}>{section}</summary>
+                        <ul role="group" aria-label={section}>
+                          {entries.map((item) => (
+                            <li key={item.label} role="none">
+                              <MenuAction item={item} onClose={close} />
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                items.map((item) => (
+                  <MenuAction key={item.label} item={item} onClose={close} />
+                ))
+              )}
             </div>,
             document.body,
           )
         : null}
     </span>
+  );
+}
+
+function menuControls(menu: HTMLDivElement | null) {
+  const controls =
+    menu?.querySelectorAll<HTMLElement>("summary, button:not(:disabled)") ?? [];
+  return Array.from(controls).filter(
+    (control) =>
+      control.matches("summary") || !control.closest("details:not([open])"),
+  );
+}
+
+function MenuAction({
+  item,
+  onClose,
+}: {
+  item: ActionMenuItem;
+  onClose: () => void;
+}) {
+  return (
+    <button
+      role="menuitem"
+      type="button"
+      disabled={item.disabled}
+      title={item.explanation}
+      className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-base-200 focus:bg-base-200 disabled:opacity-50"
+      onClick={() => {
+        onClose();
+        item.onSelect();
+      }}
+    >
+      {item.label}
+      {item.disabled && item.explanation ? (
+        <span className="block text-xs">{item.explanation}</span>
+      ) : null}
+    </button>
   );
 }
 

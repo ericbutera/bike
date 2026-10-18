@@ -22,6 +22,12 @@ mod model_boundary_tests;
 #[cfg(test)]
 #[path = "tests/fixture.rs"]
 mod test_support;
+#[cfg(test)]
+#[path = "tests/user_audit.rs"]
+mod user_audit;
+#[cfg(test)]
+#[path = "tests/user_maintenance.rs"]
+mod user_maintenance;
 
 use crate::storage::AppStorage;
 use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};

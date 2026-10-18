@@ -7,7 +7,16 @@ import {
 import { act, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useAdminActivityImport, useActivityImportHistory } from "./queries";
+import {
+  useAdminActivityImport,
+  useActivityImportHistory,
+  useAdminIntegrationEvents,
+  useAdminUsers,
+  useAdminUser,
+  useAdminActivities,
+  useAdminFeatureFlags,
+} from "./queries";
+import { useTaskHistory } from "./adminTaskHistory";
 
 let client: QueryClient;
 const fetchMock = vi.fn();
@@ -34,10 +43,16 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
-describe("on-demand admin import queries", () => {
+describe("on-demand admin queries", () => {
   it.each([
     ["import detail", () => useAdminActivityImport(7)],
     ["import history", () => useActivityImportHistory({ page: 1 })],
+    ["integration events", () => useAdminIntegrationEvents()],
+    ["users", () => useAdminUsers()],
+    ["user details", () => useAdminUser(7)],
+    ["activities", () => useAdminActivities()],
+    ["feature flags", () => useAdminFeatureFlags()],
+    ["task history", () => useTaskHistory()],
   ] as const)(
     "does not poll or automatically refresh %s",
     async (_name, hook) => {

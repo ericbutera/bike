@@ -153,7 +153,7 @@ where
 {
     let user = OAuthService::find_or_create_provider_user(state.db(), provider, provider_user).await?;
 
-    let tokens = state.session_service().issue_tokens(state.db(), &user).await?;
+    let tokens = state.session_service().login(state.db(), &user).await?;
     let frontend_url = state.frontend_url().to_string();
     let cookie_val = refresh_cookie_value(&tokens.refresh_token, &frontend_url);
 

@@ -7,6 +7,7 @@ use temporalio_client::{
 };
 use temporalio_common::{
     data_converters::{PayloadConverter, RawValue},
+    search_attributes::{SearchAttributeKey, SearchAttributes},
     UntypedWorkflow,
 };
 
@@ -31,7 +32,9 @@ pub async fn submit(client: &Client, name: &str, input: serde_json::Value) -> Re
         .start_workflow(
             UntypedWorkflow::new(name),
             RawValue::from_value(&input, &PayloadConverter::default()),
-            WorkflowStartOptions::new(crate::platform::temporal::BIKE_TASK_QUEUE, id.clone()).build(),
+            WorkflowStartOptions::new(crate::platform::temporal::BIKE_TASK_QUEUE, id.clone())
+                .search_attributes(user_search_attributes(&input))
+                .build(),
         )
         .await?;
     Ok(QueuedJobReference {
@@ -51,6 +54,7 @@ pub async fn submit_command(
     let target_id = uuid::Uuid::new_v5(&command_id, &serde_json::to_vec(&input)?);
     let job_id = format!("bike-{workflow_type}-{target_id}");
     let options = WorkflowStartOptions::new(crate::platform::temporal::BIKE_TASK_QUEUE, job_id.clone())
+        .search_attributes(user_search_attributes(&input))
         .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
         .id_reuse_policy(WorkflowIdReusePolicy::RejectDuplicate)
         .build();
@@ -72,4 +76,15 @@ pub async fn submit_command(
         namespace: client.namespace(),
         workflow_type: workflow_type.into(),
     })
+}
+
+pub fn user_search_attributes(input: &serde_json::Value) -> SearchAttributes {
+    let owner = input
+        .get("user_id")
+        .or_else(|| input.get("source").and_then(|source| source.get("user_id")));
+    SearchAttributes::new(
+        owner
+            .and_then(serde_json::Value::as_i64)
+            .map(|id| SearchAttributeKey::<String>::keyword("BikeUserId").value_set(id.to_string())),
+    )
 }

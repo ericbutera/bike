@@ -39,7 +39,7 @@ async fn lists_native_statuses_and_pages_without_loading_every_input() {
     }));
     let page = queue(requests.clone())
         .await
-        .execution_history(Some(TaskStatus::Completed), vec![3])
+        .execution_history(Some(TaskStatus::Completed), vec![3], Some(7))
         .await
         .unwrap();
     assert_eq!(page.next_page_token.as_deref(), Some("0102"));
@@ -74,7 +74,7 @@ async fn lists_native_statuses_and_pages_without_loading_every_input() {
     assert_eq!(requests.lists[0].next_page_token, vec![3]);
     assert_eq!(
         requests.lists[0].query,
-        "TaskQueue IN ('bike-tasks', 'bike-strava') AND ExecutionStatus = 'Completed'"
+        "TaskQueue IN ('bike-tasks', 'bike-strava') AND ExecutionStatus = 'Completed' AND BikeUserId = '7'"
     );
 }
 
@@ -102,12 +102,12 @@ async fn reads_original_parameters_for_the_selected_run_only() {
 async fn empty_history_and_unavailable_temporal_do_not_claim_success() {
     let requests = Arc::new(Mutex::new(Requests::default()));
     let queue = queue(requests.clone()).await;
-    let page = queue.execution_history(None, vec![]).await.unwrap();
+    let page = queue.execution_history(None, vec![], None).await.unwrap();
     assert!(page.executions.is_empty());
     assert!(page.next_page_token.is_none());
     assert!(queue.execution_input("workflow".into(), "run".into()).await.is_err());
     requests.lock().unwrap().fail_reads = true;
-    assert!(queue.execution_history(None, vec![]).await.is_err());
+    assert!(queue.execution_history(None, vec![], None).await.is_err());
 }
 
 #[tokio::test]

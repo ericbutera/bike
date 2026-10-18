@@ -11,16 +11,12 @@ function waitForMutation(page, path) {
   );
 }
 
-function sectionWithHeading(page, name) {
-  return page.locator("section").filter({
-    has: page.getByRole("heading", { name }),
-  });
-}
-
 async function runRowTask(page, kind, id, label, workflowType) {
   await page
     .getByRole("button", { name: new RegExp(`Tasks for .*\\(#${id}\\)$`) })
     .click();
+  if (kind === "users")
+    await page.getByText("Task management", { exact: true }).click();
   await page.getByRole("menuitem", { name: label, exact: true }).click();
   const dialog = page.getByRole("dialog");
   const response = waitForMutation(page, `/api/admin/${kind}/${id}/tasks`);
@@ -53,7 +49,7 @@ async function inspectTaskHistory(page, target, job) {
       { timeout: 15_000 },
     )
     .toBe(1);
-  await row.getByRole("button", { name: "View parameters" }).click();
+  await row.getByRole("button", { name: "Details" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText('"activity_id": 1109');
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
@@ -67,60 +63,6 @@ test("shared admin tools queue matching import and training work in Bike", async
   for (const target of targets) {
     const context = await createContext();
     const page = await context.newPage();
-    await openRoute(page, target, "/admin/manual-tasks");
-    await expect(
-      page.getByRole("heading", { name: "Prewarm analytics caches" }),
-    ).toBeVisible();
-
-    const backfillSection = sectionWithHeading(
-      page,
-      "Prewarm analytics caches",
-    );
-    const backfillResponse = waitForMutation(
-      page,
-      "/api/admin/analytics/backfill",
-    );
-    await backfillSection
-      .getByRole("button", { name: "Queue analytics backfill" })
-      .click();
-    const backfill = await backfillResponse;
-    expect(backfill.status(), target.name + " analytics backfill").toBe(202);
-    const backfillBody = await backfill.json();
-    expect(backfillBody.total_tasks_enqueued).toBeGreaterThan(0);
-    expect(backfillBody.total_tasks_enqueued).toBe(
-      backfillBody.fitness_task_count + backfillBody.segment_task_count,
-    );
-    await expect(page.getByText("Total tasks", { exact: true })).toBeVisible();
-
-    const effortSection = sectionWithHeading(
-      page,
-      "Regenerate segment efforts",
-    );
-    await effortSection
-      .getByRole("spinbutton", { name: /Segment id/ })
-      .fill("5");
-    const effortResponse = waitForMutation(
-      page,
-      "/api/admin/segments/regenerate-efforts",
-    );
-    await effortSection
-      .getByRole("button", { name: "Regenerate segment efforts" })
-      .click();
-    const effort = await effortResponse;
-    expect(effort.status(), target.name + " segment effort regeneration").toBe(
-      202,
-    );
-    expect(await effort.json()).toMatchObject({
-      segment_id: 5,
-      status: "queued",
-      message: "Segment effort regeneration queued.",
-      task_id: expect.stringMatching(/^bike-regenerate_segment_efforts-/),
-      task_status: "running",
-    });
-    await expect(effortSection).toContainText(
-      "Segment effort regeneration queued.",
-    );
-
     await openRoute(page, target, "/admin/users");
     await runRowTask(
       page,
@@ -133,7 +75,7 @@ test("shared admin tools queue matching import and training work in Bike", async
       page,
       "users",
       91002,
-      "Rebuild user segments",
+      "Regenerate segment efforts",
       "regenerate_user_segments",
     );
     await runRowTask(
@@ -152,20 +94,21 @@ test("shared admin tools queue matching import and training work in Bike", async
       "reprocess_activity_import",
     );
     await inspectTaskHistory(page, target, job);
-    await openRoute(page, target, "/admin/manual-tasks");
-
-    const cleanupSection = sectionWithHeading(
-      page,
-      "Clean up duplicate activities",
-    );
-    await cleanupSection
-      .getByRole("spinbutton", { name: /User id/ })
-      .fill("91005");
+    await openRoute(page, target, "/admin/users");
+    await page.getByRole("button", { name: /Tasks for .*\(#91005\)$/ }).click();
+    await page.getByText("Task management", { exact: true }).click();
+    await page
+      .getByRole("menuitem", {
+        name: "Clean up duplicate activities",
+        exact: true,
+      })
+      .click();
+    const cleanupDialog = page.getByRole("dialog");
     const cleanupResponse = waitForMutation(
       page,
       "/api/admin/activity-imports/cleanup-duplicates",
     );
-    await cleanupSection
+    await cleanupDialog
       .getByRole("button", { name: "Clean duplicates" })
       .click();
     const cleanup = await cleanupResponse;
@@ -177,7 +120,7 @@ test("shared admin tools queue matching import and training work in Bike", async
       deleted_activity_count: 0,
       retained_activity_count: 0,
     });
-    await expect(cleanupSection).toContainText(
+    await expect(cleanupDialog).toContainText(
       "No duplicate activities matched the current dedupe rules.",
     );
 

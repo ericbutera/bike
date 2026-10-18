@@ -48,6 +48,7 @@ impl JobQueue {
         &self,
         status: Option<TaskStatus>,
         page_token: Vec<u8>,
+        user_id: Option<i32>,
     ) -> Result<TaskExecutionPage, Error> {
         let client = self.client().await?;
         let namespace = client.namespace();
@@ -58,7 +59,7 @@ impl JobQueue {
                 namespace: namespace.clone(),
                 page_size: 25,
                 next_page_token: page_token,
-                query: visibility_query(status),
+                query: visibility_query(status, user_id),
             }))
             .await?
             .into_inner();
@@ -117,11 +118,14 @@ fn task_queues() -> [String; 2] {
     ]
 }
 
-fn visibility_query(status: Option<TaskStatus>) -> String {
+fn visibility_query(status: Option<TaskStatus>, user_id: Option<i32>) -> String {
     let queues = task_queues().map(|queue| queue.replace('\'', "''"));
     let mut query = format!("TaskQueue IN ('{}', '{}')", queues[0], queues[1]);
     if let Some(status) = status {
         query.push_str(&format!(" AND ExecutionStatus = '{status:?}'"));
+    }
+    if let Some(user_id) = user_id {
+        query.push_str(&format!(" AND BikeUserId = '{user_id}'"));
     }
     query
 }

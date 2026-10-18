@@ -3,6 +3,7 @@ pub mod activity_location;
 pub mod activity_reprocessing;
 pub mod admin_task_history;
 pub mod admin_tasks;
+pub mod admin_user_maintenance;
 pub mod app_error;
 pub mod controllers;
 mod database_metrics;

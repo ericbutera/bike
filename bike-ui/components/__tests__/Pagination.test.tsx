@@ -12,6 +12,36 @@ function PaginatedList() {
 }
 
 describe("Pagination", () => {
+  it("shows only visited and next cursor pages without claiming a last page", async () => {
+    const change = vi.fn();
+    render(
+      <Pagination
+        page={6}
+        cursor={{ knownPages: 6, hasNextPage: true }}
+        onPageChange={change}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Last page" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "8" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(change).toHaveBeenLastCalledWith(7);
+    await userEvent.click(screen.getByRole("button", { name: "First page" }));
+    expect(change).toHaveBeenLastCalledWith(1);
+  });
+
+  it("disables cursor navigation while a page is loading", () => {
+    render(
+      <Pagination
+        page={1}
+        cursor={{ knownPages: 1, hasNextPage: true }}
+        disabled
+        onPageChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "2" })).toBeDisabled();
+  });
   it("returns directly to page one after jumping to page five", async () => {
     const user = userEvent.setup();
     render(<PaginatedList />);

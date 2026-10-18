@@ -72,6 +72,8 @@ async fn admin_reads_native_history_and_original_parameters() {
 async fn invalid_tokens_and_run_ids_never_reach_temporal() {
     for path in [
         "/api/admin/tasks?page_token=invalid",
+        "/api/admin/tasks?user_id=0",
+        "/api/admin/tasks?user_id=-1",
         "/api/admin/tasks/fitness/runs/invalid/input",
     ] {
         let requests = Arc::new(Mutex::new(Requests::default()));

@@ -2115,6 +2115,18 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
           }
         ],
         "responses": {
@@ -2390,7 +2402,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AdminUserResponse"
+                  "$ref": "#/components/schemas/AdminUserDetailsResponse"
                 }
               }
             }
@@ -2442,6 +2454,124 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AdminUserResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/users/{id}/archive-imports": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "import_user_archive",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveUrlImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Archive import queued for the selected user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityArchiveImportJobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid archive URL"
+          },
+          "403": {
+            "description": "Administrator required or target disabled"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/users/{id}/audit-events": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "list_user_audit_events",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number (1-based)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Number of items per page",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User audit events, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse"
                 }
               }
             }
@@ -6391,6 +6521,62 @@
           "user_id": 12
         }
       },
+      "AdminUserAuditEventResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "occurred_at"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "occurred_at": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_agent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AdminUserDetailsResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AdminUserResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "last_login_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "AdminUserResponse": {
         "type": "object",
         "required": [
@@ -8138,6 +8324,27 @@
             "items": {
               "$ref": "#/components/schemas/OAuthProviderMetadata"
             }
+          }
+        }
+      },
+      "PaginatedResponse": {
+        "type": "object",
+        "description": "Standard paginated response wrapper",
+        "required": [
+          "data",
+          "metadata"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminUserAuditEventResponse"
+            },
+            "description": "Recordset"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata",
+            "description": "Pagination metadata"
           }
         }
       },

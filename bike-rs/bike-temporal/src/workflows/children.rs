@@ -22,6 +22,9 @@ where
         return Err(temporalio_sdk::WorkflowTermination::cancelled());
     }
     let child_options = ChildWorkflowOptions::builder()
+        .search_attributes(bike_core::jobs::native::user_search_attributes(
+            &serde_json::to_value(&input).map_err(temporalio_sdk::ApplicationFailure::new)?,
+        ))
         .task_queue(crate::TASK_QUEUE.to_owned())
         .priority(options::priority(priority, resource))
         .cancel_type(ChildWorkflowCancellationType::WaitCancellationCompleted)

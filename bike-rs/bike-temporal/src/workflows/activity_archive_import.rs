@@ -36,6 +36,7 @@ impl ActivityArchiveImport {
                 .continue_as_new(
                     ArchiveInput {
                         job_id: input.job_id,
+                        user_id: input.user_id,
                         cursor: Some(cursor),
                     },
                     Default::default(),

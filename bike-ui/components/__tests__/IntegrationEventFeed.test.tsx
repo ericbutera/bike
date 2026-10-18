@@ -1,8 +1,17 @@
-import { render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initializeClientConfig } from "../../lib/config";
 
 afterEach(() => initializeClientConfig({}));
+beforeEach(() => {
+  vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(
+    function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    },
+  );
+});
+afterEach(() => vi.restoreAllMocks());
 import type { IntegrationEvent } from "@/lib/queries";
 import IntegrationEventFeed from "../IntegrationEventFeed";
 
@@ -25,7 +34,7 @@ const accepted: IntegrationEvent = {
 };
 
 describe("IntegrationEventFeed", () => {
-  it("links an accepted event to its native Temporal execution", () => {
+  it("inspects event details and the native Temporal execution from a compact icon", async () => {
     initializeClientConfig({
       TEMPORAL_UI_URL: "https://temporal.example.com/",
     });
@@ -37,16 +46,50 @@ describe("IntegrationEventFeed", () => {
         error={null}
         emptyMessage="No events"
         showUserId
+        showProvider
       />,
     );
-    expect(screen.getByText(accepted.message)).toBeInTheDocument();
+    expect(screen.queryByText(accepted.message)).not.toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("columnheader")
+        .slice(-2)
+        .map((cell) => cell.textContent),
+    ).toEqual(["When", "Inspect"]);
+    const eventCells = screen.getAllByRole("cell");
+    expect(eventCells.at(-2)).toHaveTextContent("2026");
+    expect(
+      within(eventCells.at(-1)!).getByRole("button", {
+        name: "Inspect event 1",
+      }),
+    ).toBeVisible();
     expect(screen.getByText("User 17")).toBeInTheDocument();
+    for (const label of ["User 17", "Connection 2", "Strava Event Accepted"]) {
+      expect(screen.getByText(label).className).not.toContain("badge");
+    }
+    expect(screen.getByRole("img", { name: "Strava" })).toHaveClass(
+      "h-4",
+      "w-4",
+    );
+    expect(
+      screen.queryByRole("columnheader", { name: "Details" }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Inspect event 1" }),
+    );
+    expect(
+      within(screen.getByRole("dialog")).getByText(accepted.message),
+    ).toBeVisible();
     expect(
       screen.getByRole("link", { name: "View job in Temporal" }),
     ).toHaveAttribute(
       "href",
       "https://temporal.example.com/namespaces/bike/workflows/strava-event%2Fwith%20space",
     );
+    await userEvent.click(screen.getByText("Payload", { exact: true }));
+    expect(screen.getByText(/"strava_athlete_id": 555/)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("shows account requests without claiming workflow completion", () => {

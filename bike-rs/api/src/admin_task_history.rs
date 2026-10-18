@@ -8,15 +8,19 @@ use utoipa::IntoParams;
 pub struct HistoryQuery {
     pub status: Option<TaskStatus>,
     pub page_token: Option<String>,
+    pub user_id: Option<i32>,
 }
 
 pub async fn list(state: &AppStorage, query: HistoryQuery) -> Result<TaskExecutionPage, AppError> {
+    if query.user_id.is_some_and(|id| id <= 0) {
+        return Err(AppError::bad_request("User ID must be positive"));
+    }
     let token = query.page_token.unwrap_or_default();
     if token.len() > 32768 {
         return Err(AppError::bad_request("Invalid history page token"));
     }
     let token = hex::decode(token).map_err(|_| AppError::bad_request("Invalid history page token"))?;
-    read(state.tasks.execution_history(query.status, token)).await
+    read(state.tasks.execution_history(query.status, token, query.user_id)).await
 }
 
 pub async fn input(state: &AppStorage, workflow_id: String, run_id: String) -> Result<TaskExecutionInput, AppError> {

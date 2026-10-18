@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ImportHistory from "../imports/ImportHistory";
@@ -40,8 +40,19 @@ describe("Import history", () => {
   it("refreshes the current list only on request", async () => {
     const user = userEvent.setup();
     render(<ImportHistory />);
+    expect(
+      screen.queryByRole("link", { name: "Upload activity" }),
+    ).not.toBeInTheDocument();
     expect(mocks.refetch).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    const refresh = screen.getByRole("button", { name: "Refresh" });
+    expect(
+      screen.getByLabelText("Source").closest("form")?.lastElementChild,
+    ).toBe(refresh);
+    expect(refresh).not.toHaveTextContent("Refresh");
+    expect(
+      refresh.querySelector('svg[data-icon="arrows-rotate"]'),
+    ).toBeVisible();
+    await user.click(refresh);
     expect(mocks.refetch).toHaveBeenCalledOnce();
   });
   it("opens failed imports before they have an activity", () => {
@@ -58,8 +69,17 @@ describe("Import history", () => {
     );
     expect(screen.getByRole("columnheader", { name: "Outcome" })).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "Stage" })).toBeVisible();
+    expect(
+      screen.getByRole("cell", { name: "failed" }).firstElementChild,
+    ).toHaveClass("badge", "badge-error");
+    expect(
+      screen.getByRole("cell", { name: "activity_parsed" }).firstElementChild,
+    ).toHaveClass("badge", "badge-info");
     const source = screen.getByRole("combobox", { name: "Source" });
     const table = screen.getByRole("table", { name: "Import history" });
+    expect(within(table).getAllByRole("columnheader").at(-1)).toHaveTextContent(
+      "Received",
+    );
     expect(source.closest(".card")).toBe(table.closest(".card"));
     expect(
       source.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING,

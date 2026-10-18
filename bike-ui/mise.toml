@@ -41,7 +41,7 @@ run = "mise run coverage"
 
 [tasks."test:workers"]
 description = "Run task tools and retained import unit tests"
-run = "pnpm exec vitest run components/__tests__/AdminTaskTools.test.tsx components/__tests__/ActivityImportsPanel.test.tsx"
+run = "pnpm exec vitest run components/__tests__/AdminTaskMenus.test.tsx components/__tests__/UserMaintenanceDialog.test.tsx components/__tests__/ActivityImportsPanel.test.tsx"
 
 [tasks.coverage]
 description = "Run Next.js unit tests and generate HTML, LCOV, and JSON coverage reports"

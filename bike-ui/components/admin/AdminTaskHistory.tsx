@@ -11,6 +11,9 @@ import {
 import { DataGrid, ListCard, type Column } from "../ui/DataGrid";
 import Modal from "../ui/Modal";
 import TemporalLink from "../ui/TemporalLink";
+import Pagination from "../ui/Pagination";
+import RefreshButton from "../ui/RefreshButton";
+import StatusBadge from "../ui/StatusBadge";
 
 const statusLabels: Record<TaskStatus, string> = {
   Running: "Running / queued",
@@ -42,17 +45,21 @@ const columns: Column<TaskExecution, { open: (row: TaskExecution) => void }>[] =
       key: "status",
       header: "Status",
       render: ({ status }) => (
-        <span className="badge badge-outline whitespace-nowrap">
-          {statusLabels[status]}
-        </span>
+        <StatusBadge status={status} label={statusLabels[status]} />
       ),
     },
     {
       key: "started",
       header: "Started",
+      className: "whitespace-nowrap",
       render: (row) => time(row.started_at),
     },
-    { key: "closed", header: "Finished", render: (row) => time(row.closed_at) },
+    {
+      key: "closed",
+      header: "Finished",
+      className: "whitespace-nowrap",
+      render: (row) => time(row.closed_at),
+    },
     {
       key: "parameters",
       header: "Parameters",
@@ -61,7 +68,7 @@ const columns: Column<TaskExecution, { open: (row: TaskExecution) => void }>[] =
           className="btn btn-ghost btn-sm"
           onClick={() => params?.open(row)}
         >
-          View parameters
+          Details
         </button>
       ),
     },
@@ -105,86 +112,119 @@ function TaskParameters({
 
 export default function AdminTaskHistory() {
   const [status, setStatus] = useState<TaskStatus | "">("");
+  const [userId, setUserId] = useState("");
+  const validUserId =
+    !userId || (Number.isInteger(Number(userId)) && Number(userId) > 0);
   const [pages, setPages] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<TaskExecution>();
-  const history = useTaskHistory(status || undefined, pages.at(-1));
+  const history = useTaskHistory(
+    status || undefined,
+    pages[page - 2],
+    userId ? Number(userId) : undefined,
+    validUserId,
+  );
   const next = history.data?.next_page_token;
 
   function refresh() {
-    if (pages.length) setPages([]);
-    else void history.refetch();
+    if (page > 1) {
+      setPages([]);
+      setPage(1);
+    } else {
+      setPages([]);
+      if (validUserId) void history.refetch();
+    }
   }
 
   return (
     <>
       <ListCard
         title="Task history"
-        actions={
-          <button
-            className="btn btn-sm"
+        onSearch={refresh}
+        onClear={() => {
+          setStatus("");
+          setUserId("");
+          setPages([]);
+          setPage(1);
+        }}
+        filterActions={
+          <RefreshButton
             onClick={refresh}
-            disabled={history.isFetching}
-          >
-            Refresh
-          </button>
+            disabled={history.isFetching || !validUserId}
+          />
         }
         filters={
-          <select
-            className="select select-sm select-bordered"
-            aria-label="Task status"
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value as TaskStatus | "");
-              setPages([]);
-            }}
-          >
-            <option value="">All statuses</option>
-            {Object.entries(statusLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+          <>
+            <input
+              aria-label="Task user ID"
+              placeholder="Any user"
+              type="number"
+              min={1}
+              step={1}
+              aria-invalid={!validUserId}
+              className="input input-sm input-bordered w-40"
+              value={userId}
+              onChange={(event) => {
+                setUserId(event.target.value);
+                setPages([]);
+                setPage(1);
+              }}
+            />
+            <select
+              className="select select-sm select-bordered w-40"
+              aria-label="Task status"
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value as TaskStatus | "");
+                setPages([]);
+                setPage(1);
+              }}
+            >
+              <option value="">All statuses</option>
+              {Object.entries(statusLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </>
         }
       >
         <p className="mb-4 text-sm text-base-content/70">
           Recent Bike and Strava workflows, including child tasks. New runs may
           take a moment to appear; history follows Temporal retention.
         </p>
-        <DataGrid
-          rows={history.data?.executions ?? []}
-          columns={columns}
-          params={{ open: setSelected }}
-          isLoading={history.isLoading}
-          error={
-            history.error
-              ? "Task history is unavailable. Try again or open Temporal."
-              : undefined
-          }
-          emptyMessage="No tasks match this status."
-          label="Task history"
-        />
-        {pages.length || next ? (
-          <div className="mt-4 flex justify-end gap-2">
-            {pages.length ? (
-              <button
-                className="btn btn-sm"
-                onClick={() => setPages((current) => current.slice(0, -1))}
-                disabled={history.isFetching}
-              >
-                Newer
-              </button>
-            ) : null}
-            {next ? (
-              <button
-                className="btn btn-sm"
-                onClick={() => setPages((current) => [...current, next])}
-                disabled={history.isFetching}
-              >
-                Older
-              </button>
-            ) : null}
-          </div>
+        {!validUserId ? (
+          <p role="alert" className="text-error">
+            User ID must be a positive integer.
+          </p>
+        ) : (
+          <DataGrid
+            rows={history.data?.executions ?? []}
+            columns={columns}
+            params={{ open: setSelected }}
+            isLoading={history.isLoading}
+            error={
+              history.error
+                ? "Task history is unavailable. Try again or open Temporal."
+                : undefined
+            }
+            emptyMessage="No tasks match these filters."
+            label="Task history"
+          />
+        )}
+        {validUserId && !history.error ? (
+          <Pagination
+            className="mt-4"
+            page={page}
+            cursor={{ knownPages: pages.length + 1, hasNextPage: !!next }}
+            disabled={history.isFetching || history.isLoading}
+            onPageChange={(value) => {
+              if (value > pages.length + 1 && next)
+                setPages((current) => [...current, next]);
+              setPage(value);
+            }}
+          />
         ) : null}
       </ListCard>
       {selected ? (

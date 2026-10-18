@@ -2,6 +2,8 @@
 
 - Admin import history and import details show domain metadata: retained source,
   filename, size, receipt time, status/error, and linked Bike activity.
+- Admin imports is an inspection surface with no upload action or admin upload
+  endpoint. Activity uploads remain in the ordinary authenticated user flow.
 - Load on demand. Do not poll or refetch on window focus or network reconnect.
   Provide Refresh; disable it during a fetch or when a required owner filter is
   invalid. An unselected import must not issue a request.

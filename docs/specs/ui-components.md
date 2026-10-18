@@ -20,6 +20,9 @@ Bike UI components should keep workflow behavior close to the component that own
   with `aria-current="page"`; selecting it again does not request a page change.
 - A first-page jump must restore page 1 data and the owning page's URL state,
   including when page 1 is outside the visible number range on page 5.
+- Cursor-backed lists use known page numbers plus the next available page,
+  retaining visited cursors for backward navigation. Hide the last-page jump
+  because the final page is unknown. Disable paging during requests.
 
 ## Modal Behavior
 
@@ -52,18 +55,58 @@ The self-contained workflow component should have a narrow prop surface:
 
 Tests should exercise the workflow through the visible trigger and dialog controls. A parent component test may cover the integrated behavior, but implementation details such as parent-owned modal draft state should not be required.
 
-## List presentation
+## Data grids
 
-- `ListCard` owns the common list title and right-aligned filter toolbar, with
-  compact inputs, dropdowns, Search, and Clear above its content.
+- These requirements apply to every data grid, including admin and user pages.
+- Filters must match the established `/admin/users` presentation: compact inputs
+  and dropdowns in a right-aligned toolbar above the grid, with consistent
+  sizing, spacing, Search, and Clear controls. `ListCard` owns this shared
+  toolbar. Changing or clearing filters resets pagination to the first page.
+- Admin Refresh controls use the Font Awesome arrows-rotate icon, retain an
+  accessible Refresh label, and sit after Search and Clear at the far right of
+  the filter toolbar. Detail pages without filters place it at the right of
+  their heading.
 - `DataGrid` owns zebra rows, column rendering, loading/error/empty states,
   horizontal overflow, and optional row selection. Long cell values use
   truncation with a tooltip or separate columns.
+- Admin grids place date and time columns after ordinary data columns, followed
+  by all button and action columns at the far right. Activity Source values
+  remain plain text.
+- The Users grid includes Created and never reads audit events.
+  Its row menu separates Viewing, Editing, and Task management. View details
+  loads account details and the last recorded successful sign-in on demand;
+  View audit events opens that user's paginated audit history on demand.
+  Session refreshes do not change Last login; missing history is shown as an em dash.
+- Use plain text for ordinary cell values. Reserve pills and badges for
+  meaningful statuses or categories; do not wrap every value in a pill. Event
+  labels, users, IDs, and connections should normally remain plain text.
+- Admin status, outcome, stage, and event-level cells share the filled
+  `StatusBadge` presentation from Users: success is green with dark text,
+  failures are red, pending or canceled states are yellow, and work in progress
+  is blue. Unrecognized states use a neutral pill.
+- Brands must use their favicon or official brand icon instead of a text pill.
+  Keep icons small enough for condensed rows, normally 16 pixels, and provide
+  an accessible brand name.
+- Grids must use the shared `Pagination` control below the table and follow the
+  [pagination rules](#pagination), including cursor support. Hide the control
+  only when all results fit on one page.
+- Data grids must never poll. Do not configure refresh intervals, timers, or
+  repeated background requests for grid data. Disable automatic refetch on
+  window focus and reconnect. Load initially, on Search or Refresh, when paging
+  or filters change, or after a completed mutation affects the grid.
 - `GenericList` combines these components with URL filters and pagination;
   pages with independent filters reuse the same presentation components.
 
 ## Admin task menus
 
+- Retire `/admin/manual-tasks` and its navigation. The Users gear menu owns
+  Fetch provider export archives, Regenerate segment efforts, and Clean up
+  duplicate activities. Resolve the affected user from the row; never ask for a
+  user ID. Segment effort regeneration reuses the user-wide segment workflow.
+- Archive imports ask for a provider export URL and call administrator-only
+  `POST /admin/users/{id}/archive-imports`; use the target's identity and storage
+  key, return a queued import, and link to its import history. Duplicate cleanup
+  reuses the existing user-scoped endpoint and shows its completed summary.
 - Admin grid gear menus share one accessible action-menu component. Render the
   popup outside the grid's horizontal overflow so the last row is not clipped.
   Support keyboard focus, arrow navigation, Escape and outside dismissal. Gear
@@ -76,6 +119,12 @@ Tests should exercise the workflow through the visible trigger and dialog contro
   import reprocessing offers archive FIT only. Preserve a failed request's
   command UUID when retrying unchanged parameters and show the native job link
   after acknowledgment.
+
+## Admin integration events
+
+- Replace inline Details with a small, labeled inspect icon. Its shared modal
+  preserves the message, metrics, Temporal link, and expandable JSON payload.
+  Closing returns to the list; account event history keeps its existing layout.
 
 ## Code Anchors
 

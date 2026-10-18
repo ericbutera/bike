@@ -7,6 +7,7 @@ import { Suspense, useMemo } from "react";
 import Link from "next/link";
 import { ACTIVITY_SPORT_OPTIONS } from "@/lib/activitySports";
 import { LocalAdminLayout } from "../../../components/admin/LocalAdminLayout";
+import StatusBadge from "@/components/ui/StatusBadge";
 
 const ADMIN_ACTIVITIES_PAGE_SIZE = 25;
 const AdminActivitiesGridSchema = {} as never;
@@ -60,18 +61,10 @@ function AdminActivitiesContent() {
         render: (activity) => activity.sport,
       },
       {
-        key: "started_at",
-        header: "Started",
-        className: "whitespace-nowrap",
-        render: (activity) => formatDateTime(activity.started_at),
-      },
-      {
         key: "source",
         header: "Source",
         className: "whitespace-nowrap",
-        render: (activity) => (
-          <span className="badge badge-outline">{activity.source}</span>
-        ),
+        render: (activity) => activity.source,
       },
       {
         key: "format",
@@ -99,15 +92,19 @@ function AdminActivitiesContent() {
         className: "whitespace-nowrap",
         render: (activity) =>
           activity.import_status ? (
-            <span
+            <StatusBadge
               title={activity.import_processing_stage ?? undefined}
-              className={importStatusClass(activity.import_status)}
-            >
-              {activity.import_status}
-            </span>
+              status={activity.import_status}
+            />
           ) : (
             "—"
           ),
+      },
+      {
+        key: "started_at",
+        header: "Started",
+        className: "whitespace-nowrap",
+        render: (activity) => formatDateTime(activity.started_at),
       },
       {
         key: "actions",
@@ -219,17 +216,4 @@ function formatDateTime(value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
-}
-
-function importStatusClass(status: string | null | undefined) {
-  if (status === "processed") {
-    return "badge badge-success badge-outline";
-  }
-  if (status === "failed") {
-    return "badge badge-error badge-outline";
-  }
-  if (status === "duplicate") {
-    return "badge badge-warning badge-outline";
-  }
-  return "badge badge-info badge-outline";
 }

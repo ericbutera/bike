@@ -83,7 +83,7 @@ pub async fn enqueue_activity_archive_import_job(
         }
     };
 
-    if let Err(message) = tasks.archive_activity_import(job.id).await {
+    if let Err(message) = tasks.archive_activity_import(job.id, user_id).await {
         let failed_job = mark_activity_archive_import_job_failed(
             db,
             &job,

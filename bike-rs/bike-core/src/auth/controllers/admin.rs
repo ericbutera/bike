@@ -9,6 +9,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
+mod audit;
+pub use audit::{
+    __path_list_user_audit_events, list_user_audit_events, AdminUserAuditEventResponse, AdminUserAuditEventsResponse,
+};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminUserResponse {
@@ -35,6 +39,22 @@ impl From<users::Model> for AdminUserResponse {
             email_verified: m.email_verified_at.is_some(),
             created_at: m.created_at.to_rfc3339(),
             updated_at: m.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminUserDetailsResponse {
+    #[serde(flatten)]
+    pub user: AdminUserResponse,
+    pub last_login_at: Option<String>,
+}
+
+impl From<users::AdminUserDetails> for AdminUserDetailsResponse {
+    fn from(details: users::AdminUserDetails) -> Self {
+        Self {
+            user: details.user.into(),
+            last_login_at: details.last_login_at.map(|at| at.to_rfc3339()),
         }
     }
 }
@@ -81,6 +101,7 @@ where
         .route("/:id", get(get_user::<S>))
         .route("/:id", patch(update_user::<S>))
         .route("/:id/disable", post(disable_user::<S>))
+        .route("/:id/audit-events", get(list_user_audit_events::<S>))
 }
 
 #[utoipa::path(
@@ -121,7 +142,7 @@ where
     path = "/admin/users/{id}",
     params(("id" = i32, Path, description = "User ID")),
     responses(
-        (status = 200, description = "User detail", body = AdminUserResponse),
+        (status = 200, description = "User detail", body = AdminUserDetailsResponse),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "User not found"),
     ),
@@ -132,13 +153,15 @@ pub async fn get_user<S>(
     _admin: AdminUserContext<S>,
     State(state): State<Arc<S>>,
     Path(id): Path<i32>,
-) -> Result<Json<AdminUserResponse>, AuthError>
+) -> Result<Json<AdminUserDetailsResponse>, AuthError>
 where
     S: AuthStorage + 'static,
 {
     let user = users::Model::find_by_id(state.db(), id).await?;
 
-    Ok(Json(AdminUserResponse::from(user)))
+    Ok(Json(AdminUserDetailsResponse::from(
+        user.admin_details(state.db()).await?,
+    )))
 }
 
 #[utoipa::path(

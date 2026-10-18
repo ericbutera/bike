@@ -4,14 +4,10 @@ import type { ActivityType } from "./activityTypes";
 import type { ActivitySport } from "./activitySports";
 import { $api, $typedApi } from "./api";
 import type { components } from "./openapi/react-query/api";
+import { ADMIN_QUERY_OPTIONS } from "./adminQueryOptions";
 
 const USER_CONTEXT_STALE_TIME_MS = 30 * 60 * 1000;
 const USER_CONTEXT_GC_TIME_MS = 60 * 60 * 1000;
-const ADMIN_IMPORT_QUERY_OPTIONS = {
-  refetchInterval: false,
-  refetchOnWindowFocus: false,
-  refetchOnReconnect: false,
-} as const;
 
 export type PaginationMetadata = {
   page: number;
@@ -1115,7 +1111,7 @@ export function useAdminUsers(opts?: {
         },
       },
     },
-    { enabled: opts?.enabled ?? true },
+    { ...ADMIN_QUERY_OPTIONS, enabled: opts?.enabled ?? true },
   );
   const pageData = response.data;
 
@@ -1138,7 +1134,16 @@ export function useAdminUser(id: number | null) {
     "get",
     "/admin/users/{id}",
     { params: { path: { id: id ?? 0 } } },
-    { enabled: id !== null },
+    { ...ADMIN_QUERY_OPTIONS, enabled: id !== null },
+  );
+}
+
+export function useAdminUserAuditEvents(id: number, page: number) {
+  return $typedApi.useQuery(
+    "get",
+    "/admin/users/{id}/audit-events",
+    { params: { path: { id }, query: { page, per_page: 20 } } },
+    ADMIN_QUERY_OPTIONS,
   );
 }
 
@@ -1206,7 +1211,12 @@ export function usePublicFeatureFlags() {
 }
 
 export function useAdminFeatureFlags() {
-  const response = $typedApi.useQuery("get", "/admin/feature-flags", {});
+  const response = $typedApi.useQuery(
+    "get",
+    "/admin/feature-flags",
+    {},
+    ADMIN_QUERY_OPTIONS,
+  );
   const page = response.data as PaginatedResponse<FeatureFlag> | undefined;
 
   return {
@@ -1516,7 +1526,7 @@ export function useAdminActivities(opts?: {
         },
       },
     },
-    { enabled: opts?.enabled ?? true },
+    { ...ADMIN_QUERY_OPTIONS, enabled: opts?.enabled ?? true },
   );
 
   const pageData = response.data as
@@ -1542,7 +1552,7 @@ export function useAdminActivityImport(
     "get",
     "/admin/activity-imports/{id}",
     { params: { path: { id: enabled ? numericImportId : 0 } } },
-    { ...ADMIN_IMPORT_QUERY_OPTIONS, enabled },
+    { ...ADMIN_QUERY_OPTIONS, enabled },
   );
 }
 
@@ -1976,7 +1986,7 @@ export function useActivityImportHistory(
     {
       params: { query },
     },
-    { ...ADMIN_IMPORT_QUERY_OPTIONS, enabled: opts?.enabled ?? true },
+    { ...ADMIN_QUERY_OPTIONS, enabled: opts?.enabled ?? true },
   );
   return response;
 }
@@ -2118,7 +2128,6 @@ export function useAdminIntegrationEvents(opts?: {
   activityId?: number | null;
   importId?: number | null;
   limit?: number;
-  refetchIntervalMs?: number | false;
 }) {
   const response = $api.useQuery(
     "get",
@@ -2136,13 +2145,28 @@ export function useAdminIntegrationEvents(opts?: {
     },
     {
       enabled: opts?.enabled ?? true,
-      refetchInterval: opts?.refetchIntervalMs ?? false,
+      ...ADMIN_QUERY_OPTIONS,
     },
   );
 
   return {
     ...response,
     data: response.data as IntegrationEvent[] | undefined,
+  };
+}
+
+export function useAdminUserArchiveImport(userId: number) {
+  const mutation = $typedApi.useMutation(
+    "post",
+    "/admin/users/{id}/archive-imports",
+  );
+  return {
+    ...mutation,
+    importAsync: (archiveUrl: string) =>
+      mutation.mutateAsync({
+        params: { path: { id: userId } },
+        body: { archive_url: archiveUrl },
+      }),
   };
 }
 
