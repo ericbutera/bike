@@ -33,6 +33,20 @@ pub struct Model {
 pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 impl Model {
+    pub async fn for_bike_activity(
+        db: &impl ConnectionTrait,
+        connection: &super::strava_connections::Model,
+        activity_id: i32,
+    ) -> Result<Option<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::AthleteId.eq(connection.athlete_id))
+            .filter(Column::ConnectionGeneration.eq(connection.created_at))
+            .filter(Column::BikeActivityId.eq(activity_id))
+            .filter(Column::Deleted.eq(false))
+            .one(db)
+            .await
+    }
+
     pub async fn capture_version(db: &impl ConnectionTrait, event: &StravaEvent) -> Result<SourceVersion, DbErr> {
         Ok(SourceVersion {
             updated_at: Entity::find_by_id(Self::key_for_event(event)?)

@@ -37,6 +37,9 @@ impl MockTemporal {
         self.requests.lock().unwrap().push(request);
         if let Some((failed_rpc, code)) = self.failure {
             if rpc == failed_rpc {
+                if code == tonic::Code::AlreadyExists {
+                    return Err(bike_core::test_support::temporal_client::already_started());
+                }
                 return Err(tonic::Status::new(code, "fixture Temporal failure"));
             }
         }

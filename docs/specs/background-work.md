@@ -610,6 +610,72 @@ flowchart TD
 
 ## Logs, job visibility, and alerts
 
+### Manual admin actions
+
+- Activity and user grids expose a shared gear menu. Resolve targets from the row;
+  never ask an administrator to retype the owner or activity ID. Existing import
+  details and account editing remain available independently.
+- `POST /admin/activities/{id}/tasks` supports retained-file reprocessing,
+  rebuilding the owner's fitness/freshness, activity segments/achievements,
+  heatmap preparation, and resyncing the mapped Strava activity.
+- `POST /admin/users/{id}/tasks` supports fitness/freshness, user segment
+  regeneration, all retained imports or archive FIT imports only, XC training
+  backfill, Strava incremental sync, and Strava backfill with an explicit date
+  range. The UI explains the scope before submission; user-wide work never
+  appears to affect only the selected activity.
+- Both routes require administrator authentication. The server loads the target
+  and derives ownership. Strava resync resolves the remote ID through the current
+  connection generation's live mapping; no caller-supplied athlete or remote ID.
+  Missing connections/mappings and invalid ranges fail visibly.
+- Accept only named actions and their typed parameters. A client-generated
+  command UUID survives uncertain/failed submissions. Bind native IDs to the
+  action, target and parameters; repeated clicks cannot create duplicate runs
+  for the same intent. Return 202 only after Temporal acknowledges, with a job
+  link. Request acceptance does not mean the workflow has completed.
+- Reuse the existing workflow/domain implementations, native priorities, paging
+  and child ordering. Do not create an admin SQL queue, scheduler or execution
+  ledger. Strava sync/backfill/resync use the existing persisted-event intake,
+  including scopes, connection checks, canonical identity and integration events.
+- The new manual endpoints do not reset legacy cached execution status. In
+  particular, retrying an XC command must not replace a completed backfill's
+  preference state with `queued`. Its existing workflow still rebuilds training
+  analysis and marks completion; the admin dialog follows the native job.
+- Record manual acceptance and submission failures in existing integration
+  events, with initiating administrator, affected user/activity, command/request
+  IDs, chosen parameters and the acknowledged job reference. Preserve Strava's
+  accepted-event and activity-change history. Native history remains authoritative
+  for later execution outcomes; do not label accepted work completed.
+- Segment-wide operations, archive ingestion, global analytics prewarming, and
+  duplicate cleanup remain on their existing parameter-specific tools. Cleanup
+  remains a synchronous domain operation that enqueues affected cache rebuilds;
+  ordinary uploads already submit import workflows.
+  Strava create/update/delete are provider events, not arbitrary admin commands;
+  use resync for current remote content. Disconnect remains the account's explicit
+  destructive operation. Retired email/SQL dispatch/schedulers stay retired.
+- Unit fixtures verify every exposed action's native name/input, target lookup,
+  access control, retry identity, rejection behavior and event records. UI tests
+  exercise gear menus, owner scope, date/FIT parameters, job links and errors.
+
+### Correlation and execution history
+
+- `/admin/tasks` provides a small read-only history table for retained Bike and
+  Strava workflow runs, including children: task type, native status, start/end
+  times, status filter, cursor paging, refresh, and original input parameters.
+- Administrator-only `GET /admin/tasks` reads Temporal visibility in the
+  configured namespace and the two worker queues. Fetch 25 executions per page,
+  in [Temporal's native order](https://docs.temporal.io/list-filter): running
+  first, then recently closed. Do not send unsupported `ORDER BY` clauses;
+  pass Temporal's opaque cursor through the API. Visibility may
+  briefly lag new submissions. Native `Running` includes work waiting for a worker.
+- `GET /admin/tasks/{workflow_id}/runs/{run_id}/input` reads the first history
+  event only when an administrator opens Parameters. Scope inputs to the same
+  worker queues and exact run ID. Display JSON parameters and a link to that
+  native run; unavailable/expired history remains an explicit error.
+- Retention follows Temporal. No new SQL history table, polling service,
+  lifecycle reconstruction, or execution ledger. Integration events remain the
+  existing record of submission and domain changes. Detailed retries and
+  cancellation controls remain in Temporal.
+
 - Use **Strava event**, never receipt. `correlation_id` is the root Bike-assigned
   Strava event ID, unchanged through children; scheduled scans use their first
   native run UUID. Preserve `strava_event_id`, `bike_customer_id` (public UUID),

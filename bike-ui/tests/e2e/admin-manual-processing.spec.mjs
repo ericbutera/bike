@@ -17,6 +17,48 @@ function sectionWithHeading(page, name) {
   });
 }
 
+async function runRowTask(page, kind, id, label, workflowType) {
+  await page
+    .getByRole("button", { name: new RegExp(`Tasks for .*\\(#${id}\\)$`) })
+    .click();
+  await page.getByRole("menuitem", { name: label, exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const response = waitForMutation(page, `/api/admin/${kind}/${id}/tasks`);
+  await dialog.getByRole("button", { name: "Run task" }).click();
+  const result = await response;
+  expect(result.status()).toBe(202);
+  const accepted = await result.json();
+  expect(accepted).toMatchObject({
+    status: "accepted",
+    job: { workflow_type: workflowType, run_id: expect.any(String) },
+  });
+  await expect(dialog.getByRole("status")).toContainText("Task accepted");
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  return accepted.job;
+}
+
+async function inspectTaskHistory(page, target, job) {
+  await openRoute(page, target, "/admin/tasks");
+  const row = page
+    .getByRole("row")
+    .filter({ has: page.getByTitle(`${job.job_id} / ${job.run_id}`) });
+  await expect
+    .poll(
+      async () => {
+        await page
+          .getByRole("button", { name: "Refresh", exact: true })
+          .click();
+        return row.count();
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(1);
+  await row.getByRole("button", { name: "View parameters" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText('"activity_id": 1109');
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+}
+
 test("shared admin tools queue matching import and training work in Bike", async ({
   createContext,
 }) => {
@@ -79,98 +121,38 @@ test("shared admin tools queue matching import and training work in Bike", async
       "Segment effort regeneration queued.",
     );
 
-    const xcSection = sectionWithHeading(page, "Backfill XC training history");
-    await xcSection.getByRole("spinbutton", { name: /User id/ }).fill("91003");
-    const xcResponse = waitForMutation(page, "/api/admin/training/xc-backfill");
-    await xcSection.getByRole("button", { name: "Queue XC backfill" }).click();
-    const xc = await xcResponse;
-    expect(xc.status(), target.name + " XC backfill").toBe(202);
-    expect(await xc.json()).toMatchObject({
-      user_id: 91003,
-      status: "queued",
-      message:
-        "XC training backfill queued. Historical rides will repopulate in the background.",
-    });
-    await expect(xcSection).toContainText("XC training backfill queued");
-
-    const segmentsSection = sectionWithHeading(
+    await openRoute(page, target, "/admin/users");
+    await runRowTask(
       page,
-      "Regenerate user segments",
+      "users",
+      91003,
+      "Backfill XC training",
+      "backfill_user_xc_training",
     );
-    await segmentsSection
-      .getByRole("spinbutton", { name: /User id/ })
-      .fill("91002");
-    const segmentsResponse = waitForMutation(
+    await runRowTask(
       page,
-      "/api/admin/segments/regenerate",
+      "users",
+      91002,
+      "Rebuild user segments",
+      "regenerate_user_segments",
     );
-    await segmentsSection
-      .getByRole("button", { name: "Regenerate user segments" })
-      .click();
-    const segments = await segmentsResponse;
-    expect(segments.status(), target.name + " user segment regeneration").toBe(
-      202,
-    );
-    expect(await segments.json()).toMatchObject({
-      user_id: 91002,
-      status: "queued",
-      message: "Segment regeneration queued.",
-    });
-    await expect(segmentsSection).toContainText("Segment regeneration queued.");
-
-    const importsSection = sectionWithHeading(
+    await runRowTask(
       page,
-      "Reprocess imported activity files",
+      "users",
+      91004,
+      "Reprocess user imports",
+      "reprocess_user_activity_imports",
     );
-    await importsSection
-      .getByRole("spinbutton", { name: /User id/ })
-      .fill("91004");
-    const importsResponse = waitForMutation(
+    await openRoute(page, target, "/admin/activities?q=1109");
+    const job = await runRowTask(
       page,
-      "/api/admin/activity-imports/reprocess",
+      "activities",
+      1109,
+      "Reprocess activity",
+      "reprocess_activity_import",
     );
-    await importsSection
-      .getByRole("button", { name: "Queue import reprocess" })
-      .click();
-    const imports = await importsResponse;
-    expect(imports.status(), target.name + " user import reprocess").toBe(202);
-    expect(await imports.json()).toMatchObject({
-      user_id: 91004,
-      status: "queued",
-      message: "Activity reprocessing queued.",
-    });
-    await expect(importsSection).toContainText("Activity reprocessing queued.");
-
-    const activitySection = sectionWithHeading(
-      page,
-      "Reprocess one imported activity",
-    );
-    await activitySection
-      .getByRole("spinbutton", { name: /Activity id/ })
-      .fill("1109");
-    const activityResponse = waitForMutation(
-      page,
-      "/api/admin/activity-imports/reprocess-activity",
-    );
-    await expect(
-      activitySection.getByRole("button", { name: "Queue activity reprocess" }),
-    ).toBeEnabled();
-    await activitySection
-      .getByRole("button", { name: "Queue activity reprocess" })
-      .click();
-    const activity = await activityResponse;
-    expect(activity.status(), target.name + " activity reprocess").toBe(202);
-    expect(await activity.json()).toMatchObject({
-      activity_id: 1109,
-      status: "accepted",
-      task_status: "accepted",
-      job: {
-        job_id: expect.stringMatching(/^bike-task-reprocess_activity_import-/),
-      },
-    });
-    await expect(
-      activitySection.getByText("Activity reprocess accepted"),
-    ).toBeVisible();
+    await inspectTaskHistory(page, target, job);
+    await openRoute(page, target, "/admin/manual-tasks");
 
     const cleanupSection = sectionWithHeading(
       page,

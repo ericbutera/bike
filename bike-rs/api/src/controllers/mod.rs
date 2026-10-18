@@ -4,6 +4,8 @@ pub mod activity_import_history;
 pub mod activity_imports;
 pub mod activity_maps;
 pub mod admin;
+pub mod admin_task_history;
+pub mod admin_tasks;
 pub mod fitness;
 pub mod heatmaps;
 pub mod integration_events;
@@ -60,6 +62,8 @@ fn platform_routes() -> Router<Arc<AppStorage>> {
         .nest("/api", auth::session_routes())
         .nest("/api/oauth", auth::oauth_routes())
         .nest("/api/admin", admin::routes())
+        .nest("/api/admin", admin_tasks::routes())
+        .nest("/api/admin", admin_task_history::routes())
         .nest("/api/admin/integration-events", integration_events::admin_routes())
         .nest("/api/admin/feature-flags", feature_flags::admin_routes())
         .nest("/api/feature-flags", feature_flags::public_routes())

@@ -62,6 +62,21 @@ Tests should exercise the workflow through the visible trigger and dialog contro
 - `GenericList` combines these components with URL filters and pagination;
   pages with independent filters reuse the same presentation components.
 
+## Admin task menus
+
+- Admin grid gear menus share one accessible action-menu component. Render the
+  popup outside the grid's horizontal overflow so the last row is not clipped.
+  Support keyboard focus, arrow navigation, Escape and outside dismissal. Gear
+  and menu clicks must not open the Users row's account-edit dialog.
+  Keep the popup anchored when the grid or page scrolls, and focus menu items
+  without scrolling the page; opening an offscreen action column must not
+  immediately dismiss the popup.
+- Each action owns its request dialog and pending/error/accepted state. Show the
+  selected target and task-specific options; a backfill asks for dates, retained
+  import reprocessing offers archive FIT only. Preserve a failed request's
+  command UUID when retrying unchanged parameters and show the native job link
+  after acknowledgment.
+
 ## Code Anchors
 
 - Shared numbered pagination: `bike-ui/components/ui/Pagination.tsx`
@@ -69,3 +84,4 @@ Tests should exercise the workflow through the visible trigger and dialog contro
 - Segment list UI: `bike-ui/components/SegmentsPanel.tsx`
 - Shared grid: `bike-ui/components/ui/DataGrid.tsx`
 - URL-driven list: `bike-ui/components/ui/GenericList.tsx`
+- Grid actions and task dialogs: `bike-ui/components/admin/AdminTaskMenu.tsx`

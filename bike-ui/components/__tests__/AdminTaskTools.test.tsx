@@ -1,42 +1,26 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminTaskTools from "../admin/AdminTaskTools";
-import { acceptedReprocessing } from "@/tests/fixtures/reprocessing";
-import { initializeClientConfig } from "../../lib/config";
-
-afterEach(() => initializeClientConfig({}));
 
 const mocks = vi.hoisted(() => ({
   useActivityArchiveImportJobs: vi.fn(),
   useAdminBackfillAnalytics: vi.fn(),
-  useAdminBackfillUserXcTraining: vi.fn(),
   useCleanupUserDuplicateActivities: vi.fn(),
   useImportActivityArchiveUrl: vi.fn(),
   useRegenerateSegmentEfforts: vi.fn(),
-  useRegenerateUserSegments: vi.fn(),
-  useReprocessActivityImport: vi.fn(),
-  useReprocessUserActivityImports: vi.fn(),
   backfillAnalyticsAsync: vi.fn(),
-  backfillXcTrainingAsync: vi.fn(),
   cleanupAsync: vi.fn(),
   importArchiveAsync: vi.fn(),
   regenerateSegmentEffortsAsync: vi.fn(),
-  regenerateUserSegmentsAsync: vi.fn(),
-  reprocessActivityAsync: vi.fn(),
-  reprocessAsync: vi.fn(),
 }));
 
 vi.mock("@/lib/queries", () => ({
   useActivityArchiveImportJobs: mocks.useActivityArchiveImportJobs,
   useAdminBackfillAnalytics: mocks.useAdminBackfillAnalytics,
-  useAdminBackfillUserXcTraining: mocks.useAdminBackfillUserXcTraining,
   useCleanupUserDuplicateActivities: mocks.useCleanupUserDuplicateActivities,
   useImportActivityArchiveUrl: mocks.useImportActivityArchiveUrl,
   useRegenerateSegmentEfforts: mocks.useRegenerateSegmentEfforts,
-  useRegenerateUserSegments: mocks.useRegenerateUserSegments,
-  useReprocessActivityImport: mocks.useReprocessActivityImport,
-  useReprocessUserActivityImports: mocks.useReprocessUserActivityImports,
 }));
 
 vi.mock("next/link", () => ({
@@ -58,10 +42,6 @@ describe("AdminTaskTools", () => {
       backfillAsync: mocks.backfillAnalyticsAsync,
       isPending: false,
     });
-    mocks.useAdminBackfillUserXcTraining.mockReturnValue({
-      backfillAsync: mocks.backfillXcTrainingAsync,
-      isPending: false,
-    });
     mocks.useCleanupUserDuplicateActivities.mockReturnValue({
       cleanupAsync: mocks.cleanupAsync,
       isPending: false,
@@ -72,18 +52,6 @@ describe("AdminTaskTools", () => {
     });
     mocks.useRegenerateSegmentEfforts.mockReturnValue({
       regenerateAsync: mocks.regenerateSegmentEffortsAsync,
-      isPending: false,
-    });
-    mocks.useRegenerateUserSegments.mockReturnValue({
-      regenerateAsync: mocks.regenerateUserSegmentsAsync,
-      isPending: false,
-    });
-    mocks.useReprocessUserActivityImports.mockReturnValue({
-      reprocessAsync: mocks.reprocessAsync,
-      isPending: false,
-    });
-    mocks.useReprocessActivityImport.mockReturnValue({
-      reprocessAsync: mocks.reprocessActivityAsync,
       isPending: false,
     });
   });
@@ -114,48 +82,25 @@ describe("AdminTaskTools", () => {
     ).toBeInTheDocument();
   });
 
-  it("links targeted reprocessing to its Temporal job and domain events", async () => {
-    initializeClientConfig({ TEMPORAL_UI_URL: "https://temporal.example.com" });
-    mocks.reprocessActivityAsync.mockResolvedValue(acceptedReprocessing());
-
-    const user = userEvent.setup();
+  it("directs activity and user commands to their row menus", () => {
     render(<AdminTaskTools />);
-
-    await user.type(screen.getByLabelText(/activity id/i), "1647");
-    await user.click(
-      screen.getByRole("button", { name: /queue activity reprocess/i }),
+    expect(screen.getByRole("link", { name: "Activities" })).toHaveAttribute(
+      "href",
+      "/admin/activities",
     );
-
-    expect(mocks.reprocessActivityAsync).toHaveBeenCalledWith(1647);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Activity reprocess accepted"),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Job id")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Users" })).toHaveAttribute(
+      "href",
+      "/admin/users",
+    );
+    expect(screen.queryByLabelText(/activity id/i)).not.toBeInTheDocument();
     expect(
-      screen.getByText(
-        "bike-task-reprocess_activity_import-user-1-fixture-command",
-      ),
+      screen.getByRole("heading", { name: "Fetch provider export archives" }),
     ).toBeInTheDocument();
-
     expect(
-      screen.getByRole("link", { name: "Activity events" }),
-    ).toHaveAttribute(
-      "href",
-      "/admin/integrations?provider=activity_processing&user_id=1&activity_id=1647",
-    );
-    expect(screen.getByRole("link", { name: "Import events" })).toHaveAttribute(
-      "href",
-      "/admin/integrations?provider=activity_processing&user_id=1&import_id=88",
-    );
+      screen.getByRole("heading", { name: "Clean up duplicate activities" }),
+    ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "View job in Temporal" }),
-    ).toHaveAttribute(
-      "href",
-      "https://temporal.example.com/namespaces/bike/workflows/bike-task-reprocess_activity_import-user-1-fixture-command",
-    );
+      screen.getByRole("heading", { name: "Prewarm analytics caches" }),
+    ).toBeInTheDocument();
   });
 });

@@ -1120,6 +1120,92 @@
         ]
       }
     },
+    "/admin/activities/{id}/tasks": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "activity_task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Bike activity ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivityTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Temporal acknowledged the activity action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid task parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Administrator required"
+          },
+          "404": {
+            "description": "Activity or connection missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unknown task or malformed task parameters"
+          },
+          "500": {
+            "description": "Submission not confirmed; retry the same command ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/admin/activity-imports/archive": {
       "post": {
         "tags": [
@@ -1997,6 +2083,154 @@
         ]
       }
     },
+    "/admin/tasks": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "list",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/TaskStatus"
+                }
+              ]
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained executions in native Temporal visibility order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskExecutionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filter or page token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Administrator required"
+          },
+          "502": {
+            "description": "Temporal history unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/tasks/{workflow_id}/runs/{run_id}/input": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "input",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original workflow input parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskExecutionInput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid workflow or run ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Administrator required"
+          },
+          "502": {
+            "description": "Workflow input unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/admin/training/xc-backfill": {
       "post": {
         "tags": [
@@ -2270,6 +2504,92 @@
           },
           "404": {
             "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/admin/users/{id}/tasks": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "user_task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Bike user ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Temporal acknowledged the user action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid task parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Administrator required"
+          },
+          "404": {
+            "description": "User or connection missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unknown task or malformed task parameters"
+          },
+          "500": {
+            "description": "Submission not confirmed; retry the same command ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4742,6 +5062,33 @@
   },
   "components": {
     "schemas": {
+      "AcceptedTask": {
+        "type": "object",
+        "required": [
+          "status",
+          "job",
+          "user_id"
+        ],
+        "properties": {
+          "activity_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobReference"
+          },
+          "status": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "ActivityAchievementHighlight": {
         "type": "object",
         "required": [
@@ -4797,6 +5144,16 @@
           "segment_id": 7,
           "segment_title": "Riverfront climb"
         }
+      },
+      "ActivityAction": {
+        "type": "string",
+        "enum": [
+          "reprocess",
+          "rebuild_fitness",
+          "rebuild_segments",
+          "rebuild_heatmap",
+          "strava_resync"
+        ]
       },
       "ActivityArchiveImportJobResponse": {
         "type": "object",
@@ -5827,6 +6184,23 @@
           "workout"
         ],
         "example": "road_ride"
+      },
+      "ActivityTaskRequest": {
+        "type": "object",
+        "required": [
+          "command_id",
+          "task"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task": {
+            "$ref": "#/components/schemas/ActivityAction"
+          }
+        },
+        "additionalProperties": false
       },
       "ActivityTrainingAnalysisResponse": {
         "type": "object",
@@ -10319,6 +10693,80 @@
           "updates": {}
         }
       },
+      "TaskExecution": {
+        "type": "object",
+        "required": [
+          "job",
+          "status"
+        ],
+        "properties": {
+          "closed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobReference"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          }
+        }
+      },
+      "TaskExecutionInput": {
+        "type": "object",
+        "required": [
+          "parameters"
+        ],
+        "properties": {
+          "parameters": {
+            "type": "array",
+            "items": {}
+          }
+        }
+      },
+      "TaskExecutionPage": {
+        "type": "object",
+        "required": [
+          "executions"
+        ],
+        "properties": {
+          "executions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskExecution"
+            }
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "Running",
+          "Completed",
+          "Failed",
+          "Canceled",
+          "Terminated",
+          "ContinuedAsNew",
+          "TimedOut",
+          "Unspecified"
+        ]
+      },
       "Theme": {
         "type": "string",
         "enum": [
@@ -11114,6 +11562,107 @@
           "name": "Alex Rider"
         }
       },
+      "UserAction": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "task"
+            ],
+            "properties": {
+              "task": {
+                "type": "string",
+                "enum": [
+                  "rebuild_fitness"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "task"
+            ],
+            "properties": {
+              "task": {
+                "type": "string",
+                "enum": [
+                  "rebuild_segments"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "task"
+            ],
+            "properties": {
+              "archive_fits_only": {
+                "type": "boolean"
+              },
+              "task": {
+                "type": "string",
+                "enum": [
+                  "reprocess_imports"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "task"
+            ],
+            "properties": {
+              "task": {
+                "type": "string",
+                "enum": [
+                  "backfill_xc_training"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "task"
+            ],
+            "properties": {
+              "task": {
+                "type": "string",
+                "enum": [
+                  "strava_sync"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "after",
+              "before",
+              "task"
+            ],
+            "properties": {
+              "after": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "before": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "task": {
+                "type": "string",
+                "enum": [
+                  "strava_backfill"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "UserPreferencesResponse": {
         "type": "object",
         "required": [
@@ -11262,6 +11811,25 @@
             "type": "boolean"
           }
         }
+      },
+      "UserTaskRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/UserAction"
+          },
+          {
+            "type": "object",
+            "required": [
+              "command_id"
+            ],
+            "properties": {
+              "command_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          }
+        ]
       },
       "Variant": {
         "type": "string",

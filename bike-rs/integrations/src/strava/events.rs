@@ -3,4 +3,5 @@ pub use bike_core::entities::strava_events::{webhook_operation, SourceVersion, S
 mod intake;
 pub use intake::StravaIntake;
 pub use intake::{accept_webhook, request_backfill, request_disconnect, request_sync};
+pub use intake::{request_manual, ManualOperation, ManualRequest};
 pub mod submission;

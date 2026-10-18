@@ -1,6 +1,10 @@
 use super::QueuedJobReference;
+use crate::bike_tasks::JobReference;
 use std::time::Duration;
-use temporalio_client::{Client, ClientOptions, Connection, ConnectionOptions, WorkflowStartOptions};
+use temporalio_client::{
+    errors::WorkflowStartError, Client, ClientOptions, Connection, ConnectionOptions, NamespacedClient,
+    WorkflowIdConflictPolicy, WorkflowIdReusePolicy, WorkflowStartOptions,
+};
 use temporalio_common::{
     data_converters::{PayloadConverter, RawValue},
     UntypedWorkflow,
@@ -33,5 +37,39 @@ pub async fn submit(client: &Client, name: &str, input: serde_json::Value) -> Re
     Ok(QueuedJobReference {
         id,
         status: "running".into(),
+    })
+}
+
+pub async fn submit_command(
+    client: &Client,
+    task: super::MaintenanceTask,
+    command_id: uuid::Uuid,
+) -> Result<JobReference, Error> {
+    task.validate()?;
+    let workflow_type = task.workflow_type();
+    let input = serde_json::to_value(task)?;
+    let target_id = uuid::Uuid::new_v5(&command_id, &serde_json::to_vec(&input)?);
+    let job_id = format!("bike-{workflow_type}-{target_id}");
+    let options = WorkflowStartOptions::new(crate::platform::temporal::BIKE_TASK_QUEUE, job_id.clone())
+        .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
+        .id_reuse_policy(WorkflowIdReusePolicy::RejectDuplicate)
+        .build();
+    let result = client
+        .start_workflow(
+            UntypedWorkflow::new(workflow_type),
+            RawValue::from_value(&input, &PayloadConverter::default()),
+            options,
+        )
+        .await
+        .map(|handle| handle.run_id().map(str::to_owned));
+    let run_id = match result {
+        Ok(id) | Err(WorkflowStartError::AlreadyStarted { run_id: id, .. }) => id,
+        Err(error) => return Err(error.into()),
+    };
+    Ok(JobReference {
+        job_id,
+        run_id: run_id.ok_or("Temporal did not acknowledge a run ID")?,
+        namespace: client.namespace(),
+        workflow_type: workflow_type.into(),
     })
 }

@@ -164,6 +164,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/activities/{id}/tasks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["activity_task"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/activity-imports/archive": {
     parameters: {
       query?: never;
@@ -358,6 +374,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/tasks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/tasks/{workflow_id}/runs/{run_id}/input": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["input"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/training/xc-backfill": {
     parameters: {
       query?: never;
@@ -416,6 +464,22 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations["disable_user"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/users/{id}/tasks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["user_task"];
     delete?: never;
     options?: never;
     head?: never;
@@ -926,6 +990,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    AcceptedTask: {
+      /** Format: int32 */
+      activity_id?: number | null;
+      job: components["schemas"]["JobReference"];
+      status: string;
+      /** Format: int32 */
+      user_id: number;
+    };
     /**
      * @example {
      *       "effort_index": 1,
@@ -965,6 +1037,13 @@ export interface components {
       /** @example Riverfront climb */
       segment_title: string;
     };
+    /** @enum {string} */
+    ActivityAction:
+      | "reprocess"
+      | "rebuild_fitness"
+      | "rebuild_segments"
+      | "rebuild_heatmap"
+      | "strava_resync";
     /**
      * @example {
      *       "archive_url": "https://example.com/exports/activities.zip",
@@ -1573,6 +1652,11 @@ export interface components {
       | "road_ride"
       | "swim"
       | "workout";
+    ActivityTaskRequest: {
+      /** Format: uuid */
+      command_id: string;
+      task: components["schemas"]["ActivityAction"];
+    };
     ActivityTrainingAnalysisResponse: {
       /** Format: double */
       aerobic_decoupling_percent?: number | null;
@@ -3584,6 +3668,31 @@ export interface components {
     } & {
       [key: string]: unknown;
     };
+    TaskExecution: {
+      /** Format: date-time */
+      closed_at?: string | null;
+      job: components["schemas"]["JobReference"];
+      /** Format: date-time */
+      started_at?: string | null;
+      status: components["schemas"]["TaskStatus"];
+    };
+    TaskExecutionInput: {
+      parameters: unknown[];
+    };
+    TaskExecutionPage: {
+      executions: components["schemas"]["TaskExecution"][];
+      next_page_token?: string | null;
+    };
+    /** @enum {string} */
+    TaskStatus:
+      | "Running"
+      | "Completed"
+      | "Failed"
+      | "Canceled"
+      | "Terminated"
+      | "ContinuedAsNew"
+      | "TimedOut"
+      | "Unspecified";
     /** @enum {string} */
     Theme: "light" | "dark";
     /** @enum {string} */
@@ -4005,6 +4114,36 @@ export interface components {
       is_admin?: boolean | null;
       name?: string | null;
     };
+    UserAction:
+      | {
+          /** @enum {string} */
+          task: "rebuild_fitness";
+        }
+      | {
+          /** @enum {string} */
+          task: "rebuild_segments";
+        }
+      | {
+          archive_fits_only?: boolean;
+          /** @enum {string} */
+          task: "reprocess_imports";
+        }
+      | {
+          /** @enum {string} */
+          task: "backfill_xc_training";
+        }
+      | {
+          /** @enum {string} */
+          task: "strava_sync";
+        }
+      | {
+          /** Format: date-time */
+          after: string;
+          /** Format: date-time */
+          before: string;
+          /** @enum {string} */
+          task: "strava_backfill";
+        };
     /**
      * @example {
      *       "estimated_ftp_watts": 245,
@@ -4075,6 +4214,10 @@ export interface components {
       name: string;
       pid: string;
       verified: boolean;
+    };
+    UserTaskRequest: components["schemas"]["UserAction"] & {
+      /** Format: uuid */
+      command_id: string;
     };
     /** @enum {string} */
     Variant: "thumbnail" | "full";
@@ -5318,6 +5461,81 @@ export interface operations {
       };
     };
   };
+  activity_task: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Bike activity ID */
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ActivityTaskRequest"];
+      };
+    };
+    responses: {
+      /** @description Temporal acknowledged the activity action */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AcceptedTask"];
+        };
+      };
+      /** @description Invalid task parameters */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Unauthenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Activity or connection missing */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Unknown task or malformed task parameters */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Submission not confirmed; retry the same command ID */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
   admin_import_activity_archive: {
     parameters: {
       query?: never;
@@ -6069,6 +6287,116 @@ export interface operations {
       };
     };
   };
+  list: {
+    parameters: {
+      query?: {
+        status?: null | components["schemas"]["TaskStatus"];
+        page_token?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Retained executions in native Temporal visibility order */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TaskExecutionPage"];
+        };
+      };
+      /** @description Invalid filter or page token */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Unauthenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Temporal history unavailable */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
+  input: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        workflow_id: string;
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Original workflow input parameters */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TaskExecutionInput"];
+        };
+      };
+      /** @description Invalid workflow or run ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Unauthenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Workflow input unavailable */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
   admin_backfill_user_xc_training: {
     parameters: {
       query?: never;
@@ -6285,6 +6613,81 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  user_task: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Bike user ID */
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UserTaskRequest"];
+      };
+    };
+    responses: {
+      /** @description Temporal acknowledged the user action */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AcceptedTask"];
+        };
+      };
+      /** @description Invalid task parameters */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Unauthenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description User or connection missing */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Unknown task or malformed task parameters */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Submission not confirmed; retry the same command ID */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
       };
     };
   };
@@ -8354,6 +8757,15 @@ type FlattenedDeepRequired<T> = {
 type ReadonlyArray<T> = [Exclude<T, undefined>] extends [unknown[]]
   ? Readonly<Exclude<T, undefined>>
   : Readonly<Exclude<T, undefined>[]>;
+export const activityActionValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ActivityAction"]
+> = [
+  "reprocess",
+  "rebuild_fitness",
+  "rebuild_segments",
+  "rebuild_heatmap",
+  "strava_resync",
+];
 export const activityRideFocusValues: ReadonlyArray<
   FlattenedDeepRequired<components>["schemas"]["ActivityRideFocus"]
 > = ["xc_endurance", "mixed_xc", "dh_session", "other"];
@@ -8415,6 +8827,18 @@ export const reportMetricDirectionValues: ReadonlyArray<
 export const segmentModeValues: ReadonlyArray<
   FlattenedDeepRequired<components>["schemas"]["SegmentMode"]
 > = ["xc", "dh"];
+export const taskStatusValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["TaskStatus"]
+> = [
+  "Running",
+  "Completed",
+  "Failed",
+  "Canceled",
+  "Terminated",
+  "ContinuedAsNew",
+  "TimedOut",
+  "Unspecified",
+];
 export const themeValues: ReadonlyArray<
   FlattenedDeepRequired<components>["schemas"]["Theme"]
 > = ["light", "dark"];
@@ -8464,6 +8888,54 @@ export const trainingRecommendationKeyValues: ReadonlyArray<
 export const trainingRecommendationPriorityValues: ReadonlyArray<
   FlattenedDeepRequired<components>["schemas"]["TrainingRecommendationPriority"]
 > = ["high", "medium", "low"];
+export const userActionOneOf0TaskValues: ReadonlyArray<
+  Extract<
+    FlattenedDeepRequired<components>["schemas"]["UserAction"],
+    {
+      task: unknown;
+    }
+  >["task"]
+> = ["rebuild_fitness"];
+export const userActionOneOf1TaskValues: ReadonlyArray<
+  Extract<
+    FlattenedDeepRequired<components>["schemas"]["UserAction"],
+    {
+      task: unknown;
+    }
+  >["task"]
+> = ["rebuild_segments"];
+export const userActionOneOf2TaskValues: ReadonlyArray<
+  Extract<
+    FlattenedDeepRequired<components>["schemas"]["UserAction"],
+    {
+      task: unknown;
+    }
+  >["task"]
+> = ["reprocess_imports"];
+export const userActionOneOf3TaskValues: ReadonlyArray<
+  Extract<
+    FlattenedDeepRequired<components>["schemas"]["UserAction"],
+    {
+      task: unknown;
+    }
+  >["task"]
+> = ["backfill_xc_training"];
+export const userActionOneOf4TaskValues: ReadonlyArray<
+  Extract<
+    FlattenedDeepRequired<components>["schemas"]["UserAction"],
+    {
+      task: unknown;
+    }
+  >["task"]
+> = ["strava_sync"];
+export const userActionOneOf5TaskValues: ReadonlyArray<
+  Extract<
+    FlattenedDeepRequired<components>["schemas"]["UserAction"],
+    {
+      task: unknown;
+    }
+  >["task"]
+> = ["strava_backfill"];
 export const variantValues: ReadonlyArray<
   FlattenedDeepRequired<components>["schemas"]["Variant"]
 > = ["thumbnail", "full"];

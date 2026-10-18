@@ -189,6 +189,21 @@ describe("admin list grids", () => {
     );
   });
 
+  it("preserves all providers in task-history links when the page is refreshed", () => {
+    mocks.pathname = "/admin/integrations";
+    mocks.search = "provider=&user_id=7&activity_id=42";
+    render(<AdminIntegrationsPage />);
+    expect(screen.getByLabelText("Provider")).toHaveValue("");
+    expect(mocks.events).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        provider: undefined,
+        userId: 7,
+        activityId: 42,
+      }),
+    );
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
   it("removes analytics from navigation and keeps manual maintenance tools", () => {
     render(<Nav />);
     expect(
