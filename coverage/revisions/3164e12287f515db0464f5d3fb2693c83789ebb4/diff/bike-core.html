@@ -1,0 +1,230 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+        <title>Diff Coverage</title>
+        <style>
+            .src-snippet { margin-top: 2em; }
+            .src-name { font-weight: bold; }
+            .snippets {
+                border-top: 1px solid #bdbdbd;
+                border-bottom: 1px solid #bdbdbd;
+            }
+            pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.hll { background-color: #ffcccc }
+.c { color: #3D7B7B; font-style: italic } /* Comment */
+.err { border: 1px solid #F00 } /* Error */
+.k { color: #008000; font-weight: bold } /* Keyword */
+.o { color: #666 } /* Operator */
+.ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.cp { color: #9C6500 } /* Comment.Preproc */
+.cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.gd { color: #A00000 } /* Generic.Deleted */
+.ge { font-style: italic } /* Generic.Emph */
+.ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.gr { color: #E40000 } /* Generic.Error */
+.gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.gi { color: #008400 } /* Generic.Inserted */
+.go { color: #717171 } /* Generic.Output */
+.gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.gs { font-weight: bold } /* Generic.Strong */
+.gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.gt { color: #04D } /* Generic.Traceback */
+.kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.kp { color: #008000 } /* Keyword.Pseudo */
+.kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.kt { color: #B00040 } /* Keyword.Type */
+.m { color: #666 } /* Literal.Number */
+.s { color: #BA2121 } /* Literal.String */
+.na { color: #687822 } /* Name.Attribute */
+.nb { color: #008000 } /* Name.Builtin */
+.nc { color: #00F; font-weight: bold } /* Name.Class */
+.no { color: #800 } /* Name.Constant */
+.nd { color: #A2F } /* Name.Decorator */
+.ni { color: #717171; font-weight: bold } /* Name.Entity */
+.ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.nf { color: #00F } /* Name.Function */
+.nl { color: #767600 } /* Name.Label */
+.nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.nt { color: #008000; font-weight: bold } /* Name.Tag */
+.nv { color: #19177C } /* Name.Variable */
+.ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.w { color: #BBB } /* Text.Whitespace */
+.mb { color: #666 } /* Literal.Number.Bin */
+.mf { color: #666 } /* Literal.Number.Float */
+.mh { color: #666 } /* Literal.Number.Hex */
+.mi { color: #666 } /* Literal.Number.Integer */
+.mo { color: #666 } /* Literal.Number.Oct */
+.sa { color: #BA2121 } /* Literal.String.Affix */
+.sb { color: #BA2121 } /* Literal.String.Backtick */
+.sc { color: #BA2121 } /* Literal.String.Char */
+.dl { color: #BA2121 } /* Literal.String.Delimiter */
+.sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.s2 { color: #BA2121 } /* Literal.String.Double */
+.se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.sh { color: #BA2121 } /* Literal.String.Heredoc */
+.si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.sx { color: #008000 } /* Literal.String.Other */
+.sr { color: #A45A77 } /* Literal.String.Regex */
+.s1 { color: #BA2121 } /* Literal.String.Single */
+.ss { color: #19177C } /* Literal.String.Symbol */
+.bp { color: #008000 } /* Name.Builtin.Pseudo */
+.fm { color: #00F } /* Name.Function.Magic */
+.vc { color: #19177C } /* Name.Variable.Class */
+.vg { color: #19177C } /* Name.Variable.Global */
+.vi { color: #19177C } /* Name.Variable.Instance */
+.vm { color: #19177C } /* Name.Variable.Magic */
+.il { color: #666 } /* Literal.Number.Integer.Long */
+.diff-cover-covered-line { background-color: #ddffdd; }
+        </style>
+    </head>
+    <body>
+        <h1>Diff Coverage</h1>
+        <p>Diff: 9fb0145033ddf2ce425dd1aa948c931b0f092cf8...HEAD, staged, unstaged and untracked changes</p>
+        <ul>
+            <li><b>Total</b>: 125 lines</li>
+            <li><b>Missing</b>: 4 lines</li>
+            <li><b>Coverage</b>: 96.8%</li>
+        </ul>
+        <table border="1">
+            <tr>
+                <th>Source File</th>
+                <th>Diff Coverage (%)</th>
+                <th>Missing Lines</th>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/archive_import.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/auth/controllers/admin.rs</td>
+                <td>62.5%</td>
+                <td>156,162-163</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/auth/controllers/admin/audit.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/auth/controllers/oauth.rs</td>
+                <td>0.0%</td>
+                <td>156</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/auth/entities/auth_events.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/auth/entities/users.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/auth/services.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/jobs/adapter.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/jobs/history.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/jobs/native.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-core/src/test_support/accounts.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+        </table>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/bike-core/src/auth/controllers/admin.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-core/src/auth/controllers/admin.rs-152" name="bike-rs/bike-core/src/auth/controllers/admin.rs-152"></a><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">get_user</span><span class="o">&lt;</span><span class="n">S</span><span class="o">&gt;</span><span class="p">(</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-153" name="bike-rs/bike-core/src/auth/controllers/admin.rs-153"></a><span class="w">    </span><span class="n">_admin</span><span class="p">:</span><span class="w"> </span><span class="nc">AdminUserContext</span><span class="o">&lt;</span><span class="n">S</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-154" name="bike-rs/bike-core/src/auth/controllers/admin.rs-154"></a><span class="w">    </span><span class="n">State</span><span class="p">(</span><span class="n">state</span><span class="p">):</span><span class="w"> </span><span class="nc">State</span><span class="o">&lt;</span><span class="n">Arc</span><span class="o">&lt;</span><span class="n">S</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-155" name="bike-rs/bike-core/src/auth/controllers/admin.rs-155"></a><span class="w">    </span><span class="n">Path</span><span class="p">(</span><span class="n">id</span><span class="p">):</span><span class="w"> </span><span class="nc">Path</span><span class="o">&lt;</span><span class="kt">i32</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-156" name="bike-rs/bike-core/src/auth/controllers/admin.rs-156"></a><span class="hll"><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Json</span><span class="o">&lt;</span><span class="n">AdminUserDetailsResponse</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">AuthError</span><span class="o">&gt;</span>
+</span><a id="bike-rs/bike-core/src/auth/controllers/admin.rs-157" name="bike-rs/bike-core/src/auth/controllers/admin.rs-157"></a><span class="k">where</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-158" name="bike-rs/bike-core/src/auth/controllers/admin.rs-158"></a><span class="w">    </span><span class="n">S</span><span class="p">:</span><span class="w"> </span><span class="nc">AuthStorage</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">'</span><span class="nb">static</span><span class="p">,</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-159" name="bike-rs/bike-core/src/auth/controllers/admin.rs-159"></a><span class="p">{</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-160" name="bike-rs/bike-core/src/auth/controllers/admin.rs-160"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">users</span><span class="p">::</span><span class="n">Model</span><span class="p">::</span><span class="n">find_by_id</span><span class="p">(</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">(),</span><span class="w"> </span><span class="n">id</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+</pre></div></td></tr></table></div>
+
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-core/src/auth/controllers/admin.rs-158" name="bike-rs/bike-core/src/auth/controllers/admin.rs-158"></a><span class="w">    </span><span class="n">S</span><span class="p">:</span><span class="w"> </span><span class="nc">AuthStorage</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">'</span><span class="nb">static</span><span class="p">,</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-159" name="bike-rs/bike-core/src/auth/controllers/admin.rs-159"></a><span class="p">{</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-160" name="bike-rs/bike-core/src/auth/controllers/admin.rs-160"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">users</span><span class="p">::</span><span class="n">Model</span><span class="p">::</span><span class="n">find_by_id</span><span class="p">(</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">(),</span><span class="w"> </span><span class="n">id</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-161" name="bike-rs/bike-core/src/auth/controllers/admin.rs-161"></a>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-162" name="bike-rs/bike-core/src/auth/controllers/admin.rs-162"></a><span class="hll"><span class="w">    </span><span class="nb">Ok</span><span class="p">(</span><span class="n">Json</span><span class="p">(</span><span class="n">AdminUserDetailsResponse</span><span class="p">::</span><span class="n">from</span><span class="p">(</span>
+</span><a id="bike-rs/bike-core/src/auth/controllers/admin.rs-163" name="bike-rs/bike-core/src/auth/controllers/admin.rs-163"></a><span class="hll"><span class="w">        </span><span class="n">user</span><span class="p">.</span><span class="n">admin_details</span><span class="p">(</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">()).</span><span class="k">await</span><span class="o">?</span><span class="p">,</span>
+</span><a id="bike-rs/bike-core/src/auth/controllers/admin.rs-164" name="bike-rs/bike-core/src/auth/controllers/admin.rs-164"></a><span class="w">    </span><span class="p">)))</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-165" name="bike-rs/bike-core/src/auth/controllers/admin.rs-165"></a><span class="p">}</span>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-166" name="bike-rs/bike-core/src/auth/controllers/admin.rs-166"></a>
+<a id="bike-rs/bike-core/src/auth/controllers/admin.rs-167" name="bike-rs/bike-core/src/auth/controllers/admin.rs-167"></a><span class="cp">#[utoipa::path(</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/bike-core/src/auth/controllers/oauth.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-core/src/auth/controllers/oauth.rs-152" name="bike-rs/bike-core/src/auth/controllers/oauth.rs-152"></a><span class="w">    </span><span class="n">S</span><span class="p">:</span><span class="w"> </span><span class="nc">OAuthRouteStorage</span><span class="p">,</span>
+<a id="bike-rs/bike-core/src/auth/controllers/oauth.rs-153" name="bike-rs/bike-core/src/auth/controllers/oauth.rs-153"></a><span class="p">{</span>
+<a id="bike-rs/bike-core/src/auth/controllers/oauth.rs-154" name="bike-rs/bike-core/src/auth/controllers/oauth.rs-154"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">OAuthService</span><span class="p">::</span><span class="n">find_or_create_provider_user</span><span class="p">(</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">(),</span><span class="w"> </span><span class="n">provider</span><span class="p">,</span><span class="w"> </span><span class="n">provider_user</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+<a id="bike-rs/bike-core/src/auth/controllers/oauth.rs-155" name="bike-rs/bike-core/src/auth/controllers/oauth.rs-155"></a>
+<a id="bike-rs/bike-core/src/auth/controllers/oauth.rs-156" name="bike-rs/bike-core/src/auth/controllers/oauth.rs-156"></a><span class="hll"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">tokens</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">session_service</span><span class="p">().</span><span class="n">login</span><span class="p">(</span><span class="n">state</span><span class="p">.</span><span class="n">db</span><span class="p">(),</span><span class="w"> </span><span class="o">&amp;</span><span class="n">user</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+</span><a id="bike-rs/bike-core/src/auth/controllers/oauth.rs-157" name="bike-rs/bike-core/src/auth/controllers/oauth.rs-157"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">frontend_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">frontend_url</span><span class="p">().</span><span class="n">to_string</span><span class="p">();</span>
+<a id="bike-rs/bike-core/src/auth/controllers/oauth.rs-158" name="bike-rs/bike-core/src/auth/controllers/oauth.rs-158"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">cookie_val</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">refresh_cookie_value</span><span class="p">(</span><span class="o">&amp;</span><span class="n">tokens</span><span class="p">.</span><span class="n">refresh_token</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">frontend_url</span><span class="p">);</span>
+<a id="bike-rs/bike-core/src/auth/controllers/oauth.rs-159" name="bike-rs/bike-core/src/auth/controllers/oauth.rs-159"></a>
+<a id="bike-rs/bike-core/src/auth/controllers/oauth.rs-160" name="bike-rs/bike-core/src/auth/controllers/oauth.rs-160"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">redirect_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="fm">format!</span><span class="p">(</span><span class="s">"{}/auth/callback"</span><span class="p">,</span><span class="w"> </span><span class="n">frontend_url</span><span class="p">.</span><span class="n">trim_end_matches</span><span class="p">(</span><span class="sc">'/'</span><span class="p">));</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+    </body>
+</html>
