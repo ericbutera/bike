@@ -1,5 +1,9 @@
 # Bike TODO
 
+- [ ] Impersonate user (from admin user list screen)
+  - [ ] admin see's UI exactly like end user
+  - [ ] add "return to admin" link on navbar when impersonating
+
 ## Worker
 
 - The 12 Bike tasks and earlier Strava processors are accounted for in the single
