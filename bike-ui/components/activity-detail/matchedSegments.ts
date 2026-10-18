@@ -7,11 +7,6 @@ import {
 
 export type SegmentTone = {
   mapColor: string;
-  dotClassName: string;
-  chartClassName: string;
-  buttonClassName: string;
-  outlineButtonClassName: string;
-  highlightClassName: string;
 };
 
 export type SegmentTrendState = "faster" | "slower" | "steady";
@@ -30,46 +25,16 @@ export type MatchedSegmentGroup = {
 };
 
 const SEGMENT_TONES: SegmentTone[] = [
-  {
-    mapColor: "#3b82f6",
-    dotClassName: "bg-primary",
-    chartClassName: "text-primary",
-    buttonClassName: "btn-primary",
-    outlineButtonClassName: "btn-outline btn-primary",
-    highlightClassName: "ring-primary/25",
-  },
-  {
-    mapColor: "#8b5cf6",
-    dotClassName: "bg-secondary",
-    chartClassName: "text-secondary",
-    buttonClassName: "btn-secondary",
-    outlineButtonClassName: "btn-outline btn-secondary",
-    highlightClassName: "ring-secondary/25",
-  },
-  {
-    mapColor: "#14b8a6",
-    dotClassName: "bg-accent",
-    chartClassName: "text-accent",
-    buttonClassName: "btn-accent",
-    outlineButtonClassName: "btn-outline btn-accent",
-    highlightClassName: "ring-accent/25",
-  },
-  {
-    mapColor: "#0ea5e9",
-    dotClassName: "bg-info",
-    chartClassName: "text-info",
-    buttonClassName: "btn-info",
-    outlineButtonClassName: "btn-outline btn-info",
-    highlightClassName: "ring-info/25",
-  },
-  {
-    mapColor: "#f59e0b",
-    dotClassName: "bg-warning",
-    chartClassName: "text-warning",
-    buttonClassName: "btn-warning",
-    outlineButtonClassName: "btn-outline btn-warning",
-    highlightClassName: "ring-warning/25",
-  },
+  { mapColor: "#f43f5e" }, // Coral
+  { mapColor: "#8b5cf6" }, // Violet
+  { mapColor: "#00a6a6" }, // Teal
+  { mapColor: "#ec4899" }, // Pink
+  { mapColor: "#06b6d4" }, // Cyan
+  { mapColor: "#f97316" }, // Orange
+  { mapColor: "#84b51b" }, // Lime
+  { mapColor: "#a78bfa" }, // Lavender
+  { mapColor: "#10b981" }, // Mint
+  { mapColor: "#d946ef" }, // Magenta
 ];
 
 function clampRouteIndex(index: number, routeLength: number) {

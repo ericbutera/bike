@@ -23,6 +23,11 @@
       owning infrastructure resources. Check both worker endpoints, both queues,
       selected ranges, missing series, and real logs/traces.
 
+## Activities
+
+- [ ] Decide how detected climbs should be named and related to matched segments;
+      see [climb identification](specs/activity-details.md#climb-identification).
+
 ## Other backlog
 
 - [ ] Repair checksumless legacy import metadata without replacing retained files.

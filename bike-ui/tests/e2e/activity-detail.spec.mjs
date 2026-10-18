@@ -35,7 +35,7 @@ test("activity detail exposes the activity surface in Bike", async ({
     await routeMap.getByRole("button", { name: "Zoom in" }).click();
 
     const matchedSegment = page
-      .getByRole("button", { name: /^Jump to .* matches$/ })
+      .getByRole("button", { name: /^Highlight / })
       .first();
     await expect(matchedSegment).toBeVisible();
     await matchedSegment.focus();

@@ -25,6 +25,8 @@ export default function Modal({
       ref={dialogRef}
       className="modal"
       aria-labelledby={titleId}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
       onCancel={(event) => {
         event.preventDefault();
         onClose();

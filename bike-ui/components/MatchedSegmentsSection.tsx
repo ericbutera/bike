@@ -11,7 +11,12 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import { type KeyboardEvent, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  useMemo,
+  useState,
+} from "react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { formatDuration, formatHeartRate } from "../lib/activityFormatting";
 import {
@@ -33,6 +38,8 @@ import {
 } from "./activity-detail/matchedSegments";
 import { AppCard, CardHeader } from "./ui/Card";
 import { useKeyedState } from "../lib/useKeyedState";
+import SegmentColorStatus from "./activity-detail/SegmentColorStatus";
+import ViewRouteOnMap from "./ViewRouteOnMap";
 
 type SegmentAttemptChartPoint = {
   effort: ActivitySegmentEffort;
@@ -582,11 +589,11 @@ function SegmentAttemptsChart({
 
 export default function MatchedSegmentsSection({
   activityId,
-  selectedSegmentId,
+  selectedSegmentIds,
   onToggleSegmentMatch,
 }: {
   activityId: number | string;
-  selectedSegmentId: number | null;
+  selectedSegmentIds: number[];
   onToggleSegmentMatch: (segmentId: number) => void;
 }) {
   const activityQuery = useActivity(activityId);
@@ -612,17 +619,11 @@ export default function MatchedSegmentsSection({
     [starredSegmentIds],
   );
   const initialExpandedSegmentIds = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...starredSegmentIds,
-          ...(selectedSegmentId == null ? [] : [selectedSegmentId]),
-        ]),
-      ),
-    [selectedSegmentId, starredSegmentIds],
+    () => Array.from(new Set([...starredSegmentIds, ...selectedSegmentIds])),
+    [selectedSegmentIds, starredSegmentIds],
   );
   const [expandedSegmentIds, setExpandedSegmentIds] = useKeyedState(
-    `${starredSegmentIdsKey}:${selectedSegmentId ?? ""}`,
+    `${starredSegmentIdsKey}:${selectedSegmentIds.join(",")}`,
     initialExpandedSegmentIds,
   );
 
@@ -675,7 +676,9 @@ export default function MatchedSegmentsSection({
               const segmentHref = `/segments/${segmentGroup.segmentId}`;
               const segmentAchievement =
                 segmentHistoricalAchievements(segmentGroup);
-              const isSelected = selectedSegmentId === segmentGroup.segmentId;
+              const isSelected = selectedSegmentIds.includes(
+                segmentGroup.segmentId,
+              );
               const isStarred = starredSegmentIds.has(segmentGroup.segmentId);
               const isExpanded =
                 isStarred ||
@@ -686,16 +689,19 @@ export default function MatchedSegmentsSection({
                 <li
                   id={segmentGroup.anchorId}
                   key={segmentGroup.segmentId}
+                  style={
+                    {
+                      "--segment-color": segmentGroup.tone.mapColor,
+                    } as CSSProperties
+                  }
                   className={`list-row grid-cols-1 w-full p-0 transition ${
-                    isSelected
-                      ? `${segmentGroup.tone.highlightClassName} bg-base-200/60`
-                      : "bg-base-100"
+                    isSelected ? "bg-base-200/60" : "bg-base-100"
                   } border-b border-base-300 last:border-b-0`}
                 >
                   <div
                     className={`collapse min-w-0 w-full rounded-none ring-1 ring-inset transition ${
                       isSelected
-                        ? segmentGroup.tone.highlightClassName
+                        ? "ring-[var(--segment-color)]/25"
                         : "ring-transparent"
                     } ${isExpanded ? "collapse-open" : "collapse-close"}`}
                   >
@@ -745,7 +751,10 @@ export default function MatchedSegmentsSection({
                       </button>
 
                       <div className="min-w-0">
-                        <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <SegmentColorStatus
+                            color={segmentGroup.tone.mapColor}
+                          />
                           <Link
                             href={segmentHref}
                             className="truncate text-base font-semibold text-base-content transition hover:text-primary"
@@ -757,10 +766,6 @@ export default function MatchedSegmentsSection({
                           </Link>
                         </div>
                         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/60">
-                          <span
-                            aria-hidden
-                            className={`inline-block h-2 w-2 rounded-full ${segmentGroup.tone.dotClassName}`}
-                          />
                           <span>
                             {segmentGroup.efforts.length} run
                             {segmentGroup.efforts.length === 1 ? "" : "s"}
@@ -771,7 +776,15 @@ export default function MatchedSegmentsSection({
                         </p>
                       </div>
 
-                      <div className="flex items-center self-center justify-end">
+                      <div className="flex flex-wrap items-center self-center justify-end gap-1">
+                        <ViewRouteOnMap
+                          title={segmentGroup.segmentTitle}
+                          routePoints={segmentOverlayPoints(
+                            routePoints,
+                            segmentGroup.bestEffort,
+                          )}
+                          color={segmentGroup.tone.mapColor}
+                        />
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm btn-square"

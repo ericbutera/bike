@@ -18,7 +18,7 @@ import LapCard from "./activity-detail/LapCard";
 import ActivityMetricsSummary from "./activity-detail/ActivityMetricsSummary";
 import ActivityRouteMap from "./activity-detail/ActivityRouteMap";
 import ActivitySignalsCard from "./activity-detail/ActivitySignalsCard";
-import { buildSegmentAnchorId } from "./activity-detail/matchedSegments";
+import { useKeyedState } from "../lib/useKeyedState";
 import MatchedSegmentsSection from "./MatchedSegmentsSection";
 import TrainingProfileSnapshot from "./TrainingProfileSnapshot";
 import { AppCard, CardHeader } from "./ui/Card";
@@ -34,10 +34,10 @@ export default function ActivityDetailPanel({
 }: {
   activityId: number | string;
 }) {
-  const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(
-    null,
+  const [selectedSegmentIds, setSelectedSegmentIds] = useKeyedState<number[]>(
+    String(activityId),
+    [],
   );
-  const [selectedClimbId, setSelectedClimbId] = useState<string | null>(null);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const router = useRouter();
   const { unitSystem } = useUnitPreferences();
@@ -49,47 +49,12 @@ export default function ActivityDetailPanel({
   const deleteMutation = useDeleteActivity();
   const activity = activityQuery.data;
   const isAdmin = Boolean(user?.is_admin);
-  function focusSegmentMatch(segmentId: number) {
-    setSelectedSegmentId(segmentId);
-
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    const matchCard = document.getElementById(buildSegmentAnchorId(segmentId));
-
-    if (!(matchCard instanceof HTMLElement)) {
-      return;
-    }
-
-    matchCard.scrollIntoView({ behavior: "smooth", block: "start" });
-
-    const firstLink = matchCard.querySelector("a");
-
-    if (firstLink instanceof HTMLElement) {
-      firstLink.focus({ preventScroll: true });
-    }
-  }
-
-  function focusClimb(climbId: string) {
-    setSelectedClimbId(climbId);
-
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    const climbsCard = document.getElementById("activity-climbs-card");
-
-    if (
-      climbsCard instanceof HTMLElement &&
-      typeof climbsCard.scrollIntoView === "function"
-    ) {
-      climbsCard.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }
-
   function toggleSegmentMatch(segmentId: number) {
-    setSelectedSegmentId((current) => (current === segmentId ? null : current));
+    setSelectedSegmentIds((current) =>
+      current.includes(segmentId)
+        ? current.filter((id) => id !== segmentId)
+        : [...current, segmentId],
+    );
   }
 
   async function handleRegenerate() {
@@ -187,24 +152,18 @@ export default function ActivityDetailPanel({
       </AppCard>
 
       <ActivityRouteMap
+        key={activity.id}
         activity={activity}
-        onSelectSegment={focusSegmentMatch}
-        onSelectClimb={focusClimb}
-        selectedSegmentId={selectedSegmentId}
-        selectedClimbId={selectedClimbId}
+        onSelectSegment={toggleSegmentMatch}
+        onClearSegmentSelection={() => setSelectedSegmentIds([])}
+        selectedSegmentIds={selectedSegmentIds}
       />
 
-      <ActivityClimbsCard
-        activity={activity}
-        selectedClimbId={selectedClimbId}
-        unitSystem={unitSystem}
-        onSelectClimb={focusClimb}
-        onZoomOutMap={() => setSelectedClimbId(null)}
-      />
+      <ActivityClimbsCard activity={activity} unitSystem={unitSystem} />
 
       <MatchedSegmentsSection
         activityId={activityId}
-        selectedSegmentId={selectedSegmentId}
+        selectedSegmentIds={selectedSegmentIds}
         onToggleSegmentMatch={toggleSegmentMatch}
       />
 

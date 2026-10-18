@@ -10,12 +10,20 @@ export type RouteMapFollowViewport = {
 
 export type RouteMapFollowViewportBehavior = "ease" | "jump";
 
+export type RouteMapOverlayLayers = {
+  segments: boolean;
+  climbs: boolean;
+  onChange: (layer: "segments" | "climbs", visible: boolean) => void;
+};
+
 export type RouteOverlay = {
   id: string;
   points: ActivityRoutePoint[];
   color?: string;
   label?: string;
   weight?: number;
+  casingColor?: string;
+  casingWeight?: number;
   onClick?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -32,7 +40,10 @@ export type RouteMovingMarker = {
 
 export type RouteMapProps = {
   routePoints: ActivityRoutePoint[] | null | undefined;
+  routeColor?: string;
   overlays?: RouteOverlay[];
+  climbOverlays?: RouteOverlay[];
+  overlayLayers?: RouteMapOverlayLayers;
   movingMarkers?: RouteMovingMarker[];
   movingMarkerTransitionMs?: number;
   followViewport?: RouteMapFollowViewport | null;

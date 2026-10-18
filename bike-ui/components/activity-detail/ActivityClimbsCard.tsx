@@ -26,9 +26,11 @@ import {
 import type { Activity } from "./types";
 import MetricCard from "../MetricCard";
 import { AppCard, CardHeader } from "../ui/Card";
+import { useKeyedState } from "../../lib/useKeyedState";
+import ViewRouteOnMap from "../ViewRouteOnMap";
 
-const CLIMB_LIST_VISIBLE_ROW_COUNT = 15;
-const CLIMB_LIST_MAX_HEIGHT = "40rem";
+const CLIMB_LIST_VISIBLE_ROW_COUNT = 5;
+const CLIMB_LIST_MAX_HEIGHT = `calc(${(CLIMB_LIST_VISIBLE_ROW_COUNT + 1) * 2.5}rem + 2px)`;
 
 function formatGradePercent(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) {
@@ -136,17 +138,15 @@ function ClimbElevationTooltip({
 
 export default function ActivityClimbsCard({
   activity,
-  selectedClimbId,
   unitSystem,
-  onSelectClimb,
-  onZoomOutMap,
 }: {
   activity: Activity;
-  selectedClimbId: string | null;
   unitSystem: UnitSystem;
-  onSelectClimb: (climbId: string) => void;
-  onZoomOutMap: () => void;
 }) {
+  const [selectedClimbId, setSelectedClimbId] = useKeyedState<string | null>(
+    String(activity.id),
+    null,
+  );
   const activityClimbs = useMemo(
     () => buildActivityClimbs(activity.route_points),
     [activity.route_points],
@@ -168,7 +168,7 @@ export default function ActivityClimbsCard({
     }
 
     event.preventDefault();
-    onSelectClimb(climbId);
+    setSelectedClimbId(climbId);
   }
 
   return (
@@ -177,7 +177,7 @@ export default function ActivityClimbsCard({
         className="mb-3"
         title="Climbs"
         actions={
-          <span className="badge badge-outline">
+          <span className="text-sm text-base-content/60">
             {activityClimbs.length} climb
             {activityClimbs.length === 1 ? "" : "s"}
           </span>
@@ -208,6 +208,9 @@ export default function ActivityClimbsCard({
                   <th>Distance</th>
                   <th>Elevation</th>
                   <th>Grade</th>
+                  <th>
+                    <span className="sr-only">Map</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -224,7 +227,7 @@ export default function ActivityClimbsCard({
                       className={`h-10 cursor-pointer transition hover:bg-base-200 focus:bg-base-200 focus:outline-none ${
                         isSelected ? "bg-primary/10" : ""
                       }`}
-                      onClick={() => onSelectClimb(climb.id)}
+                      onClick={() => setSelectedClimbId(climb.id)}
                       onKeyDown={(event) => handleRowKeyDown(event, climb.id)}
                     >
                       <th
@@ -241,6 +244,12 @@ export default function ActivityClimbsCard({
                       </td>
                       <td className="whitespace-nowrap">
                         {formatGradePercent(climb.avgGradePercent)}
+                      </td>
+                      <td className="text-right">
+                        <ViewRouteOnMap
+                          title={`Climb ${climb.sequence}`}
+                          routePoints={climb.routePoints}
+                        />
                       </td>
                     </tr>
                   );
@@ -260,13 +269,6 @@ export default function ActivityClimbsCard({
                     unitSystem,
                   )}
                 </h3>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={onZoomOutMap}
-                >
-                  Zoom out map
-                </button>
               </div>
 
               <div className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
