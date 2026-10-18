@@ -15,12 +15,17 @@ import {
   bikeMapStyle,
   DEFAULT_ROUTE_BASEMAP,
   DEFAULT_ROUTE_COLOR,
+  DEFAULT_ROUTE_LINE_WIDTH,
+  DEFAULT_ROUTE_CASING_WIDTH,
   ROUTE_MAP_BASEMAP_LABELS,
   ROUTE_MAP_BASEMAP_OPTIONS,
 } from "../lib/mapAppearance";
 import { config } from "../lib/config";
 import { type ActivityRoutePoint } from "../lib/queries";
 import { useKeyedState } from "../lib/useKeyedState";
+import RouteMapNavigationControl from "./RouteMapNavigationControl";
+import RouteMapEndpoints from "./RouteMapEndpoints";
+import { buildClimbSourceData, syncClimbLayers } from "./routeMapClimbs";
 import {
   type RouteMapBasemap,
   type RouteMapFollowViewportBehavior,
@@ -185,9 +190,6 @@ const ROUTE_SOURCE_ID = "activity-route";
 const ROUTE_CASING_LAYER_ID = "activity-route-casing";
 const ROUTE_LAYER_ID = "activity-route-line";
 const ROUTE_ARROW_LAYER_ID = "activity-route-arrows";
-const ENDPOINT_SOURCE_ID = "activity-route-endpoints";
-const START_LAYER_ID = "activity-route-start";
-const END_LAYER_ID = "activity-route-end";
 const OVERLAY_SOURCE_ID = "activity-route-overlays";
 const OVERLAY_CASING_LAYER_ID = "activity-route-overlays-casing";
 const OVERLAY_LAYER_ID = "activity-route-overlays-line";
@@ -242,22 +244,6 @@ function buildLineFeature(
     geometry: {
       type: "LineString",
       coordinates: toPositions(points),
-    },
-  };
-}
-
-function buildEndpointFeature(
-  id: string,
-  point: ActivityRoutePoint,
-  kind: "start" | "end",
-): Feature<Point> {
-  return {
-    type: "Feature",
-    id,
-    properties: { kind },
-    geometry: {
-      type: "Point",
-      coordinates: [point.longitude, point.latitude],
     },
   };
 }
@@ -562,6 +548,13 @@ function fitMapToGeometry(
   });
 }
 
+function canSyncRouteSources(map: maplibregl.Map) {
+  // isStyleLoaded also becomes false while existing GeoJSON sources update.
+  // Once our sources exist, keep submitting the latest data during that work.
+  if (map.getSource(ROUTE_SOURCE_ID)) return true;
+  return map.isStyleLoaded() === true;
+}
+
 function ensureMapSourcesAndLayers(
   map: maplibregl.Map,
   showBaseTiles: boolean,
@@ -618,7 +611,7 @@ function ensureMapSourcesAndLayers(
         },
         paint: {
           "line-color": sharedBasemap ? "#ffffff" : "#10212d",
-          "line-width": 9,
+          "line-width": DEFAULT_ROUTE_CASING_WIDTH,
           "line-opacity": sharedBasemap ? 1 : 0.86,
         },
       },
@@ -635,8 +628,8 @@ function ensureMapSourcesAndLayers(
           "line-join": "round",
         },
         paint: {
-          "line-color": DEFAULT_ROUTE_COLOR,
-          "line-width": 6,
+          "line-color": ["get", "color"],
+          "line-width": DEFAULT_ROUTE_LINE_WIDTH,
           "line-opacity": 1,
         },
       },
@@ -658,46 +651,13 @@ function ensureMapSourcesAndLayers(
         },
         paint: {
           "text-color": "#ffffff",
-          "text-halo-color": DEFAULT_ROUTE_COLOR,
+          "text-halo-color": ["get", "color"],
           "text-halo-width": 1.1,
           "text-opacity": 0.96,
         },
       },
       beforeLabels,
     );
-  }
-
-  if (!map.getSource(ENDPOINT_SOURCE_ID)) {
-    map.addSource(ENDPOINT_SOURCE_ID, {
-      type: "geojson",
-      data: emptyFeatureCollection<Point>(),
-    });
-
-    map.addLayer({
-      id: START_LAYER_ID,
-      type: "circle",
-      source: ENDPOINT_SOURCE_ID,
-      filter: ["==", ["get", "kind"], "start"],
-      paint: {
-        "circle-radius": 7,
-        "circle-color": "#0f172a",
-        "circle-stroke-color": "#f8fafc",
-        "circle-stroke-width": 2,
-      },
-    });
-
-    map.addLayer({
-      id: END_LAYER_ID,
-      type: "circle",
-      source: ENDPOINT_SOURCE_ID,
-      filter: ["==", ["get", "kind"], "end"],
-      paint: {
-        "circle-radius": 7,
-        "circle-color": "#f8fafc",
-        "circle-stroke-color": "#0f172a",
-        "circle-stroke-width": 2.5,
-      },
-    });
   }
 
   if (!map.getSource(OVERLAY_SOURCE_ID)) {
@@ -714,8 +674,8 @@ function ensureMapSourcesAndLayers(
           source: OVERLAY_SOURCE_ID,
           layout: { "line-cap": "round", "line-join": "round" },
           paint: {
-            "line-color": "#202b37",
-            "line-width": ["+", ["get", "weight"], 4],
+            "line-color": ["get", "casingColor"],
+            "line-width": ["get", "casingWeight"],
           },
         },
         beforeLabels,
@@ -734,7 +694,7 @@ function ensureMapSourcesAndLayers(
         paint: {
           "line-color": ["get", "color"],
           "line-width": ["get", "weight"],
-          "line-opacity": 0.96,
+          "line-opacity": 1,
         },
       },
       beforeLabels,
@@ -783,7 +743,10 @@ function ensureMapSourcesAndLayers(
 export default function MapLibreRouteMapClient({
   ariaLabel,
   routePoints,
+  routeColor = DEFAULT_ROUTE_COLOR,
   overlays: overlaysProp,
+  climbOverlays: climbOverlaysProp,
+  overlayLayers,
   movingMarkers: movingMarkersProp,
   movingMarkerTransitionMs = DEFAULT_MOVING_MARKER_TRANSITION_MS,
   followViewport = null,
@@ -806,6 +769,9 @@ export default function MapLibreRouteMapClient({
 }: RouteMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const endpointMarkersRef = useRef<RouteMapEndpoints | null>(null);
+  const navigationControlRef = useRef<RouteMapNavigationControl | null>(null);
+  const overlayLayersRef = useRef(overlayLayers);
   const resizeFrameRef = useRef<number | null>(null);
   const markerAnimationFrameRef = useRef<number | null>(null);
   const lastMovingMarkerUpdateAtRef = useRef<number | null>(null);
@@ -834,19 +800,13 @@ export default function MapLibreRouteMapClient({
     pitch: number;
   } | null>(null);
   const shouldRestoreViewRef = useRef(false);
-  const overlayClickHandlerRef = useRef<
-    ((event: OverlayLayerEvent) => void) | null
-  >(null);
-  const overlayMouseEnterHandlerRef = useRef<
-    ((event: OverlayLayerEvent) => void) | null
-  >(null);
-  const overlayMouseMoveHandlerRef = useRef<
-    ((event: OverlayLayerEvent) => void) | null
-  >(null);
-  const overlayMouseLeaveHandlerRef = useRef<
-    ((event: OverlayLayerEvent) => void) | null
-  >(null);
+  const overlayListenersAttachedRef = useRef(false);
   const overlays = overlaysProp ?? EMPTY_OVERLAYS;
+  const climbOverlays = climbOverlaysProp ?? EMPTY_OVERLAYS;
+  const climbSourceData = useMemo(
+    () => buildClimbSourceData(climbOverlays),
+    [climbOverlays],
+  );
   const theme = useBikeTheme();
   const movingMarkers = movingMarkersProp ?? EMPTY_MOVING_MARKERS;
   const styleUrl = config.MAP_STYLE_URL;
@@ -968,27 +928,15 @@ export default function MapLibreRouteMapClient({
       type: "FeatureCollection",
       features:
         (routePoints?.length ?? 0) >= 2
-          ? [buildLineFeature("route", routePoints ?? [])]
+          ? [
+              buildLineFeature("route", routePoints ?? [], {
+                color: routeColor,
+              }),
+            ]
           : [],
     }),
-    [routePoints],
+    [routePoints, routeColor],
   );
-
-  const endpointSourceData = useMemo<FeatureCollection<Point>>(() => {
-    if (!showRouteEndpoints || (routePoints?.length ?? 0) < 2) {
-      return emptyFeatureCollection<Point>();
-    }
-
-    const points = routePoints ?? [];
-
-    return {
-      type: "FeatureCollection",
-      features: [
-        buildEndpointFeature("start", points[0], "start"),
-        buildEndpointFeature("end", points.at(-1) ?? points[0], "end"),
-      ],
-    };
-  }, [routePoints, showRouteEndpoints]);
 
   const overlaySourceData = useMemo<FeatureCollection<LineString>>(
     () => ({
@@ -1000,7 +948,11 @@ export default function MapLibreRouteMapClient({
             overlayId: overlay.id,
             color: overlay.color ?? DEFAULT_ROUTE_COLOR,
             label: overlay.label ?? "",
-            weight: overlay.weight ?? 6,
+            weight: overlay.weight ?? DEFAULT_ROUTE_LINE_WIDTH,
+            casingColor: overlay.casingColor ?? "#202b37",
+            casingWeight:
+              overlay.casingWeight ??
+              (overlay.weight ?? DEFAULT_ROUTE_LINE_WIDTH) + 4,
           }),
         ),
     }),
@@ -1031,6 +983,16 @@ export default function MapLibreRouteMapClient({
       ),
     [overlays],
   );
+  const overlayHandlersRef = useRef(overlayHandlers);
+
+  useEffect(() => {
+    overlayHandlersRef.current = overlayHandlers;
+  }, [overlayHandlers]);
+
+  useEffect(() => {
+    overlayLayersRef.current = overlayLayers;
+    navigationControlRef.current?.setLayers(overlayLayers);
+  }, [overlayLayers]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
@@ -1057,13 +1019,9 @@ export default function MapLibreRouteMapClient({
     }
 
     if (interactive && showZoomControls) {
-      map.addControl(
-        new maplibregl.NavigationControl({
-          showCompass: false,
-          visualizePitch: false,
-        }),
-        "top-right",
-      );
+      const control = new RouteMapNavigationControl(overlayLayersRef.current);
+      navigationControlRef.current = control;
+      map.addControl(control, "top-right");
     }
 
     const handleResize = () => {
@@ -1081,6 +1039,7 @@ export default function MapLibreRouteMapClient({
     };
 
     mapRef.current = map;
+    endpointMarkersRef.current = new RouteMapEndpoints(map);
 
     window.addEventListener("resize", handleResize);
     document.addEventListener("fullscreenchange", handleResize);
@@ -1104,12 +1063,12 @@ export default function MapLibreRouteMapClient({
         cancelAnimationFrame(markerAnimationFrameRef.current);
         markerAnimationFrameRef.current = null;
       }
+      endpointMarkersRef.current?.remove();
+      endpointMarkersRef.current = null;
       map.remove();
+      navigationControlRef.current = null;
       mapRef.current = null;
-      overlayClickHandlerRef.current = null;
-      overlayMouseEnterHandlerRef.current = null;
-      overlayMouseMoveHandlerRef.current = null;
-      overlayMouseLeaveHandlerRef.current = null;
+      overlayListenersAttachedRef.current = false;
       appliedStyleKeyRef.current = null;
       preservedViewStateRef.current = null;
       lastMovingMarkerUpdateAtRef.current = null;
@@ -1206,57 +1165,31 @@ export default function MapLibreRouteMapClient({
       (map.getSource(ROUTE_SOURCE_ID) as GeoJSONSource).setData(
         routeSourceData,
       );
-      (map.getSource(ENDPOINT_SOURCE_ID) as GeoJSONSource).setData(
-        endpointSourceData,
+      endpointMarkersRef.current?.setRoute(
+        showRouteEndpoints ? routePoints : undefined,
       );
       (map.getSource(OVERLAY_SOURCE_ID) as GeoJSONSource).setData(
         overlaySourceData,
       );
+      syncClimbLayers(map, climbSourceData);
 
-      if (overlayClickHandlerRef.current) {
-        map.off("click", OVERLAY_LAYER_ID, overlayClickHandlerRef.current);
-        overlayClickHandlerRef.current = null;
-      }
-      if (overlayMouseEnterHandlerRef.current) {
-        map.off(
-          "mouseenter",
-          OVERLAY_LAYER_ID,
-          overlayMouseEnterHandlerRef.current,
-        );
-        overlayMouseEnterHandlerRef.current = null;
-      }
-      if (overlayMouseMoveHandlerRef.current) {
-        map.off(
-          "mousemove",
-          OVERLAY_LAYER_ID,
-          overlayMouseMoveHandlerRef.current,
-        );
-        overlayMouseMoveHandlerRef.current = null;
-      }
-      if (overlayMouseLeaveHandlerRef.current) {
-        map.off(
-          "mouseleave",
-          OVERLAY_LAYER_ID,
-          overlayMouseLeaveHandlerRef.current,
-        );
-        overlayMouseLeaveHandlerRef.current = null;
-      }
-
-      if (overlays.length > 0) {
+      // Rebinding delegated events resets MapLibre's active hover state.
+      // Keep listeners stable while their current callbacks and colors change.
+      if (!overlayListenersAttachedRef.current) {
         const handlerForEvent = (event: OverlayLayerEvent) => {
           const overlayId = event.features?.[0]?.properties?.overlayId;
           if (!overlayId) {
             return null;
           }
 
-          return overlayHandlers.get(overlayId) ?? null;
+          return overlayHandlersRef.current.get(overlayId) ?? null;
         };
         const handleOverlayClick = (event: OverlayLayerEvent) => {
           handlerForEvent(event)?.onClick?.();
         };
         const handleOverlayMouseEnter = (event: OverlayLayerEvent) => {
           map.getCanvas().style.cursor =
-            overlayHandlers.size > 0 ? "pointer" : "";
+            overlayHandlersRef.current.size > 0 ? "pointer" : "";
           handlerForEvent(event)?.onMouseEnter?.();
         };
         const handleOverlayMouseMove = (event: OverlayLayerEvent) => {
@@ -1275,7 +1208,7 @@ export default function MapLibreRouteMapClient({
           });
         };
         const handleOverlayMouseLeave = (_event: OverlayLayerEvent) => {
-          for (const handler of overlayHandlers.values()) {
+          for (const handler of overlayHandlersRef.current.values()) {
             handler.onMouseLeave?.();
           }
           map.getCanvas().style.cursor = "";
@@ -1287,11 +1220,9 @@ export default function MapLibreRouteMapClient({
         map.on("mousemove", OVERLAY_LAYER_ID, handleOverlayMouseMove);
         map.on("mouseleave", OVERLAY_LAYER_ID, handleOverlayMouseLeave);
 
-        overlayClickHandlerRef.current = handleOverlayClick;
-        overlayMouseEnterHandlerRef.current = handleOverlayMouseEnter;
-        overlayMouseMoveHandlerRef.current = handleOverlayMouseMove;
-        overlayMouseLeaveHandlerRef.current = handleOverlayMouseLeave;
-      } else {
+        overlayListenersAttachedRef.current = true;
+      }
+      if (overlays.length === 0) {
         map.getCanvas().style.cursor = "";
         setOverlayTooltip(null);
       }
@@ -1325,7 +1256,7 @@ export default function MapLibreRouteMapClient({
     };
 
     map.on("style.load", syncMap);
-    if (map.isStyleLoaded()) {
+    if (canSyncRouteSources(map)) {
       syncMap();
     }
 
@@ -1334,10 +1265,9 @@ export default function MapLibreRouteMapClient({
       setOverlayTooltip(null);
     };
   }, [
-    endpointSourceData,
+    climbSourceData,
     fitBoundsKey,
     fitBoundsPoints,
-    overlayHandlers,
     overlaySourceData,
     overlays,
     routePoints,
@@ -1346,6 +1276,7 @@ export default function MapLibreRouteMapClient({
     fitBoundsPadding,
     mapStyleKey,
     showBaseTiles,
+    showRouteEndpoints,
     sharedBasemap,
   ]);
 
@@ -1501,7 +1432,7 @@ export default function MapLibreRouteMapClient({
     };
 
     map.on("style.load", syncMarkers);
-    if (map.isStyleLoaded()) {
+    if (canSyncRouteSources(map)) {
       syncMarkers();
     }
 

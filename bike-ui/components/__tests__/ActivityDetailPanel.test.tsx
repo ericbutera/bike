@@ -1,9 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACTIVITY_TYPES, type ActivityType } from "../../lib/activityTypes";
 import ActivityDetailPanel from "../ActivityDetailPanel";
 import RequireAuth from "../RequireAuth";
+import type { RouteMapProps } from "../RouteMapTypes";
+import { segmentEffort } from "../../tests/fixtures/activitySegments";
 
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("recharts")>();
@@ -439,9 +441,38 @@ function makeManyClimbRoutePoints(count: number) {
   return points;
 }
 
+function makeMatchedActivity(segmentCount: number) {
+  return makeActivity({
+    segment_efforts: Array.from({ length: segmentCount }, (_, index) =>
+      segmentEffort({
+        segment_id: index + 1,
+        segment_title: `Segment ${String(index + 1).padStart(2, "0")}`,
+      }),
+    ),
+  });
+}
+
+function currentMap() {
+  return mocks.renderMapLibreRouteMap.mock.calls
+    .map(([props]) => props as RouteMapProps)
+    .filter((props) => props.ariaLabel === "Activity route map")
+    .at(-1)!;
+}
+
+function currentSegmentOverlays() {
+  return (currentMap().overlays ?? []).filter((overlay) =>
+    /^\d+-/.test(overlay.id),
+  );
+}
+
 describe("ActivityDetailPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(
+      function (this: HTMLDialogElement) {
+        this.setAttribute("open", "");
+      },
+    );
     vi.stubGlobal(
       "confirm",
       vi.fn(() => true),
@@ -489,6 +520,7 @@ describe("ActivityDetailPanel", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -521,7 +553,7 @@ describe("ActivityDetailPanel", () => {
     );
     expect(screen.getByText("Matched segments")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Jump to North Climb matches" }),
+      screen.getByRole("button", { name: "Highlight North Climb" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Show time & runs" }),
@@ -611,7 +643,341 @@ describe("ActivityDetailPanel", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows climbs and focuses a selected climb on the map", async () => {
+  it("keeps detected climbs off the overall route map by default", () => {
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({
+        route_points: makeClimbingRoutePoints(),
+        segment_efforts: [segmentEffort()],
+      }),
+    });
+    render(<ActivityDetailPanel activityId={7} />);
+
+    const overlays = currentMap().overlays ?? [];
+    expect(overlays.map((overlay) => overlay.id)).toEqual(["11-1"]);
+    expect(currentMap().climbOverlays).toEqual([]);
+    expect(currentMap().overlayLayers).toMatchObject({
+      segments: true,
+      climbs: false,
+    });
+  });
+
+  it("toggles climb and segment layers independently and restores the selected segments", async () => {
+    const user = userEvent.setup();
+    const activity = {
+      ...makeMatchedActivity(2),
+      route_points: makeClimbingRoutePoints(),
+    };
+    mocks.useActivity.mockReturnValue({ data: activity });
+    const { rerender } = render(<ActivityDetailPanel activityId={7} />);
+    const first = screen.getByRole("button", { name: "Highlight Segment 01" });
+    await user.click(first);
+    await user.unhover(first);
+    const points = currentMap().routePoints;
+    act(() => currentMap().overlayLayers?.onChange("climbs", true));
+    expect(currentMap().climbOverlays).toEqual([
+      expect.objectContaining({
+        id: "climb-1",
+        points: makeClimbingRoutePoints(),
+      }),
+    ]);
+    expect(currentMap().overlays).toHaveLength(2);
+    expect(screen.getByText("Climb start → finish")).toBeInTheDocument();
+    act(() => currentMap().overlayLayers?.onChange("segments", false));
+    expect(currentMap().overlays).toEqual([]);
+    expect(currentMap().climbOverlays).toHaveLength(1);
+    expect(
+      screen.queryByRole("group", { name: "Map segments" }),
+    ).not.toBeInTheDocument();
+    act(() => currentMap().overlayLayers?.onChange("segments", true));
+    expect(
+      screen.getByRole("button", { name: "Highlight Segment 01" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      currentMap().overlays?.find((overlay) => overlay.id === "2-1")?.color,
+    ).toBe("#0060df");
+    act(() => currentMap().overlayLayers?.onChange("climbs", false));
+    expect(currentMap().climbOverlays).toEqual([]);
+    expect(currentMap().routePoints).toBe(points);
+    expect(currentMap().fitBoundsPoints).toBeUndefined();
+    act(() => currentMap().overlayLayers?.onChange("segments", false));
+    expect(currentMap().overlays).toEqual([]);
+    act(() => currentMap().overlayLayers?.onChange("climbs", true));
+    mocks.useActivity.mockReturnValue({ data: { ...activity, id: 8 } });
+    rerender(<ActivityDetailPanel activityId={8} />);
+    expect(currentMap().overlayLayers).toMatchObject({
+      segments: true,
+      climbs: false,
+    });
+  });
+
+  it("matches ten distinct segment colors to status dots and cycles for larger activities", () => {
+    const activity = makeMatchedActivity(22);
+    activity.segment_efforts.push(
+      segmentEffort({
+        segment_id: 1,
+        segment_title: "Segment 01",
+        effort_index: 2,
+      }),
+    );
+    mocks.useActivity.mockReturnValue({ data: activity });
+    render(<ActivityDetailPanel activityId={7} />);
+
+    const overlays = currentSegmentOverlays();
+    const colors = overlays
+      .filter((overlay) => overlay.id.endsWith("-1"))
+      .map((overlay) => overlay.color);
+    expect(new Set(colors.slice(0, 10)).size).toBe(10);
+    expect(colors.slice(10, 20)).toEqual(colors.slice(0, 10));
+    expect(colors).not.toContain("#0060df");
+    expect(colors).not.toContain("#f59e0b");
+    expect(overlays.find((overlay) => overlay.id === "1-2")?.color).toBe(
+      colors[0],
+    );
+    for (const overlay of overlays) {
+      expect(overlay).toMatchObject({
+        weight: 6,
+        casingColor: "#ffffff",
+        casingWeight: 9,
+      });
+    }
+    const buttons = within(
+      screen.getByRole("group", { name: "Map segments" }),
+    ).getAllByRole("button");
+    buttons.forEach((button, index) => {
+      expect(button.querySelector(".status")).toHaveStyle({
+        backgroundColor: colors[index],
+      });
+      const card = document.getElementById(`activity-segment-${index + 1}`);
+      expect(card?.querySelector(".status")).toHaveStyle({
+        backgroundColor: colors[index],
+      });
+    });
+    expect(
+      screen.queryByRole("button", { name: /Clear selection/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("previews segments from the map and legend, preserves multiple selections, and clears without jumping", async () => {
+    const user = userEvent.setup();
+    mocks.useActivity.mockReturnValue({ data: makeMatchedActivity(3) });
+    render(<ActivityDetailPanel activityId={7} />);
+    const colors = currentSegmentOverlays().map((overlay) => overlay.color);
+    const first = screen.getByRole("button", { name: "Highlight Segment 01" });
+    const second = screen.getByRole("button", { name: "Highlight Segment 02" });
+    const third = screen.getByRole("button", { name: "Highlight Segment 03" });
+    const card = document.getElementById("activity-segment-1")!;
+    const scrollIntoView = vi.fn();
+    card.scrollIntoView = scrollIntoView;
+    const detailFocus = vi.spyOn(
+      within(card).getByRole("link", { name: "Segment 01" }),
+      "focus",
+    );
+    const colorFor = (id: string) =>
+      currentSegmentOverlays().find((overlay) => overlay.id === id)?.color;
+
+    await user.hover(second);
+    expect(colorFor("1-1")).toBe("#0060df");
+    expect(colorFor("2-1")).toBe(colors[1]);
+    expect(colorFor("3-1")).toBe("#0060df");
+    await user.unhover(second);
+    expect(currentSegmentOverlays().map((overlay) => overlay.color)).toEqual(
+      colors,
+    );
+
+    await user.click(first);
+    await user.unhover(first);
+    await user.click(second);
+    await user.unhover(second);
+    expect(first).toHaveAttribute("aria-pressed", "true");
+    expect(second).toHaveAttribute("aria-pressed", "true");
+    expect(colorFor("1-1")).toBe(colors[0]);
+    expect(colorFor("2-1")).toBe(colors[1]);
+    expect(colorFor("3-1")).toBe("#0060df");
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(detailFocus).not.toHaveBeenCalled();
+
+    await user.hover(third);
+    expect(colorFor("1-1")).toBe("#0060df");
+    expect(colorFor("2-1")).toBe("#0060df");
+    expect(colorFor("3-1")).toBe(colors[2]);
+    await user.unhover(third);
+    expect(colorFor("1-1")).toBe(colors[0]);
+    expect(colorFor("2-1")).toBe(colors[1]);
+
+    act(() =>
+      currentSegmentOverlays()
+        .find((overlay) => overlay.id === "3-1")
+        ?.onMouseEnter?.(),
+    );
+    expect(colorFor("1-1")).toBe("#0060df");
+    expect(currentSegmentOverlays().at(-1)?.id).toBe("3-1");
+    act(() =>
+      currentSegmentOverlays()
+        .find((overlay) => overlay.id === "3-1")
+        ?.onClick?.(),
+    );
+    act(() =>
+      currentSegmentOverlays()
+        .find((overlay) => overlay.id === "3-1")
+        ?.onMouseLeave?.(),
+    );
+    expect(third).toHaveAttribute("aria-pressed", "true");
+    await user.click(first);
+    await user.unhover(first);
+    expect(first).toHaveAttribute("aria-pressed", "false");
+    expect(colorFor("1-1")).toBe("#0060df");
+    await user.click(
+      screen.getByRole("button", { name: "Clear selection (2)" }),
+    );
+    expect(currentSegmentOverlays().map((overlay) => overlay.color)).toEqual(
+      colors,
+    );
+    expect(first).toHaveAttribute("aria-pressed", "false");
+    expect(second).toHaveAttribute("aria-pressed", "false");
+    expect(third).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("keeps the current legend preview when earlier hover targets leave", async () => {
+    const user = userEvent.setup();
+    mocks.useActivity.mockReturnValue({ data: makeMatchedActivity(3) });
+    render(<ActivityDetailPanel activityId={7} />);
+    const initial = currentSegmentOverlays();
+    const mapSegment = initial.find((overlay) => overlay.id === "1-1")!;
+    const second = screen.getByRole("button", { name: "Highlight Segment 02" });
+    const third = screen.getByRole("button", { name: "Highlight Segment 03" });
+    const colorFor = (id: string) =>
+      currentSegmentOverlays().find((overlay) => overlay.id === id)?.color;
+
+    act(() => mapSegment.onMouseEnter?.());
+    await user.hover(second);
+    act(() => mapSegment.onMouseEnter?.());
+    expect(colorFor("1-1")).toBe("#0060df");
+    expect(colorFor("2-1")).toBe(initial[1].color);
+    act(() => mapSegment.onMouseLeave?.());
+    expect(colorFor("1-1")).toBe("#0060df");
+    expect(colorFor("2-1")).toBe(initial[1].color);
+    expect(colorFor("3-1")).toBe("#0060df");
+    await user.hover(third);
+    fireEvent.mouseLeave(second);
+    expect(colorFor("1-1")).toBe("#0060df");
+    expect(colorFor("2-1")).toBe("#0060df");
+    expect(colorFor("3-1")).toBe(initial[2].color);
+    await user.unhover(third);
+    expect(currentSegmentOverlays().map((overlay) => overlay.color)).toEqual(
+      initial.map((overlay) => overlay.color),
+    );
+  });
+
+  it("tracks the latest segment during fast forward and reverse hover sweeps", () => {
+    mocks.useActivity.mockReturnValue({ data: makeMatchedActivity(22) });
+    render(<ActivityDetailPanel activityId={7} />);
+    const initial = currentSegmentOverlays();
+    const buttons = within(
+      screen.getByRole("group", { name: "Map segments" }),
+    ).getAllByRole("button");
+    fireEvent.click(buttons[0]);
+    fireEvent.click(buttons[1]);
+
+    for (const sweep of [buttons, [...buttons].reverse()]) {
+      act(() => {
+        sweep.forEach((button, index) => {
+          fireEvent.mouseEnter(button);
+          if (index > 0) fireEvent.mouseLeave(sweep[index - 1]);
+          initial[0].onMouseLeave?.();
+        });
+      });
+      const latestIndex = buttons.indexOf(sweep.at(-1)!);
+      expect(
+        currentSegmentOverlays().filter(
+          (overlay) => overlay.color !== "#0060df",
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          id: `${latestIndex + 1}-1`,
+          color: initial[latestIndex].color,
+        }),
+      ]);
+      expect(
+        currentSegmentOverlays()
+          .filter((overlay) => overlay.id !== `${latestIndex + 1}-1`)
+          .every((overlay) => overlay.color === "#0060df"),
+      ).toBe(true);
+    }
+    fireEvent.mouseLeave(buttons[0]);
+    expect(
+      currentSegmentOverlays()
+        .filter((overlay) => overlay.color !== "#0060df")
+        .map((overlay) => overlay.id),
+    ).toEqual(["1-1", "2-1"]);
+    expect(buttons[0]).toHaveAttribute("aria-pressed", "true");
+    expect(buttons[1]).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("offers a labeled inline clear button only for selected segments and clears an active preview", async () => {
+    const user = userEvent.setup();
+    mocks.useActivity.mockReturnValue({ data: makeMatchedActivity(3) });
+    render(<ActivityDetailPanel activityId={7} />);
+    const initial = currentSegmentOverlays();
+    const legend = screen.getByRole("group", { name: "Map segments" });
+    const buttons = within(legend).getAllByRole("button");
+    expect(
+      screen.queryByRole("button", { name: /Clear selection/ }),
+    ).not.toBeInTheDocument();
+    await user.click(buttons[0]);
+    await user.click(buttons[1]);
+    await user.hover(buttons[2]);
+    const clear = within(legend).getByRole("button", {
+      name: "Clear selection (2)",
+    });
+    expect(legend.lastElementChild).toBe(clear);
+    expect(
+      clear.querySelector('svg[data-icon="rectangle-xmark"]'),
+    ).toBeInTheDocument();
+    expect(clear).toHaveAttribute("title", "Clear selection (2)");
+    expect(clear).toHaveTextContent("Clear selection");
+    fireEvent.click(clear);
+    expect(currentSegmentOverlays().map((overlay) => overlay.color)).toEqual(
+      initial.map((overlay) => overlay.color),
+    );
+    buttons.forEach((button) =>
+      expect(button).toHaveAttribute("aria-pressed", "false"),
+    );
+    expect(
+      screen.queryByRole("button", { name: /Clear selection/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("supports keyboard segment selection and resets selection for a new activity", async () => {
+    const user = userEvent.setup();
+    mocks.useActivity.mockReturnValue({ data: makeMatchedActivity(2) });
+    const { rerender } = render(<ActivityDetailPanel activityId={7} />);
+    const button = screen.getByRole("button", { name: "Highlight Segment 01" });
+    act(() => button.focus());
+    expect(
+      currentSegmentOverlays().find((overlay) => overlay.id === "2-1")?.color,
+    ).toBe("#0060df");
+    await user.keyboard("{Enter}");
+    expect(button).toHaveAttribute("aria-pressed", "true");
+    await user.keyboard(" ");
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    act(() => button.blur());
+    expect(
+      currentSegmentOverlays().every((overlay) => overlay.color !== "#0060df"),
+    ).toBe(true);
+    act(() => button.focus());
+    await user.keyboard("{Enter}");
+    const nextActivity = { ...makeMatchedActivity(2), id: 8 };
+    mocks.useActivity.mockReturnValue({ data: nextActivity });
+    rerender(<ActivityDetailPanel activityId={8} />);
+    expect(
+      screen.getByRole("button", { name: "Highlight Segment 01" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(
+      currentSegmentOverlays().every((overlay) => overlay.color !== "#0060df"),
+    ).toBe(true);
+  });
+
+  it("shows climb details independently and opens its route in a separate map", async () => {
     const user = userEvent.setup();
 
     mocks.useActivity.mockReturnValue({
@@ -627,7 +993,7 @@ describe("ActivityDetailPanel", () => {
     render(<ActivityDetailPanel activityId={7} />);
 
     expect(screen.getByText("Climbs")).toBeInTheDocument();
-    expect(screen.getByText("1 climb")).toBeInTheDocument();
+    expect(screen.getByText("1 climb")).not.toHaveClass("badge");
     expect(screen.getByText("1.5 mi")).toBeInTheDocument();
     expect(screen.getByText("410 ft")).toBeInTheDocument();
     expect(screen.getByText("5.2%")).toBeInTheDocument();
@@ -637,12 +1003,8 @@ describe("ActivityDetailPanel", () => {
     });
 
     expect(climbRow).toHaveAttribute("aria-pressed", "false");
-    expect(mocks.renderMapLibreRouteMap).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        fitBoundsKey: "activity",
-        fitBoundsPoints: null,
-      }),
-    );
+    const overview = currentMap();
+    expect(overview.overlays).toEqual([]);
 
     await user.click(climbRow);
 
@@ -660,33 +1022,97 @@ describe("ActivityDetailPanel", () => {
     expect(
       screen.getByRole("img", { name: "Climb 1 elevation profile" }),
     ).toBeInTheDocument();
-    expect(mocks.renderMapLibreRouteMap).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        fitBoundsKey: "climb-1",
-        fitBoundsPoints: expect.arrayContaining([
-          expect.objectContaining({ distance_meters: 0 }),
-          expect.objectContaining({ distance_meters: 2400 }),
-        ]),
-      }),
-    );
-
-    await user.click(screen.getByRole("button", { name: "Zoom out map" }));
-
+    expect(currentMap()).toBe(overview);
     expect(
-      screen.queryByRole("img", { name: "Climb 1 elevation profile" }),
+      screen.queryByRole("button", { name: "Zoom out map" }),
     ).not.toBeInTheDocument();
-    expect(mocks.renderMapLibreRouteMap).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        fitBoundsKey: "activity",
-        fitBoundsPoints: null,
-      }),
-    );
+    const viewMap = screen.getByRole("button", { name: "View Climb 1 on map" });
+    expect(viewMap.querySelector('svg[data-icon="route"]')).toBeInTheDocument();
+    expect(viewMap).toHaveAttribute("title", "View Climb 1 on map");
+    expect(viewMap).not.toHaveTextContent("View on map");
+    await user.click(viewMap);
+    const dialog = screen.getByRole("dialog", { name: "Climb 1" });
+    expect(
+      within(dialog).getByRole("img", { name: "Climb 1 map" }),
+    ).toBeInTheDocument();
+    expect(mocks.renderMapLibreRouteMap.mock.lastCall?.[0]).toMatchObject({
+      routePoints: makeClimbingRoutePoints(),
+      routeColor: "#0060df",
+      showZoomControls: true,
+      fitBoundsMaxZoom: 16,
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Climb 1 elevation profile" }),
+    ).toBeInTheDocument();
+    expect(currentMap()).toBe(overview);
   });
 
-  it("scrolls the climb list after fifteen records", () => {
+  it("views a matched segment without changing its selection or expanding its details", async () => {
+    const user = userEvent.setup();
+    const activity = makeActivity();
+    const scrollIntoView = vi.fn();
+    render(<ActivityDetailPanel activityId={7} />);
+    document.getElementById("activity-segment-11")!.scrollIntoView =
+      scrollIntoView;
+    const overview = currentMap();
+    const selection = screen.getByRole("button", {
+      name: "Highlight North Climb",
+    });
+    const viewMap = screen.getByRole("button", {
+      name: "View North Climb on map",
+    });
+    expect(viewMap.querySelector('svg[data-icon="route"]')).toBeInTheDocument();
+    expect(viewMap).toHaveAttribute("title", "View North Climb on map");
+    expect(viewMap).not.toHaveTextContent("View on map");
+    act(() => viewMap.focus());
+    await user.keyboard("{Enter}");
+    const dialog = screen.getByRole("dialog", { name: "North Climb" });
+    const effort = activity.segment_efforts[0];
+    expect(mocks.renderMapLibreRouteMap.mock.lastCall?.[0]).toMatchObject({
+      ariaLabel: "North Climb map",
+      routePoints: activity.route_points.slice(
+        effort.start_route_point_index,
+        effort.end_route_point_index + 1,
+      ),
+      routeColor: overview.overlays?.[0].color,
+    });
+    expect(
+      mocks.renderMapLibreRouteMap.mock.lastCall?.[0].overlays,
+    ).toBeUndefined();
+    expect(selection).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.queryByRole("img", { name: "North Climb attempts chart" }),
+    ).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(selection).toHaveAttribute("aria-pressed", "false");
+    await user.click(viewMap);
+    fireEvent(
+      screen.getByRole("dialog"),
+      new Event("cancel", { cancelable: true }),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(currentMap()).toBe(overview);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("disables a focused segment map when its route geometry is missing", () => {
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({ route_points: [] }),
+    });
+    render(<ActivityDetailPanel activityId={7} />);
+    expect(
+      screen.getByRole("button", { name: "View North Climb on map" }),
+    ).toBeDisabled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it.each([5, 6])("keeps five climb rows visible with %i records", (count) => {
     mocks.useActivity.mockReturnValue({
       data: makeActivity({
-        route_points: makeManyClimbRoutePoints(16),
+        route_points: makeManyClimbRoutePoints(count),
         segment_efforts: [],
       }),
       isLoading: false,
@@ -696,15 +1122,20 @@ describe("ActivityDetailPanel", () => {
 
     render(<ActivityDetailPanel activityId={7} />);
 
-    expect(screen.getByText("16 climbs")).toBeInTheDocument();
+    expect(screen.getByText(`${count} climbs`)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Show climb 16 details" }),
+      screen.getByRole("button", { name: `Show climb ${count} details` }),
     ).toBeInTheDocument();
 
     const climbScroll = screen.getByTestId("activity-climbs-table-scroll");
 
-    expect(climbScroll).toHaveClass("overflow-y-auto");
-    expect(climbScroll.style.maxHeight).toBe("40rem");
+    if (count > 5) {
+      expect(climbScroll).toHaveClass("overflow-y-auto");
+      expect(climbScroll.style.maxHeight).toBe("calc(15rem + 2px)");
+    } else {
+      expect(climbScroll).not.toHaveClass("overflow-y-auto");
+      expect(climbScroll.style.maxHeight).toBe("");
+    }
   });
 
   it("shows the correct run details when a chart point is hovered", () => {

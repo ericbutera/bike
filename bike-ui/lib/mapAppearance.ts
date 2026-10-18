@@ -2,6 +2,8 @@ export type RouteMapBasemap =
   "default" | "topo" | "street" | "satellite" | "route-light" | "fiord";
 
 export const DEFAULT_ROUTE_COLOR = "#0060df";
+export const DEFAULT_ROUTE_LINE_WIDTH = 6;
+export const DEFAULT_ROUTE_CASING_WIDTH = 9;
 export const DEFAULT_ROUTE_BASEMAP = "default";
 
 export const ROUTE_MAP_BASEMAP_LABELS: Record<RouteMapBasemap, string> = {

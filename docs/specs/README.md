@@ -9,6 +9,7 @@ Update the owning spec in the same change as any intended behavior change.
   specification, including the complete task inventory, client submission,
   domain behavior, native durability, storage, and provider protocol.
 - [TODO](../TODO.md): outstanding work only; it does not duplicate the worker spec.
+- [Activities](activities.md): activity list and activity details specifications.
 
 ## Spec Rules
 

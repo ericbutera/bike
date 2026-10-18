@@ -33,6 +33,17 @@ Snapshot review and release status live in
   Deployment's legacy `MAP_STYLE_URL` must not override the shared default.
 - Preserve each surface's framing, heatmap density/opacity, selection highlights,
   playback behavior, and visible attribution while applying the shared look.
+- Interactive route maps identify the first stored route point with a green
+  play icon and the last point with Font Awesome **flag-checkered**. Use only
+  the 16px icons, with no buttons, text labels, or background badges. A thin
+  white outline keeps their shapes legible in both themes. Center each icon
+  directly over its route point with no horizontal or vertical offset. When
+  a loop starts and finishes at the same location, both icons share that center.
+  Preserve accessible **Route start** and **Route finish** names.
+- Share these endpoint markers across activity, segment comparison, effort
+  analysis, race, and focused route maps. Preserve explicit endpoint hiding on
+  surfaces such as the segment builder. Markers must not intercept pointer
+  events or interfere with route hover, selection, panning, or zooming.
 
 ### Appearance acceptance
 
@@ -45,6 +56,10 @@ Snapshot review and release status live in
 - Compare `map-renderer` thumbnail/full PNGs with browser maps in both themes;
   style changes must follow the image revision and cache rules below.
   [MAPS15](../TODO.md#active-work) tracks implementation and visual verification.
+- Verify interactive endpoint icons on open, reversed, and closed
+  routes in both themes. The markers follow the current route geometry,
+  survive style changes, and disappear when endpoints are hidden or the route
+  has fewer than two points. Verify marker cleanup when a map unmounts.
 
 ## Rider experience
 
