@@ -12,6 +12,10 @@ const STORAGE_SPEED_SCALE: f64 = 100.0;
 pub struct ActivitySourceMetadata {
     pub description: Option<String>,
     pub gear: Option<ActivityGear>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub private_notes: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]

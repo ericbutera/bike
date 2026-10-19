@@ -92,6 +92,8 @@ where
 #[schema(example = json!({"id": 42,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","activity_type": "training","original_filename": "saturday-hills.fit","format": "fit","started_at": "2026-09-26T13:00:00Z","ended_at": "2026-09-26T14:12:00Z","location": "Detroit, Michigan","distance_meters": 25430.5,"moving_time_seconds": 4200,"total_time_seconds": 4320,"elevation_gain_meters": 312.4,"average_speed_mps": 6.05,"average_heart_rate_bpm": 148,"estimated_ftp_watts": 245,"route_points": [{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2}],"can_regenerate": true,"can_download_source_file": true}))]
 pub struct ActivityResponse {
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub private_notes: Option<String>,
     pub gear: Option<bike_core::activity_data::ActivityGear>,
     pub activity_import_id: Option<i32>,
     #[schema(example = 42)]
@@ -164,6 +166,15 @@ pub struct UpdateActivityRequest {
     pub title: Option<String>,
     #[schema(example = "training")]
     pub activity_type: Option<ActivityType>,
+    pub sport: Option<ActivitySport>,
+    /// Empty text clears the manual location and restores route-derived location.
+    pub location: Option<String>,
+    /// Empty text clears the description.
+    pub description: Option<String>,
+    /// Empty text clears private notes.
+    pub private_notes: Option<String>,
+    /// Changes the existing gear's display name while preserving its identifier.
+    pub gear_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -236,6 +247,7 @@ impl ActivityResponse {
 
         Self {
             description: metadata.description,
+            private_notes: metadata.private_notes,
             gear: metadata.gear,
             activity_import_id: model.activity_import_id,
             id: model.id,
@@ -783,8 +795,15 @@ pub async fn update_activity(
         &state.db,
         &state.tasks,
         activity,
-        request.title,
-        request.activity_type,
+        activities::ActivityDetailsUpdate {
+            title: request.title,
+            activity_type: request.activity_type,
+            sport: request.sport,
+            location: request.location,
+            description: request.description,
+            private_notes: request.private_notes,
+            gear_name: request.gear_name,
+        },
     )
     .await?;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
@@ -931,6 +950,25 @@ mod tests {
     use bike_core::activity_details::{serialize_derived_activity_data, StoredActivityDerivedData};
     use bike_core::activity_training_analysis::ActivityTrainingAnalysisResponse;
     use bike_core::platform::data::pagination::PaginatedResponse;
+    use serde_json::json;
+
+    #[test]
+    fn edit_request_distinguishes_omitted_fields_and_explicit_text_clears() {
+        let empty: UpdateActivityRequest = serde_json::from_value(json!({})).unwrap();
+        assert!(empty.sport.is_none());
+        assert!(empty.location.is_none());
+        assert!(empty.description.is_none());
+        let request: UpdateActivityRequest = serde_json::from_value(json!({
+            "sport": "hike", "activity_type": "race", "location": "", "description": ""
+        }))
+        .unwrap();
+        assert_eq!(request.sport, Some(ActivitySport::Hike));
+        assert_eq!(request.activity_type, Some(ActivityType::Race));
+        assert_eq!(request.location.as_deref(), Some(""));
+        assert_eq!(request.description.as_deref(), Some(""));
+        assert!(request.title.is_none());
+        assert!(serde_json::from_value::<UpdateActivityRequest>(json!({"sport": "unknown_sport"})).is_err());
+    }
 
     #[tokio::test]
     async fn regeneration_accepts_an_owned_retained_file_as_a_native_job() {
@@ -971,6 +1009,8 @@ mod tests {
     fn feed_and_detail_keep_source_description_and_gear() {
         let mut model = activity_response_test_model(Utc::now());
         let metadata = bike_core::activity_data::ActivitySourceMetadata {
+            location: None,
+            private_notes: Some("Fixture private notes".into()),
             description: Some("Fixture description".into()),
             gear: Some(bike_core::activity_data::ActivityGear {
                 id: "fixture-bike".into(),
@@ -982,6 +1022,7 @@ mod tests {
         let detail = ActivityResponse::from_detail(model, vec![]);
         for response in [summary, detail] {
             assert_eq!(response.description, metadata.description);
+            assert_eq!(response.private_notes, metadata.private_notes);
             assert_eq!(response.gear, metadata.gear);
         }
     }

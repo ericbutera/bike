@@ -124,11 +124,18 @@ impl Model {
         db: &impl ConnectionTrait,
         parsing_artifact: &ActivityProcessingArtifact,
         parsed: &ParsedActivityData,
-        save_data: ActivitySaveData,
+        mut save_data: ActivitySaveData,
     ) -> Result<activities::Model, AppError> {
         let expected_updated_at = self.updated_at;
         let activity_type = self.activity_type.clone();
         let title = self.title.clone();
+        let sport = self.sport.clone();
+        if let Some(metadata) = self.derived_data_json.as_ref().and_then(|data| data.source_metadata()) {
+            save_data.derived_data_json = save_data.derived_data_json.with_source_metadata(metadata.clone());
+        }
+        if !self.is_bike_activity() {
+            save_data.estimated_ftp_watts = None;
+        }
         let mut active_model: activities::ActiveModel = self.into();
         apply_fields(
             &mut active_model,
@@ -139,6 +146,7 @@ impl Model {
         );
         active_model.activity_type = Set(activity_type);
         active_model.title = Set(title);
+        active_model.sport = Set(sport);
         let active_model = active_model.before_save(db, false).await?;
         activities::Entity::update(active_model)
             .validate()?
@@ -200,6 +208,10 @@ mod tests {
             .activity
             .additional_fields
             .insert("description".into(), serde_json::json!("Fixture description"));
+        payload
+            .activity
+            .additional_fields
+            .insert("private_note".into(), serde_json::json!("Personal note"));
         payload.activity.additional_fields.insert(
             "gear".into(),
             serde_json::json!({"id":"fixture-bike","name":"Fixture bicycle"}),
@@ -215,6 +227,10 @@ mod tests {
             let json = serde_json::to_vec(&saved.derived_data_json).unwrap();
             let restored: crate::activity_data::StoredActivityDerivedData = serde_json::from_slice(&json).unwrap();
             assert_eq!(restored.source_metadata(), Some(&payload.activity.source_metadata()));
+            assert_eq!(
+                restored.source_metadata().unwrap().private_notes.as_deref(),
+                Some("Personal note")
+            );
             if sport != "Ride" {
                 assert!(saved.estimated_ftp_watts.is_none());
                 assert!(saved.heart_rate_zones_json.is_none());

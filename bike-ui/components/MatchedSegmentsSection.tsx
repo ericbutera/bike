@@ -36,7 +36,6 @@ import {
   segmentOverlayPoints,
   useMatchedSegmentGroups,
 } from "./activity-detail/matchedSegments";
-import { AppCard, CardHeader } from "./ui/Card";
 import { useKeyedState } from "../lib/useKeyedState";
 import SegmentColorStatus from "./activity-detail/SegmentColorStatus";
 import ViewRouteOnMap from "./ViewRouteOnMap";
@@ -646,18 +645,13 @@ export default function MatchedSegmentsSection({
         ? current.filter((entry) => entry !== segmentId)
         : [...current, segmentId],
     );
-    onToggleSegmentMatch(segmentId);
+    if (!starredSegmentIds.has(segmentId)) onToggleSegmentMatch(segmentId);
   }
 
   function handleToggleRow(
     segmentId: number,
-    isStarred: boolean,
     event?: KeyboardEvent<HTMLDivElement>,
   ) {
-    if (isStarred) {
-      return;
-    }
-
     if (event && event.key !== "Enter" && event.key !== " ") {
       return;
     }
@@ -666,198 +660,170 @@ export default function MatchedSegmentsSection({
     toggleSegmentMatch(segmentId);
   }
 
-  return (
-    <AppCard>
-      {segmentGroups.length > 0 && (
-        <>
-          <CardHeader className="mb-3" title="Matched segments" />
-          <ul className="list overflow-hidden bg-base-100">
-            {segmentGroups.map((segmentGroup) => {
-              const segmentHref = `/segments/${segmentGroup.segmentId}`;
-              const segmentAchievement =
-                segmentHistoricalAchievements(segmentGroup);
-              const isSelected = selectedSegmentIds.includes(
-                segmentGroup.segmentId,
-              );
-              const isStarred = starredSegmentIds.has(segmentGroup.segmentId);
-              const isExpanded =
-                isStarred ||
-                isSelected ||
-                expandedSegmentIds.includes(segmentGroup.segmentId);
+  return segmentGroups.length > 0 ? (
+    <section aria-label="Matched segments">
+      <h2 className="sr-only">Matched segments</h2>
+      <ul className="list overflow-hidden bg-base-100">
+        {segmentGroups.map((segmentGroup) => {
+          const segmentHref = `/segments/${segmentGroup.segmentId}`;
+          const segmentAchievement =
+            segmentHistoricalAchievements(segmentGroup);
+          const isSelected = selectedSegmentIds.includes(
+            segmentGroup.segmentId,
+          );
+          const isStarred = starredSegmentIds.has(segmentGroup.segmentId);
+          const isExpanded = expandedSegmentIds.includes(
+            segmentGroup.segmentId,
+          );
 
-              return (
-                <li
-                  id={segmentGroup.anchorId}
-                  key={segmentGroup.segmentId}
-                  style={
-                    {
-                      "--segment-color": segmentGroup.tone.mapColor,
-                    } as CSSProperties
-                  }
-                  className={`list-row grid-cols-1 w-full p-0 transition ${
-                    isSelected ? "bg-base-200/60" : "bg-base-100"
-                  } border-b border-base-300 last:border-b-0`}
+          return (
+            <li
+              id={segmentGroup.anchorId}
+              key={segmentGroup.segmentId}
+              style={
+                {
+                  "--segment-color": segmentGroup.tone.mapColor,
+                } as CSSProperties
+              }
+              className={`list-row grid-cols-1 w-full p-0 transition ${
+                isSelected ? "bg-base-200/60" : "bg-base-100"
+              } border-b border-base-300 last:border-b-0`}
+            >
+              <div
+                className={`collapse min-w-0 w-full rounded-none ring-1 ring-inset transition ${
+                  isSelected
+                    ? "ring-[var(--segment-color)]/25"
+                    : "ring-transparent"
+                } ${isExpanded ? "collapse-open" : "collapse-close"}`}
+              >
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="collapse-title grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-3 py-3 pr-3 sm:px-4 sm:pr-4"
+                  aria-expanded={isExpanded}
+                  aria-controls={`${segmentGroup.anchorId}-details`}
+                  onClick={() => {
+                    toggleSegmentMatch(segmentGroup.segmentId);
+                  }}
+                  onKeyDown={(event) => {
+                    handleToggleRow(segmentGroup.segmentId, event);
+                  }}
                 >
-                  <div
-                    className={`collapse min-w-0 w-full rounded-none ring-1 ring-inset transition ${
-                      isSelected
-                        ? "ring-[var(--segment-color)]/25"
-                        : "ring-transparent"
-                    } ${isExpanded ? "collapse-open" : "collapse-close"}`}
+                  <button
+                    type="button"
+                    className={`btn btn-ghost btn-sm btn-square self-center ${
+                      isStarred ? "text-warning" : "text-base-content/45"
+                    }`}
+                    aria-label={`${
+                      isStarred ? "Unstar" : "Star"
+                    } ${segmentGroup.segmentTitle}`}
+                    aria-pressed={isStarred}
+                    disabled={updateSegmentMutation.isPending}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void toggleSegmentStar(
+                        segmentGroup.segmentId,
+                        !isStarred,
+                      );
+                    }}
                   >
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      className="collapse-title grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-3 py-3 pr-3 sm:px-4 sm:pr-4"
+                    <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
+                  </button>
+
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <SegmentColorStatus color={segmentGroup.tone.mapColor} />
+                      <Link
+                        href={segmentHref}
+                        className="truncate text-base font-semibold text-base-content transition hover:text-primary"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                      >
+                        {segmentGroup.segmentTitle}
+                      </Link>
+                    </div>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/60">
+                      <span>
+                        {segmentGroup.efforts.length} run
+                        {segmentGroup.efforts.length === 1 ? "" : "s"}
+                      </span>
+                      <span>
+                        {formatOverallRank(segmentGroup.bestOverallRank)}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center self-center justify-end gap-1">
+                    <ViewRouteOnMap
+                      title={segmentGroup.segmentTitle}
+                      routePoints={segmentOverlayPoints(
+                        routePoints,
+                        segmentGroup.bestEffort,
+                      )}
+                      color={segmentGroup.tone.mapColor}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm btn-square"
+                      aria-label={
+                        isExpanded ? "Hide time & runs" : "Show time & runs"
+                      }
                       aria-expanded={isExpanded}
                       aria-controls={`${segmentGroup.anchorId}-details`}
-                      onClick={() => {
-                        if (isStarred) {
-                          return;
-                        }
+                      onClick={(event) => {
+                        event.stopPropagation();
 
                         toggleSegmentMatch(segmentGroup.segmentId);
                       }}
-                      onKeyDown={(event) => {
-                        handleToggleRow(
-                          segmentGroup.segmentId,
-                          isStarred,
-                          event,
-                        );
-                      }}
                     >
-                      <button
-                        type="button"
-                        className={`btn btn-ghost btn-sm btn-square self-center ${
-                          isStarred ? "text-warning" : "text-base-content/45"
-                        }`}
-                        aria-label={`${
-                          isStarred ? "Unstar" : "Star"
-                        } ${segmentGroup.segmentTitle}`}
-                        aria-pressed={isStarred}
-                        disabled={updateSegmentMutation.isPending}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void toggleSegmentStar(
-                            segmentGroup.segmentId,
-                            !isStarred,
-                          );
-                        }}
-                      >
-                        <FontAwesomeIcon
-                          icon={faStar}
-                          className="h-3.5 w-3.5"
-                        />
-                      </button>
-
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <SegmentColorStatus
-                            color={segmentGroup.tone.mapColor}
-                          />
-                          <Link
-                            href={segmentHref}
-                            className="truncate text-base font-semibold text-base-content transition hover:text-primary"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                            }}
-                          >
-                            {segmentGroup.segmentTitle}
-                          </Link>
-                        </div>
-                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/60">
-                          <span>
-                            {segmentGroup.efforts.length} run
-                            {segmentGroup.efforts.length === 1 ? "" : "s"}
-                          </span>
-                          <span>
-                            {formatOverallRank(segmentGroup.bestOverallRank)}
-                          </span>
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap items-center self-center justify-end gap-1">
-                        <ViewRouteOnMap
-                          title={segmentGroup.segmentTitle}
-                          routePoints={segmentOverlayPoints(
-                            routePoints,
-                            segmentGroup.bestEffort,
-                          )}
-                          color={segmentGroup.tone.mapColor}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm btn-square"
-                          aria-label={
-                            isStarred
-                              ? "Starred stays open"
-                              : isExpanded
-                                ? "Hide time & runs"
-                                : "Show time & runs"
-                          }
-                          aria-expanded={isExpanded}
-                          aria-controls={`${segmentGroup.anchorId}-details`}
-                          disabled={isStarred}
-                          onClick={(event) => {
-                            event.stopPropagation();
-
-                            if (isStarred) {
-                              return;
-                            }
-
-                            toggleSegmentMatch(segmentGroup.segmentId);
-                          }}
-                        >
-                          <FontAwesomeIcon
-                            icon={isExpanded ? faChevronUp : faChevronDown}
-                            className="h-3.5 w-3.5"
-                          />
-                        </button>
-                      </div>
-                    </div>
-
-                    {isExpanded ? (
-                      <div
-                        id={`${segmentGroup.anchorId}-details`}
-                        className="collapse-content list-col-wrap px-3 pb-4 sm:px-4"
-                      >
-                        <div className="grid gap-3">
-                          <div className="flex flex-wrap gap-2">
-                            <span className="badge badge-outline">
-                              Best{" "}
-                              {formatDuration(
-                                segmentGroup.bestEffort.duration_seconds,
-                              )}
-                            </span>
-                            <span className="badge badge-outline">
-                              Leaderboard{" "}
-                              {formatOverallRank(segmentGroup.bestOverallRank)}
-                            </span>
-                            <span className="badge badge-outline">
-                              Peak HR{" "}
-                              {formatHeartRate(segmentGroup.peakHeartRate)}
-                            </span>
-                            {segmentAchievement ? (
-                              <SegmentAchievementBadge
-                                achievement={segmentAchievement}
-                              />
-                            ) : null}
-                          </div>
-
-                          <SegmentAttemptsChart
-                            segmentGroup={segmentGroup}
-                            routePoints={routePoints}
-                          />
-                        </div>
-                      </div>
-                    ) : null}
+                      <FontAwesomeIcon
+                        icon={isExpanded ? faChevronUp : faChevronDown}
+                        className="h-3.5 w-3.5"
+                      />
+                    </button>
                   </div>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
-    </AppCard>
-  );
+                </div>
+
+                {isExpanded ? (
+                  <div
+                    id={`${segmentGroup.anchorId}-details`}
+                    className="collapse-content list-col-wrap px-3 pb-4 sm:px-4"
+                  >
+                    <div className="grid gap-3">
+                      <div className="flex flex-wrap gap-2">
+                        <span className="badge badge-outline">
+                          Best{" "}
+                          {formatDuration(
+                            segmentGroup.bestEffort.duration_seconds,
+                          )}
+                        </span>
+                        <span className="badge badge-outline">
+                          Leaderboard{" "}
+                          {formatOverallRank(segmentGroup.bestOverallRank)}
+                        </span>
+                        <span className="badge badge-outline">
+                          Peak HR {formatHeartRate(segmentGroup.peakHeartRate)}
+                        </span>
+                        {segmentAchievement ? (
+                          <SegmentAchievementBadge
+                            achievement={segmentAchievement}
+                          />
+                        ) : null}
+                      </div>
+
+                      <SegmentAttemptsChart
+                        segmentGroup={segmentGroup}
+                        routePoints={routePoints}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  ) : null;
 }

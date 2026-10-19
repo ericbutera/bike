@@ -1,8 +1,15 @@
 "use client";
 
-import { faGear } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faGear } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 
 export type ActionMenuItem = {
@@ -11,14 +18,22 @@ export type ActionMenuItem = {
   disabled?: boolean;
   explanation?: string;
   section?: string;
+  icon?: ReactNode;
+  selected?: boolean;
 };
 
 export default function ActionMenu({
   label,
   items,
+  triggerContent,
+  triggerClassName = "btn btn-ghost btn-square btn-sm",
+  disabled = false,
 }: {
   label: string;
   items: ActionMenuItem[];
+  triggerContent?: ReactNode;
+  triggerClassName?: string;
+  disabled?: boolean;
 }) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -45,7 +60,12 @@ export default function ActionMenu({
 
   useEffect(() => {
     if (!isOpen) return;
-    menuControls(menu.current)[0]?.focus({ preventScroll: true });
+    const controls = menuControls(menu.current);
+    const initial =
+      controls.find(
+        (control) => control.getAttribute("aria-checked") === "true",
+      ) ?? controls[0];
+    initial?.focus({ preventScroll: true });
     function dismiss(event: MouseEvent) {
       if (menu.current?.contains(event.target as Node)) return;
       if (trigger.current?.contains(event.target as Node)) return;
@@ -99,7 +119,8 @@ export default function ActionMenu({
       <button
         ref={trigger}
         type="button"
-        className="btn btn-ghost btn-square btn-sm"
+        disabled={disabled}
+        className={triggerClassName}
         aria-label={label}
         title={label}
         aria-haspopup="menu"
@@ -111,7 +132,9 @@ export default function ActionMenu({
           setPosition(menuPosition(rect, rowCount));
         }}
       >
-        <FontAwesomeIcon icon={faGear} className="h-4 w-4" />
+        {triggerContent ?? (
+          <FontAwesomeIcon icon={faGear} className="h-4 w-4" />
+        )}
       </button>
       {position
         ? createPortal(
@@ -173,25 +196,33 @@ function MenuAction({
 }) {
   return (
     <button
-      role="menuitem"
+      role={item.selected === undefined ? "menuitem" : "menuitemradio"}
+      aria-checked={item.selected}
       type="button"
       disabled={item.disabled}
       title={item.explanation}
-      className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-base-200 focus:bg-base-200 disabled:opacity-50"
+      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-base-200 focus:bg-base-200 disabled:opacity-50 ${item.selected ? "bg-base-200" : ""}`}
       onClick={() => {
         onClose();
         item.onSelect();
       }}
     >
-      {item.label}
-      {item.disabled && item.explanation ? (
-        <span className="block text-xs">{item.explanation}</span>
+      {item.icon ? <span aria-hidden="true">{item.icon}</span> : null}
+      <span className="min-w-0 flex-1">
+        {item.label}
+        {item.disabled && item.explanation ? (
+          <span className="block text-xs">{item.explanation}</span>
+        ) : null}
+      </span>
+      {item.selected ? (
+        <FontAwesomeIcon icon={faCheck} aria-hidden="true" />
       ) : null}
     </button>
   );
 }
 
 function menuPosition(rect: DOMRect, itemCount: number) {
+  const menuWidth = Math.min(288, window.innerWidth - 16);
   return {
     top: Math.max(
       8,
@@ -200,6 +231,12 @@ function menuPosition(rect: DOMRect, itemCount: number) {
         window.innerHeight - Math.min(itemCount * 48 + 16, 400),
       ),
     ),
-    right: Math.max(8, window.innerWidth - rect.right),
+    right: Math.max(
+      8,
+      Math.min(
+        window.innerWidth - rect.right,
+        window.innerWidth - menuWidth - 8,
+      ),
+    ),
   };
 }

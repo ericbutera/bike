@@ -114,3 +114,25 @@ it("keeps the menu anchored and usable when a wide grid scrolls after opening", 
   bounds.mockRestore();
   focus.mockRestore();
 });
+
+it("keeps a menu inside a narrow viewport when its trigger is near the left edge", async () => {
+  vi.stubGlobal("innerWidth", 390);
+  const user = userEvent.setup();
+  render(
+    <ActionMenu
+      label="Activity type"
+      items={[{ label: "Walk", onSelect: vi.fn() }]}
+    />,
+  );
+  const trigger = screen.getByRole("button", { name: "Activity type" });
+  const bounds = vi
+    .spyOn(trigger, "getBoundingClientRect")
+    .mockReturnValue(new DOMRect(8, 100, 200, 32));
+  try {
+    await user.click(trigger);
+    expect(screen.getByRole("menu")).toHaveStyle({ right: "94px" });
+  } finally {
+    bounds.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});

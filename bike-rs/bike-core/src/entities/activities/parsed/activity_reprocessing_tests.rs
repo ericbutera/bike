@@ -7,6 +7,16 @@ async fn reprocessing_preserves_saved_details_and_checks_the_source_version() {
     let activity = activities::Model {
         title: "My saved ride title".into(),
         activity_type: "race".into(),
+        sport: "hike".into(),
+        derived_data_json: Some(
+            crate::activity_data::StoredActivityDerivedData::default().with_source_metadata(
+                crate::activity_data::ActivitySourceMetadata {
+                    location: Some("Saved location".into()),
+                    description: Some("Saved description".into()),
+                    ..Default::default()
+                },
+            ),
+        ),
         ..fixtures::reprocess_activity()
     };
     let db = MockDatabase::new(DatabaseBackend::Postgres)
@@ -42,8 +52,11 @@ async fn reprocessing_preserves_saved_details_and_checks_the_source_version() {
     let values = &write.values.as_ref().unwrap().0;
     assert!(values.contains(&sea_orm::Value::from("My saved ride title")));
     assert!(values.contains(&sea_orm::Value::from("race")));
+    assert!(values.contains(&sea_orm::Value::from("hike")));
     assert!(!values.contains(&sea_orm::Value::from("Embedded source title")));
     let log = format!("{transactions:?}");
+    assert!(log.contains("Saved location"));
+    assert!(log.contains("Saved description"));
     assert!(log.contains("WHERE"));
     assert!(log.contains("updated_at\\\" ="));
     let expected = format!("{:?}", sea_orm::Value::from(activity.updated_at));

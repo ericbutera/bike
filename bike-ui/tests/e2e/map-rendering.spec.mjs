@@ -653,8 +653,7 @@ for (const target of targets) {
             .data.equals(PNG.sync.read(before).data),
         )
         .toBe(true);
-      const count = page.getByText("1 climb", { exact: true });
-      await expect(count).not.toHaveClass(/badge/);
+      await page.getByRole("tab", { name: "Climbs (1)", exact: true }).click();
       const climb = page.getByRole("button", { name: "Show climb 1 details" });
       await climb.click();
       await expect(climb).toHaveAttribute("aria-pressed", "true");
@@ -695,6 +694,7 @@ for (const target of targets) {
       await expect(climbDialog).toHaveCount(0);
       await expect(climb).toHaveAttribute("aria-pressed", "true");
 
+      await page.getByRole("tab", { name: /^Segments/ }).click();
       await page
         .getByRole("button", {
           name: "View Fixture climb segment on map",

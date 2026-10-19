@@ -17,13 +17,13 @@ test("stored heart-rate zones render without signal chart samples", async ({
     await expect(page.getByText("75%", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Ride signals" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       page.getByRole("img", { name: "Activity signals chart" }),
     ).toHaveCount(0);
     await expect(
       page.getByText("Turn on at least one signal layer to render the chart."),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await context.close();
   }
 });

@@ -13,6 +13,7 @@ use sea_orm::{
 };
 use std::collections::HashMap;
 mod history;
+pub use history::{ActivityDetailsUpdate, ActivityEditOutcome};
 pub(crate) mod parsed;
 mod reprocessing;
 

@@ -1521,6 +1521,7 @@ export interface components {
       moving_time_seconds?: number | null;
       /** @example saturday-hills.fit */
       original_filename?: string | null;
+      private_notes?: string | null;
       /** Format: int32 */
       relative_effort?: number | null;
       /**
@@ -2586,6 +2587,7 @@ export interface components {
         moving_time_seconds?: number | null;
         /** @example saturday-hills.fit */
         original_filename?: string | null;
+        private_notes?: string | null;
         /** Format: int32 */
         relative_effort?: number | null;
         /**
@@ -4070,6 +4072,15 @@ export interface components {
      */
     UpdateActivityRequest: {
       activity_type?: null | components["schemas"]["ActivityType"];
+      /** @description Empty text clears the description. */
+      description?: string | null;
+      /** @description Changes the existing gear's display name while preserving its identifier. */
+      gear_name?: string | null;
+      /** @description Empty text clears the manual location and restores route-derived location. */
+      location?: string | null;
+      /** @description Empty text clears private notes. */
+      private_notes?: string | null;
+      sport?: null | components["schemas"]["ActivitySport"];
       /** @example Saturday hill repeats */
       title?: string | null;
     };

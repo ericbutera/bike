@@ -2,7 +2,9 @@
 
 import ResponsiveChart from "../ui/ResponsiveChart";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
+import { faCheck } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   Area,
   CartesianGrid,
@@ -34,7 +36,6 @@ type SignalSeries = {
   key: SignalMetricKey;
   label: string;
   points: ChartSeriesPoint[];
-  buttonClassName: string;
   dotClassName: string;
   strokeColor: string;
   strokeWidth?: number;
@@ -184,7 +185,6 @@ function useActivitySignalSeries(
         key: "heartRate",
         label: "Heart rate",
         points: heartRateSeries,
-        buttonClassName: "btn-error",
         dotClassName: "bg-error",
         strokeColor: "var(--color-error)",
         strokeWidth: 2,
@@ -194,7 +194,6 @@ function useActivitySignalSeries(
         key: "power",
         label: "Power",
         points: powerSeries,
-        buttonClassName: "btn-warning",
         dotClassName: "bg-warning",
         strokeColor: "var(--color-warning)",
         strokeWidth: 1.75,
@@ -204,7 +203,6 @@ function useActivitySignalSeries(
         key: "speed",
         label: "Speed",
         points: speedSeries,
-        buttonClassName: "btn-info",
         dotClassName: "bg-info",
         strokeColor: "var(--color-info)",
         strokeWidth: 1.5,
@@ -217,7 +215,6 @@ function useActivitySignalSeries(
         key: "elevation",
         label: "Elevation",
         points: elevationSeries,
-        buttonClassName: "btn-success",
         dotClassName: "bg-success",
         strokeColor: "var(--color-success)",
         strokeWidth: 1.75,
@@ -298,6 +295,7 @@ export default function ActivitySignalsCard({
   chartPoints: ActivityChartPoint[] | null | undefined;
   unitSystem: UnitSystem;
 }) {
+  const summaryId = useId();
   const [visibleKeys, setVisibleKeys] = useState<SignalMetricKey[]>(
     DEFAULT_VISIBLE_SIGNAL_KEYS,
   );
@@ -323,11 +321,13 @@ export default function ActivitySignalsCard({
     });
   }
 
+  if (availableSeries.length === 0) return null;
+
   return (
-    <AppCard>
+    <AppCard as="section" aria-label="Ride signals">
       <CardHeader className="mb-3" title="Ride signals" />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {availableSeries.map((entry) => {
           const isVisible = visibleKeys.includes(entry.key);
 
@@ -335,115 +335,112 @@ export default function ActivitySignalsCard({
             <button
               key={entry.key}
               type="button"
-              className={`btn btn-sm ${
-                isVisible ? entry.buttonClassName : "btn-ghost"
-              }`}
+              className={`flex min-w-0 items-center gap-2 rounded-box border px-3 py-2 text-left text-sm transition-colors hover:bg-base-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${isVisible ? "bg-base-200" : "border-base-300 bg-base-100"}`}
+              style={{ borderColor: isVisible ? entry.strokeColor : undefined }}
+              aria-label={entry.label}
+              aria-describedby={`${summaryId}-${entry.key}`}
               aria-pressed={isVisible}
               onClick={() => {
                 toggleSignalLayer(entry.key);
               }}
             >
-              {entry.label}
+              <span
+                aria-hidden="true"
+                className={`h-2.5 w-2.5 shrink-0 rounded-full ${entry.dotClassName}`}
+              />
+              <span className="font-medium">{entry.label}</span>
+              <span
+                id={`${summaryId}-${entry.key}`}
+                className="ml-auto text-right text-xs text-base-content/70"
+              >
+                {entry.summary}
+              </span>
+              <span className="inline-flex w-3 shrink-0" aria-hidden="true">
+                {isVisible ? <FontAwesomeIcon icon={faCheck} /> : null}
+              </span>
             </button>
           );
         })}
       </div>
 
       {visibleSeries.length > 0 ? (
-        <>
-          <div
-            role="img"
-            aria-label="Activity signals chart"
-            className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3"
-          >
-            <div className="h-[208px] w-full">
-              <ResponsiveChart
-                width="100%"
-                height="100%"
-                minWidth={320}
-                minHeight={208}
-                initialDimension={{ width: 320, height: 208 }}
+        <div
+          role="img"
+          aria-label="Activity signals chart"
+          className="mt-5 overflow-hidden rounded-box border border-base-300 bg-base-200 p-3"
+        >
+          <div className="h-[208px] w-full">
+            <ResponsiveChart
+              width="100%"
+              height="100%"
+              minWidth={320}
+              minHeight={208}
+              initialDimension={{ width: 320, height: 208 }}
+            >
+              <ComposedChart
+                data={rows}
+                margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
               >
-                <ComposedChart
-                  data={rows}
-                  margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
-                >
-                  <CartesianGrid
-                    vertical={false}
-                    stroke="var(--color-base-content)"
-                    strokeOpacity={0.1}
-                  />
-                  <XAxis
-                    axisLine={false}
-                    dataKey="elapsedSeconds"
-                    domain={signalXDomain}
-                    includeHidden
-                    tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
-                    tickFormatter={(value: number) =>
-                      formatElapsedAxisLabel(value)
-                    }
-                    tickLine={false}
-                    type="number"
-                  />
-                  {visibleSeries.map((entry) => (
-                    <YAxis
-                      key={`${entry.key}-axis`}
-                      hide
-                      yAxisId={entry.key}
-                      domain={["dataMin", "dataMax"]}
-                    />
-                  ))}
-                  <Tooltip
-                    content={<SignalChartTooltip unitSystem={unitSystem} />}
-                  />
-                  {visibleSeries.map((entry) =>
-                    entry.key === "elevation" ? (
-                      <Area
-                        key={entry.key}
-                        type="linear"
-                        dataKey={entry.key}
-                        yAxisId={entry.key}
-                        stroke={entry.strokeColor}
-                        fill={entry.fillColor ?? entry.strokeColor}
-                        fillOpacity={0.08}
-                        strokeOpacity={0.35}
-                        strokeWidth={entry.strokeWidth ?? 1.75}
-                        dot={false}
-                        connectNulls
-                      />
-                    ) : (
-                      <Line
-                        key={entry.key}
-                        type="linear"
-                        dataKey={entry.key}
-                        yAxisId={entry.key}
-                        stroke={entry.strokeColor}
-                        strokeWidth={entry.strokeWidth ?? 2}
-                        dot={false}
-                        connectNulls
-                      />
-                    ),
-                  )}
-                </ComposedChart>
-              </ResponsiveChart>
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {visibleSeries.map((entry) => (
-              <div
-                key={`${entry.key}-summary`}
-                className="badge badge-outline gap-2 px-3 py-3"
-              >
-                <span
-                  aria-hidden
-                  className={`inline-block h-2.5 w-2.5 rounded-full ${entry.dotClassName}`}
+                <CartesianGrid
+                  vertical={false}
+                  stroke="var(--color-base-content)"
+                  strokeOpacity={0.1}
                 />
-                <span>{entry.summary}</span>
-              </div>
-            ))}
+                <XAxis
+                  axisLine={false}
+                  dataKey="elapsedSeconds"
+                  domain={signalXDomain}
+                  includeHidden
+                  tick={{ fill: "var(--color-base-content)", fontSize: 10 }}
+                  tickFormatter={(value: number) =>
+                    formatElapsedAxisLabel(value)
+                  }
+                  tickLine={false}
+                  type="number"
+                />
+                {visibleSeries.map((entry) => (
+                  <YAxis
+                    key={`${entry.key}-axis`}
+                    hide
+                    yAxisId={entry.key}
+                    domain={["dataMin", "dataMax"]}
+                  />
+                ))}
+                <Tooltip
+                  content={<SignalChartTooltip unitSystem={unitSystem} />}
+                />
+                {visibleSeries.map((entry) =>
+                  entry.key === "elevation" ? (
+                    <Area
+                      key={entry.key}
+                      type="linear"
+                      dataKey={entry.key}
+                      yAxisId={entry.key}
+                      stroke={entry.strokeColor}
+                      fill={entry.fillColor ?? entry.strokeColor}
+                      fillOpacity={0.08}
+                      strokeOpacity={0.35}
+                      strokeWidth={entry.strokeWidth ?? 1.75}
+                      dot={false}
+                      connectNulls
+                    />
+                  ) : (
+                    <Line
+                      key={entry.key}
+                      type="linear"
+                      dataKey={entry.key}
+                      yAxisId={entry.key}
+                      stroke={entry.strokeColor}
+                      strokeWidth={entry.strokeWidth ?? 2}
+                      dot={false}
+                      connectNulls
+                    />
+                  ),
+                )}
+              </ComposedChart>
+            </ResponsiveChart>
           </div>
-        </>
+        </div>
       ) : (
         <div className="alert mt-5">
           <span>Turn on at least one signal layer to render the chart.</span>

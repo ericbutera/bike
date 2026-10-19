@@ -10,14 +10,11 @@ import {
 } from "../lib/featureFlags";
 import { useFeatureFlag } from "../lib/featureFlags";
 import { useActivities } from "../lib/queries";
-import {
-  ACTIVITY_SPORT_OPTIONS,
-  parseActivitySport,
-  type ActivitySport,
-} from "../lib/activitySports";
+import { parseActivitySport } from "../lib/activitySports";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import { useKeyedState } from "../lib/useKeyedState";
 import ActivityStreamCard from "./activity-stream/ActivityStreamCard";
+import ActivitySportFilter from "./activity-stream/ActivitySportFilter";
 import { ErrorCard, LoadingCard, LoadingSpinner } from "./ui/QueryState";
 import Pagination from "./ui/Pagination";
 
@@ -84,23 +81,19 @@ export default function ActivityStream() {
         </h2>
         <div className="flex items-center gap-3">
           {activitiesQuery.isFetching ? <LoadingSpinner size="sm" /> : null}
-          <div className="join">
-            <select
-              aria-label="Activity type"
-              className="select select-bordered select-sm join-item"
-              value={sport ?? ""}
-              onChange={(event) => handleSportChange(event.currentTarget.value)}
+          <div className="flex flex-wrap items-center gap-2">
+            <ActivitySportFilter value={sport} onChange={handleSportChange} />
+            <Link
+              href="/upload"
+              className="btn btn-sm btn-square"
+              aria-label="Upload Activity"
+              title="Upload Activity"
             >
-              <option value="">All activity types</option>
-              {ACTIVITY_SPORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <Link href="/upload" className="btn btn-ghost btn-sm join-item">
-              <FontAwesomeIcon icon={faUpload} className="h-8 w-8" />
-              Upload Activity
+              <FontAwesomeIcon
+                icon={faUpload}
+                className="h-4 w-4"
+                aria-hidden="true"
+              />
             </Link>
           </div>
         </div>

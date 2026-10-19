@@ -210,10 +210,8 @@ test("the priority views preserve their empty-data states", async ({
           page.getByRole("img", { name: "Activity signals chart" }),
         ).toHaveCount(0);
         await expect(
-          page.getByText(
-            "Turn on at least one signal layer to render the chart.",
-          ),
-        ).toBeVisible();
+          page.getByRole("region", { name: "Ride signals" }),
+        ).toHaveCount(0);
       },
     },
     {

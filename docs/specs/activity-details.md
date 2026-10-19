@@ -7,6 +7,74 @@
 - This specification owns activity detail interactions. The
   [maps specification](maps.md) owns shared basemaps and default route styling;
   [segment processing](segment-processing.md) owns matching and effort data.
+- Show a Font Awesome Free solid location-dot icon immediately before the
+  location in the activity header. Keep the location text accessible and omit
+  the location group when no location is available. Put the Free solid clock
+  icon immediately before the header date/time. Keep both icons decorative,
+  with their adjacent text accessible and vertically aligned.
+
+## Detail layout
+
+- Place the title outside the cards, using the activity feed's **Recent
+  activities** heading typography. Put location before time directly beneath
+  the title. Replace the header's sport badge with the shared activity sport
+  icon and its accessible label/tooltip. Make the sport icon and Training/Race
+  tag clickable selectors that persist their own field and show save failures.
+- Put **Edit activity** first in the header actions menu, followed by **Build
+  segment** when route geometry is available, **Download original source**
+  when available, and **Delete activity**. Do not show **Import details**,
+  **Open Temporal workflows**, or **Regenerate derived data**, including for
+  administrators and activities with regeneration capability.
+- Give the four large summary stats their own card. Put **Activity data** in
+  a separate compact card: a flat Avg/Max table for speed, heart rate, and
+  cadence. Omit empty heart-rate/cadence rows. Put elapsed time, recorded gear,
+  calories, start/end timestamps, and available private notes in the data grid.
+  From 768px up, place the measurement table and details grid in two equal
+  columns. On smaller screens, stack the details below the measurements.
+  Keep description full-width below both sections and the details visible;
+  omit Show more/Show less and sport/source/format/uploaded-file fields.
+  Do not show help beside its heading.
+- Use 16px between activity-detail cards. Keep the existing recorded values and
+  user units; the reference layout does not introduce synthetic weather data.
+- Edit activity supports title, sport, Training/Race, location, and description.
+  When recorded gear or private notes exist, also offer the gear's display name
+  and private notes. Preserve the gear identifier. These edits are stored in
+  Bike. Preserve retained Strava `private_note` text and expose it to the owner;
+  place private notes in Activity data's grid.
+  Save only changed fields, preserve unknown stored sports unless changed, and
+  retain the draft on save failure. Empty location restores route-derived
+  location; empty description clears it. Format/source/upload provenance remain
+  read-only.
+- Show matched segments and detected climbs in one card with **Segments** and
+  **Climbs** tabs and plain counts. Display one panel at a time, defaulting to
+  Segments when matches exist and Climbs otherwise. Offer only tabs containing
+  data, and hide the entire card when neither has data.
+- Keep the existing segment rows and climb details inside their panels.
+  Switching tabs preserves expanded segments, selected climbs, and segment
+  selections. It does not change route-map layers, camera, or selection.
+  A new activity starts with the default tab and fresh detail state.
+- Support mouse and keyboard tabs with selected state, associated panels,
+  roving focus, arrow keys, Home, and End. Hidden panels must not contribute
+  page height or keyboard targets; render responsive charts only in the active
+  panel. Keep the segment visual redesign outside this experiment.
+- Combine each available signal's layer toggle, metric name, and summary value
+  in one row above the chart. Keep summaries available when a layer is off;
+  do not repeat them in badges below the chart. Preserve independent toggles,
+  chart colors, and keyboard access. Hide the signals card when there are no
+  usable series; when available layers are all off, retain the controls and
+  show the prompt to turn one on.
+- Render lap splits as one compact table: lap number, name, time, distance,
+  average speed, average heart rate, and maximum heart rate. Use the rider's
+  units and the usual missing-value formatting. Show the lap count as plain
+  text; use no duration badges or nested metric cards for laps. Keep the
+  explanatory empty state for uploads without explicit laps.
+- Identify selected climbs by the same one-based number as their list row
+  (**Climb 1**, **Climb 2**, etc.). Label the start/end distance separately as
+  **Activity distance** so a climb starting at zero is not read as Climb 0.
+- Keep selected-climb metric values smaller than the detail heading. Fit the
+  elevation profile's horizontal domain to its first and last distance samples,
+  without extending it to a rounded tick. Keep the entire profile visible on
+  narrow screens, and preserve units, tooltips, and climb selection behavior.
 
 ## Route map and matched segments
 
@@ -15,8 +83,10 @@
   thicken the lines. Render focused segments above other segments.
 - The overall route map always displays the blue activity route. Matched
   segments are on by default; detected climbs are off by default. Selecting a
-  climb row shows its metrics and elevation profile within the climbs card
+  climb row shows its metrics and elevation profile within the Climbs panel
   without controlling the overview camera.
+- Route-map segment controls use soft gray borders in both selected and
+  unselected states, retaining their colored status dots and selection behavior.
 - Assign colors in alphabetical segment order, breaking ties by segment ID.
   Repeat this ten-color palette for activities with more than ten segments;
   every effort of a segment shares its color:
@@ -61,8 +131,11 @@
   enter/leave events must not replace the current legend preview. Apply the
   latest preview even while earlier map geometry updates are still processing.
 - Selection stays synchronized with the matched segment details. Preserve their
-  existing expansion and starred-segment behavior and keep map camera position
+  expansion and keep map camera position
   stable during segment selection or hovering.
+- Starred segments start expanded but can be collapsed and reopened with the
+  same pointer/keyboard controls. Collapsing does not remove the star or alter
+  map selection.
 
 ## Route map layers
 
@@ -89,7 +162,7 @@
 
 - Show the climb count as plain text beside the card heading, without a pill.
   Do not offer a **Zoom out map** action in the climb details.
-- Show five climb rows at a time, with vertical scrolling for additional climbs.
+- Show twenty climb rows at a time, with vertical scrolling for additional climbs.
 - Each climb row and matched segment entry offers a Font Awesome **route** icon
   button, with a **View [name] on map** accessible label and tooltip. The button
   has no visible **View on map** text. This opens a separate, titled map dialog
@@ -122,6 +195,8 @@
 
 ## Acceptance
 
+- Cover activities without signal samples in the shared empty-state browser
+  check by asserting that the **Ride signals** region is absent.
 - Verify the ten distinct colors over the muted green light basemap and the
   dark basemap, with matching legend status dots and white line casings.
 - Exercise activities with more than twenty matches, repeated efforts, and

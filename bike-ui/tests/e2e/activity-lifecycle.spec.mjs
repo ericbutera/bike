@@ -9,7 +9,7 @@ const apiUrls = {
   ),
 };
 
-test("activity regeneration is accepted and deletion removes the activity", async ({
+test("activity regeneration API is accepted and menu deletion removes the activity", async ({
   createContext,
 }) => {
   test.setTimeout(120_000);
@@ -23,12 +23,9 @@ test("activity regeneration is accepted and deletion removes the activity", asyn
     expect(original.status()).toBe(200);
     const savedActivity = await original.json();
 
-    await page.getByRole("button", { name: "Open activity actions" }).click();
-    const regenerated = page.waitForResponse((response) =>
-      response.url().endsWith(`/api/activities/${activityId}/regenerate`),
+    const regeneration = await page.request.post(
+      `${apiUrls[target.name]}/api/activities/${activityId}/regenerate`,
     );
-    await page.getByRole("button", { name: "Regenerate derived data" }).click();
-    const regeneration = await regenerated;
     expect(regeneration.status(), `${target.name} regeneration`).toBe(202);
     expect(await regeneration.json()).toMatchObject({
       id: expect.stringMatching(/^bike-reprocess_activity_import-/),

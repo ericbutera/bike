@@ -39,7 +39,11 @@ export default function MetricCard({
   if (variant === "plain") {
     return (
       <div className={`min-w-0 ${className}`.trim()}>
-        <div className="text-2xl font-semibold text-base-content">{value}</div>
+        <div
+          className={`font-semibold text-base-content ${statValueClassNames[size]}`}
+        >
+          {value}
+        </div>
         <div className="mt-1 text-xs text-base-content/55 uppercase">
           {label}
         </div>

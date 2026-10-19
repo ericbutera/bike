@@ -16,10 +16,29 @@ pub async fn update_activity_details(
     db: &DatabaseConnection,
     tasks: &TaskQueue,
     activity: activities::Model,
-    title: Option<String>,
-    activity_type: Option<crate::activity_type::ActivityType>,
+    update: activities::ActivityDetailsUpdate,
 ) -> Result<activities::Model, AppError> {
-    let updated = activity.update_details(db, title, activity_type).await?;
+    let outcome = activity.update_details(db, update).await?;
+    let updated = outcome.activity;
+    if outcome.sport_changed {
+        if updated.is_bike_activity() {
+            crate::activity_training_analysis::rebuild_activity_training_analysis_cache(db, &[updated.id]).await?;
+        }
+        tasks
+            .submit_command(
+                crate::jobs::MaintenanceTask::ActivitySegments(crate::bike_tasks::ActivityTask {
+                    user_id: updated.user_id,
+                    activity_id: updated.id,
+                    priority: crate::bike_tasks::Priority::NewActivity,
+                }),
+                uuid::Uuid::new_v4(),
+            )
+            .await
+            .map_err(|error| AppError::internal(error.to_string()))?;
+    }
+    if outcome.affects_cycling {
+        tasks.rebuild_fitness_freshness(updated.user_id).await?;
+    }
     tasks.prepare_heatmap(updated.user_id, updated.id).await?;
     Ok(updated)
 }
@@ -302,6 +321,7 @@ async fn remove_upload_file(path: PathBuf) {
 mod tests {
 
     mod deletion;
+    mod editing;
 
     use super::*;
     use crate::activity_details::{serialize_derived_activity_data, ActivityDerivedData};

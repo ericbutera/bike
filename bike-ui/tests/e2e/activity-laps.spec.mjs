@@ -17,8 +17,13 @@ test("explicit lap rollups render on each activity detail", async ({
         "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]",
       );
     await expect(laps.getByText("2 laps", { exact: true })).toBeVisible();
-    await expect(laps.getByRole("heading", { name: "Warmup" })).toBeVisible();
-    await expect(laps.getByRole("heading", { name: "Tempo" })).toBeVisible();
+    const table = laps.getByRole("table", { name: "Lap splits" });
+    await expect(table.getByRole("cell", { name: "Warmup" })).toBeVisible();
+    await expect(table.getByRole("cell", { name: "Tempo" })).toBeVisible();
+    await expect(
+      table.getByRole("columnheader", { name: "Time", exact: true }),
+    ).toBeVisible();
+    await expect(laps.locator(".badge")).toHaveCount(0);
     await expect(
       laps.getByText("This upload did not contain explicit lap data."),
     ).toHaveCount(0);
