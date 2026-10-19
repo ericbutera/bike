@@ -126,6 +126,23 @@
 
 ## Processing flow
 
+The [activity processing DAG](performance.md#proposed-flow) defines the intended
+domain stages and their saved inputs/outputs: immutable source and recording
+objects, ordered efforts, awards and independent recording branches. Reuse the
+existing object store and Temporal operations. The current composition is below.
+
+Related stage and workflow changes follow the [loading checklist](../TODO-fix-data-loading.md#use-this-checklist-during-related-work):
+LOAD01-LOAD06 cover segment writes, refresh scope, and locks; LOAD16-LOAD21 cover
+imports/backfills and their callers. Keep item status in that checklist and
+reference applicable IDs in each implementation PR.
+
+Segment creation submits gradual historical matching to the existing Bike worker.
+Use the [segment matching contract](segment-processing.md#incremental-matching-and-historical-activities)
+for GPS-filtered candidate pages, retry-safe pair writes and affected-result
+refreshes. Renaming a fixed segment never starts matching. This is planned work;
+the existing segment-wide regeneration operation still needs that cutover.
+Screens consume saved results and do not start or repair matching jobs.
+
 ```mermaid
 flowchart TD
     File[Retained activity file] --> Parse[Parse and save activity]

@@ -1,5 +1,16 @@
 # Segment Race Viewer Specification
 
+The [activity processing DAG](performance.md#queries-each-screen-needs) prepares
+samples for each effort and retains this viewer and the segment-detail comparison
+workspace. Both place the authenticated athlete's selected attempts on the
+same fixed segment route, including several attempts within one activity.
+Each selection keeps its own effort ID, original attempt number and activity attribution, regardless of
+speed ranking.
+
+Related comparison and playback work follows LOAD11-LOAD12 in the
+[loading checklist](../TODO-fix-data-loading.md#saved-reads-and-screens), including
+the loaders and effort-table callers that supply this viewer.
+
 The segment race viewer lets a rider watch selected segment efforts move against each other on the segment route. It is optimized for distinguishing nearby riders, understanding gaps as they open, and keeping each selected ride easy to track during playback.
 
 ## Product Intent
@@ -17,9 +28,6 @@ Downhill segments especially need close inspection because efforts can be short,
 - Segment and compared-effort colors may differ to distinguish selections and
   riders. Keep those colors consistent with their cards and legends over the
   shared background.
-- MAPS15 in the [Bike backlog](../TODO.md#active-work) tracks applying and
-  verifying this look at `/segments/16` and
-  `/segments/16/race?efforts=7286%2C7249%2C6945`.
 
 ## Map Zoom
 
@@ -97,5 +105,6 @@ leader-follow.
 
 ## Follow-up tracking
 
-The [Bike TODO](../TODO.md) is the sole status and priority record;
-this specification retains playback behavior and interaction details.
+The [Bike TODO](../TODO.md) is the backlog entry point; the
+[loading checklist](../TODO-fix-data-loading.md) owns loading-fix status.
+This specification retains playback behavior and interaction details.
