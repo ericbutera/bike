@@ -4,7 +4,11 @@ cd "$(dirname "$0")/.."
 mkdir -p .artifacts
 scratch=$(mktemp -d "$PWD/.artifacts/strava-sdk.XXXXXX")
 host_repo=${BIKE_DOCKER_HOST_WORKSPACE:-$PWD}
-host_scratch="$host_repo/.artifacts/${scratch##*/}"
+host_scratch="${BIKE_DOCKER_HOST_ARTIFACTS:-$host_repo/.artifacts}/${scratch##*/}"
+temporary_mount=()
+if [[ -n "${BIKE_DOCKER_HOST_TMP:-}" ]]; then
+  temporary_mount=(--mount "type=bind,source=$BIKE_DOCKER_HOST_TMP,target=/tmp")
+fi
 trap 'rm -rf "$scratch"' EXIT
 mise exec jq -- jq --slurpfile overlay contracts/strava/oauth-webhooks.json \
   -f contracts/strava/prepare.jq contracts/strava/vendor-swagger.json > "$scratch/swagger.json"
@@ -14,6 +18,7 @@ for schema in contracts/strava/vendor/*.json; do
     "$schema" > "$scratch/vendor/${schema##*/}"
 done
 docker run --rm --mount "type=bind,source=$host_scratch,target=/generated" \
+  ${temporary_mount[@]+"${temporary_mount[@]}"} \
   "${STRAVA_SDK_GENERATOR_IMAGE:?}" generate -g rust \
   -i /generated/swagger.json -o /generated/sdk \
   --additional-properties library=reqwest,supportAsync=true,supportMiddleware=true,packageName=strava-sdk \

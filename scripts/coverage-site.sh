@@ -28,7 +28,7 @@ while IFS= read -r project; do
       jq -e 'all(.data[].files[].filename; contains("/migration/") | not)' "$input/coverage-summary.json" >/dev/null
       summary="$(jq -c '.data[0].totals.lines | {lines:.count, covered, percent}' "$input/coverage-summary.json")"
       ;;
-    Next.js|Node.js)
+    Next.js)
       summary="$(jq -c '.total.lines | {lines:.total, covered, percent:.pct}' "$input/coverage-summary.json")"
       ;;
     Go) summary="$(jq -c '{lines, covered, percent}' "$input/coverage-summary.json")" ;;

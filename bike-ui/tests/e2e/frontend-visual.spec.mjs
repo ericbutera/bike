@@ -55,7 +55,7 @@ test("Rust owns the canonical frontend screenshots", async ({
       await page.keyboard.press("Escape");
       await stabilizePage(page);
       await expect(page).toHaveScreenshot(
-        `${snapshotSet}/${route.name}-${theme}${suffix}.png`,
+        `${snapshotSet}-${route.name}-${theme}${suffix}.png`,
         {
           fullPage: true,
           animations: "disabled",

@@ -29,7 +29,7 @@ PostgreSQL, API, worker, and renderer. See the
 
 ## Backend checks
 
-From this directory:
+From this directory inside the [checks container](../docs/development.md#checks-container):
 
 ```sh
 mise install

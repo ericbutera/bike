@@ -1,0 +1,26 @@
+name: bike-build-storage
+services:
+  buildkit:
+    image: ${BIKE_BUILDKIT_IMAGE:?Run Compose through mise}
+    container_name: bike-buildkit
+    privileged: true
+    restart: unless-stopped
+    command: [--oci-worker-snapshotter=overlayfs]
+    volumes:
+      - build_storage:/cache
+      - type: volume
+        source: build_storage
+        target: /var/lib/buildkit
+        volume:
+          nocopy: true
+          subpath: buildkit
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume:
+          nocopy: true
+          subpath: tmp/buildkit
+volumes:
+  build_storage:
+    external: true
+    name: bike-build-storage

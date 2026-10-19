@@ -1,17 +1,36 @@
 # CI checks
 
-- Local host checks, prek hooks, and CI call the owning mise tasks with pinned
-  tooling. Run lint, formatting, type checks, builds, and tests on the host by
-  default. Docker is an explicit fallback for checks requiring a container
-  environment. Formatter, compiler, and linter warnings fail checks.
+- Local checks and prek hooks call the existing owning mise tasks inside the
+  [checks container](../development.md#checks-container). Keep task commands and
+  prek entries unchanged; the container supplies their execution environment.
+  Run builds, dependency installation, formatting, linting, type checks, tests,
+  coverage, and code generation there. Run `git` and `gh` on the host.
+  CI retains its existing tasks and environment.
+  Formatter, compiler, and linter warnings fail checks.
+- Enter through `docker compose -p bike-checks -f compose.checks.yaml run --rm checks bash`.
+  The checks container has a read-only root filesystem and no host source mounts.
+  Agent clones/worktrees, including their Git metadata, live on the shared disk;
+  all writable check output remains there. Do not create host worktrees.
+  Host `.cache`, `.scratch`, and `.artifacts` must remain independently purgeable;
+  never point them at Docker storage or store required launcher configuration there.
 - Use `mise run coverage:unit` for native unit coverage.
-  `mise run checks:docker <task>` remains available for explicit Linux checks.
+  The [shared build volume](../development.md#shared-build-storage) caps local
+  caches and generated output at 200 GiB total, excluding databases and uploads.
 - `lint:maps` and `format:check` cover JavaScript under `map-renderer/`.
   Retire the obsolete script glob with the removed byte-guard scanner.
   Require every selected source pattern to exist;
   do not suppress unmatched paths or skip validation when files are removed.
 - The retired standalone k6 synthetic suite has no tooling pins, tasks, hooks,
   lint patterns, workflow path filters, or image targets.
+- Retired backend, UI, and Node-renderer comparisons have no standalone parity
+  runners, fixtures, dependencies, or mise tasks. Validate the current Rust API,
+  shared UI, and Go snapshot worker through their owning suites and browser tests.
+- Preserve the current UI's light/dark pixel, route, layer, and theme-persistence
+  regressions in the default browser gate. Full-page screenshot comparisons keep
+  their reviewed baselines and run both themes when visual checks are selected.
+  Do not regenerate baselines merely to make a comparison pass.
+- The standalone PostgreSQL 17/18 upgrade rehearsal is retired, including its
+  task and upgrade-image pin. Database integration tests use the current runtime.
 - Native API integration tests remain in `bike-rs/api/tests`; browser regressions
   remain in `bike-ui/tests/e2e` and run through their owning tasks.
 - The disposable browser stack uses a native Temporal development server for
@@ -71,8 +90,8 @@
   stores immutable release images; unprotected Bike images expire after seven
   days, while live and rollback references and their OCI descendants survive.
 - Publish only API, worker, UI, maps, and browser E2E images. The checks image
-  remains an explicit local Bake target and is built by `checks:docker`; current
-  CI uses native steps and does not consume a registry copy of that tool image.
+  remains an explicit local Bake target; CI uses native steps and does not
+  consume a registry copy of that tool image.
 - Release-image validation produces no images or layers. Clear the registry
   image destination only for `images:validate`; publish immutable releases in
   `images:push`.
@@ -92,7 +111,6 @@
   cannot produce useful build-cache layers, and can trigger missing local
   distribution-source metadata warnings when registry blobs already exist.
 - Validate this retirement with the owning renderer lint and formatting tasks,
-  native Woodpecker validation, and release image-plan resolution. Run native
-  tasks on the host; use Docker for image/runtime operations that require it.
+  Woodpecker validation, and release image-plan resolution inside the container.
   CI remains the required release gate; full suites, coverage, builds, and
   browser tests may also run locally through the owning mise tasks.

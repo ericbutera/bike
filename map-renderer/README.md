@@ -34,33 +34,23 @@ for required propagation, attributes, and visibility limits, and
 
 ## Verification
 
-Run from the repository root:
+Run from the repository root inside the
+[checks container](../docs/development.md#checks-container):
 
 ```sh
-mise run checks:docker ci:renderer
-mise run checks:docker ci:rust
-mise run checks:docker ci:ui:unit
-mise run renderer:parity
-mise run renderer:smoke
+mise run ci:renderer
+mise run rust:check
+mise run ci:ui:unit
+mise run e2e
 mise run compose:config
 ```
 
-The parity task compares decoded pixels against the pre-rewrite Node renderer
-using frozen basemaps across both themes, sizes, and DPRs. The smoke task uses
-current basemap providers. Native Rust HTTP tests cover ownership, cache
+Browser tests exercise the current UI, API, and snapshot worker with frozen
+basemap fixtures. Check current providers separately during release verification.
+Native Rust HTTP tests cover ownership, cache
 renewal/expiry, request coalescing, and ETag/304 behavior with a fake snapshot
 gRPC worker. Transport tests verify client span metadata and remote parenting,
 including an actual OTLP HTTP export. The
 [acceptance criteria](../docs/specs/maps.md#acceptance-and-evidence) define the
 required outcomes; [PR #17](https://github.com/ericbutera/bike/pull/17) records
 review evidence. Deployment remains subject to coordinated release verification.
-
-## Local rewrite measurements
-
-The Linux/arm64 image measured approximately 786 MB versus 2.76 GB for the former
-Node/Playwright image; the build downloads Chromium's headless shell only.
-An initial Go compile took 10.8 seconds and an incremental compile 0.8 seconds.
-A comparable headless-shell checkpoint measured peak cgroup memory of 404.3 MB
-for Go and 398.5 MB for Node. These are historical local observations, not
-cross-language benchmarks or a claim of reduced Chromium memory use. The Go
-services reuse repository tooling and BuildKit module/build caches.

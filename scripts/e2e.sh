@@ -13,6 +13,25 @@ runner_created=false
 runtime_created=false
 release_digests="$artifacts/release-digests.env"
 
+# Local browser output and runtime caches share the capped development disk.
+# CI uses a disposable remote engine and its run-owned named volumes.
+runner_storage=(
+  --mount "type=volume,source=${project}_map_image_cache,target=/data/cache"
+  --mount "type=volume,source=${project}_ui_image_cache,target=/data/ui-cache"
+)
+if [[ -n "${BIKE_DOCKER_STORAGE_ROOT:-}" ]]; then
+  export BIKE_E2E_MAP_CACHE="$artifacts/map-cache"
+  export BIKE_E2E_UI_CACHE="$artifacts/ui-cache"
+  mkdir -p "$BIKE_E2E_MAP_CACHE" "$BIKE_E2E_UI_CACHE" "$artifacts/tmp"
+  chmod 1777 "$artifacts/tmp"
+  runner_storage=(
+    --mount "type=bind,source=$BIKE_E2E_MAP_CACHE,target=/data/cache"
+    --mount "type=bind,source=$BIKE_E2E_UI_CACHE,target=/data/ui-cache"
+    --mount "type=bind,source=$artifacts,target=/workspace/bike-ui/.artifacts/playwright"
+    --mount "type=bind,source=$artifacts/tmp,target=/tmp"
+  )
+fi
+
 compose() {
   docker compose --project-name "$project" \
     --file compose.runtime.yaml --file compose.e2e.yaml "$@"
@@ -30,7 +49,9 @@ cleanup() {
       if ! docker stop --signal SIGINT --timeout 10 "$runner" >"$artifacts/runner-stop.log" 2>&1; then result=1; fi
     fi
     if ! docker logs "$runner" >"$artifacts/browser.log" 2>&1; then result=1; fi
-    if ! docker cp "$runner:/workspace/bike-ui/.artifacts/playwright/." "$artifacts/"; then result=1; fi
+    if [[ -z "${BIKE_DOCKER_STORAGE_ROOT:-}" ]]; then
+      if ! docker cp "$runner:/workspace/bike-ui/.artifacts/playwright/." "$artifacts/"; then result=1; fi
+    fi
     if ! docker rm --force "$runner" >"$artifacts/runner-cleanup.log" 2>&1; then result=1; fi
   fi
   if [[ "$runtime_created" == true ]]; then
@@ -122,8 +143,9 @@ docker create --name "$runner" --init --shm-size=1g \
   --network "${project}_default" "${engine[@]}" \
   --mount "type=volume,source=${project}_uploads,target=/data/uploads" \
   --mount "type=volume,source=${project}_map_styles,target=/data/styles" \
-  --mount "type=volume,source=${project}_map_image_cache,target=/data/cache" \
-  --mount "type=volume,source=${project}_ui_image_cache,target=/data/ui-cache" \
+  "${runner_storage[@]}" \
+  --env BIKE_E2E_MAP_CACHE --env BIKE_E2E_UI_CACHE \
+  --env XDG_CACHE_HOME=/tmp/xdg --env NPM_CONFIG_CACHE=/tmp/npm \
   --env BIKE_E2E_PROJECT --env BIKE_JWT_SECRET \
   --env BIKE_API_IMAGE --env BIKE_UI_IMAGE \
   --env BIKE_RENDERER_IMAGE --env BIKE_E2E_IMAGE --env BIKE_POSTGRES_IMAGE \
@@ -133,7 +155,7 @@ docker create --name "$runner" --init --shm-size=1g \
   --env BIKE_TEST_ADMIN_TASK_FIXTURE=true --env PLAYWRIGHT_AUTH_STATE=1 \
   --env BIKE_TEST_EXPECT_AUTHENTICATED=true \
   --env HEATMAP_REQUIRE_ENABLED=1 --env HEATMAP_PREVIEW_FILTERS='sport=road_ride' \
-  --env CI --env PLAYWRIGHT_VISUAL \
+  --env CI --env PLAYWRIGHT_VISUAL --env PLAYWRIGHT_THEMES \
   "$BIKE_E2E_IMAGE" "$@" >"$artifacts/runner.id"
 if [[ "${DOCKER_HOST:-unix://}" == tcp://* ]]; then
   docker cp "${DOCKER_CERT_PATH:?Authenticated remote engine requires client certificates}/." "$runner:/docker-certs"

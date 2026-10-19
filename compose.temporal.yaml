@@ -1,6 +1,7 @@
 # Local Temporal shares PostgreSQL with Bike, using its own databases.
 services:
   temporal-worker:
+    env_file: ./docker/dev-cache.env
     restart: unless-stopped
     image: bike-dev-worker
     build:
@@ -23,17 +24,19 @@ services:
       TEMPORAL_ADDRESS: ${BIKE_TEMPORAL_ADDRESS:-http://temporal:7233}
       TEMPORAL_NAMESPACE: bike
       TEMPORAL_TASK_QUEUE: bike-strava
-      CARGO_HOME: /cargo
       STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID:-}
       STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET:-}
     ports:
       - "127.0.0.1:${BIKE_TEMPORAL_WORKER_METRICS_PORT:-9092}:9092"
       - "127.0.0.1:${BIKE_TEMPORAL_PROVIDER_METRICS_PORT:-9093}:9091"
     volumes:
-      - ./bike-rs:/app
-      - ${BIKE_UPLOADS_DIR:-./bike-rs/uploads}:/app/uploads
-      - temporal_worker_cargo:/cargo
-      - temporal_worker_target:/app/target
+      - ./bike-rs:/app:ro
+      - ${BIKE_UPLOADS_DIR:-uploads}:/app/uploads
+      - build_storage:/cache
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume: {nocopy: true, subpath: tmp/worker}
     stop_grace_period: 1m
     depends_on:
       temporal-namespace:
@@ -56,6 +59,10 @@ services:
       PGPASSWORD: postgres
     volumes:
       - ./docker/temporal/databases.sql:/setup/databases.sql:ro
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume: {nocopy: true, subpath: tmp/databases}
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,6 +78,10 @@ services:
       SQL_PLUGIN: postgres12
     volumes:
       - ./scripts/temporal-schema.sh:/setup/schema.sh:ro
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume: {nocopy: true, subpath: tmp/schema}
     depends_on:
       temporal-databases:
         condition: service_completed_successfully
@@ -88,6 +99,10 @@ services:
     volumes:
       - ./docker/temporal/server.yaml:/etc/temporal/config/server.yaml:ro
       - ./docker/temporal/dynamicconfig.yaml:/etc/temporal/config/dynamicconfig.yaml:ro
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume: {nocopy: true, subpath: tmp/temporal}
     ports:
       - "127.0.0.1:${BIKE_TEMPORAL_PORT:-7233}:7233"
     stop_grace_period: 1m
@@ -115,6 +130,10 @@ services:
       TEMPORAL_NAMESPACE: bike
     volumes:
       - ./scripts/temporal-namespace.sh:/setup/namespace.sh:ro
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume: {nocopy: true, subpath: tmp/namespace}
     depends_on:
       temporal:
         condition: service_healthy
@@ -125,6 +144,11 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_DEFAULT_NAMESPACE: bike
       TEMPORAL_UI_PORT: 8080
+    volumes:
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume: {nocopy: true, subpath: tmp/temporal-ui}
     ports:
       - "127.0.0.1:${BIKE_TEMPORAL_UI_PORT:-8080}:8080"
     healthcheck:
@@ -137,5 +161,8 @@ services:
         condition: service_completed_successfully
 
 volumes:
-  temporal_worker_cargo:
-  temporal_worker_target:
+  uploads:
+    name: ${BIKE_UPLOADS_VOLUME:-bike_uploads}
+  build_storage:
+    external: true
+    name: bike-build-storage

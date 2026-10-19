@@ -297,5 +297,4 @@ An explicit `OTEL_SDK_DISABLED=true` disables tracing independently of export.
 
 [PR #17](https://github.com/ericbutera/bike/pull/17) contains the implementation
 and review evidence. Runtime commands and style synchronization live in the
-[snapshot worker README](../../map-renderer/README.md). Historical local
-measurements are recorded there; they are not performance requirements.
+[snapshot worker README](../../map-renderer/README.md).
