@@ -55,6 +55,81 @@
 - [ ] Decide how detected climbs should be named and related to matched segments;
       see [climb identification](specs/activity-details.md#climb-identification).
 
+## Performance
+
+Workers prepare derived data; reads stay bounded by the page or selection.
+The [performance contract](specs/performance.md) owns read shapes, availability,
+and comparison requirements. Each checkbox is a separate PR.
+
+### Activity reads
+
+- [ ] **PERF08 — Small dataset and API baseline.** Use existing fixtures/tools for
+      1,000 activities and authenticated list/detail/segment comparisons. Deliver
+      a reproducible report; exclude capacity, browser, and worker-load testing.
+- [ ] **PERF01a — Reliable stored activity ranks.** Verify rank/PR and achievement
+      producers across imports, rematching, removals, retries, and completed-empty
+      results. Add only missing availability data and a bounded backfill.
+- [ ] **PERF01b — Remove activity-detail ranking fallback.** After PERF01a, remove
+      history-wide ranking from `activity_segment_effort_rank_maps`. Return stored
+      ranks and missing/updating section state. Verify ready, stale, missing,
+      zero-effort, repeated attempts, and bounded reads as history grows.
+      Exclude new ranking algorithms and synchronous repair.
+- [ ] **PERF10a — Prepare activity-card data.** Store resolved location and compact
+      previews alongside existing metrics/achievements. Cover edits, replacement,
+      and backfill; preserve manual location. Exclude a full schema rewrite.
+- [ ] **PERF10b — Read compact activity cards.** After PERF10a, replace full-model
+      feed queries and recording-derived cards with narrow page reads. Preserve
+      sport filtering and pagination; compare pages of long recordings.
+- [ ] **PERF11 — Cheap map cache hits.** Check ownership and prepared route identity
+      before loading recording data. Verify route edits invalidate and title edits
+      reuse cached geometry. Exclude renderer/style changes.
+
+### Segment detail and playback
+
+- [ ] **PERF03 — Prepared effort playback.** Store reusable effort slices during
+      matching, preparing each activity once. Cover repeated attempts, telemetry,
+      replacement/deletion, and backfill. Exclude API/UI cutover and downsampling.
+- [ ] **PERF02a — Bounded segment API.** After PERF03/PERF01a, provide paginated,
+      filtered effort summaries and capped selected-effort data. Authorize every
+      ID, return the route once, and generate contracts. Exclude UI migration.
+- [ ] **PERF02b / PERF04 — Switch detail/race consumers.** After PERF02a, share the
+      new queries and remove the old unbounded comparison endpoint. Preserve
+      cross-page selections and race URL order. Exclude interpolation changes.
+- [ ] **PERF05 — Isolate playback updates.** After PERF02b, keep filtering, ranking,
+      and history-wide setup outside animation renders. Verify fixed rider
+      selection stays bounded as history grows; exclude interpolation changes.
+- [ ] **PERF06 — Indexed playback lookups.** After PERF05, prepare ranges once and
+      reuse interpolation with indexed seeks/forward cursors. Test seeks, ties,
+      missing distance, finishes, and gaps; measure 2/10 riders. Exclude camera work.
+
+### Worker and analysis costs
+
+- [ ] **PERF12 — Worker-built segment-edit analytics.** Move rename/delete
+      achievement rebuilds into existing worker operations. Enforce deletion
+      immediately and preserve start-failure behavior. Exclude other mutations.
+- [ ] **PERF13 — Batch rank writes.** Use bounded bulk updates while preserving
+      order, ties, transactions, and concurrency protections. Measure one fixed
+      segment; exclude matching scope and workflow changes.
+- [ ] **PERF14 — Narrow worker rebuilds.** After PERF13, refresh affected old/new
+      segments and avoid duplicate achievement rebuilds. Preserve retry recovery
+      when removed memberships are lost; exclude a new coordinator.
+- [ ] **PERF07a — Prepared analysis data.** After PERF03, store per-effort splits
+      and complete-history section bests for supported split counts. Verify
+      semantics, backfill, and storage cost; exclude pairwise comparisons and UI.
+- [ ] **PERF07b — Paged analysis reads.** After PERF07a, replace full-history
+      recording loads with a page, reference, and prepared aggregates. Preserve
+      reference/theoretical-best results; exclude new report features.
+
+### Capacity qualification
+
+- [ ] **PERF09a — Large dataset.** After PERF08, extend its manifest/generator to
+      one million activities, a heavy owner, and a bounded long-recording cohort.
+      Verify storage and expected results; exclude concurrent ingestion.
+- [ ] **PERF09b — Concurrent qualification.** After PERF09a and reader cutovers,
+      compare 1/10/50 sessions with a real worker processing a fixed batch.
+      Report latency, errors, memory, rows/bytes, playback cost, and worker progress.
+      Exclude an always-on load service and per-commit million-row gates.
+
 ## Other backlog
 
 - [ ] Repair checksumless legacy import metadata without replacing retained files.

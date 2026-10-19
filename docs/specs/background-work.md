@@ -316,6 +316,19 @@ flowchart TD
   problem may justify a small change later; a general accumulator/coordinator
   framework is not a prerequisite for processing a ride.
 
+### Prepared results on interactive paths
+
+- The [read-performance contract](performance.md) requires worker-built derived
+  results. GET handlers never rebuild missing/stale ranks or analytics.
+  Imports, reprocessing, and relevant edits/removals explicitly refresh their
+  affected datasets through the existing domain operations and native workflows.
+- Expensive achievement replacement after segment rename/delete moves out of
+  request transactions; deletion/access enforcement remains immediate. Preserve
+  Temporal start acknowledgment/error behavior and ordinary retry semantics.
+- These are target changes tracked under [Performance](../TODO.md#performance).
+  Current broader retry refresh scope remains until its bounded slice replaces
+  it with verified removal/retry behavior. Do not add an output coordinator.
+
 ## Shared object storage and retention
 
 - Reuse `ObjectStore` and compact `ObjectRef { path, sha256, bytes }` values.

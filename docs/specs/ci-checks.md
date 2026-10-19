@@ -114,3 +114,15 @@
   Woodpecker validation, and release image-plan resolution inside the container.
   CI remains the required release gate; full suites, coverage, builds, and
   browser tests may also run locally through the owning mise tasks.
+
+## Performance comparisons
+
+- The [performance contract](performance.md#reproducible-performance-datasets)
+  owns seeded dataset profiles and before/after measurement requirements.
+  Implement its small fixture/runner first through existing owning suites and
+  mise tasks; the larger capacity run is explicit, not a per-commit default.
+- The ordinary browser fixture stack has no ingestion worker. Concurrent
+  read/import qualification must run the real worker in its isolated benchmark
+  stack and report its progress; seeded projections alone cannot prove throughput.
+- Keep retired synthetics/parity services and special authentication retired.
+  This is reproducible performance evidence for actual application paths.

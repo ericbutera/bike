@@ -8,6 +8,8 @@ Update the owning spec in the same change as any intended behavior change.
 - [Durable worker and Strava integration](background-work.md): the single worker
   specification, including the complete task inventory, client submission,
   domain behavior, native durability, storage, and provider protocol.
+- [Read performance and verification](performance.md): prepared read shapes,
+  reproducible synthetic datasets, and before/after acceptance evidence.
 - [TODO](../TODO.md): outstanding work only; it does not duplicate the worker spec.
 - [Activities](activities.md): activity list and activity details specifications.
 
