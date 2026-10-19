@@ -139,3 +139,11 @@ language = "system"
 entry = "mise --cd map-renderer run generate:protobuf:check"
 files = "^(proto|bike-rs/proto)/bike/maps/.*\\.proto$|^map-renderer/gen/|^map-renderer/mise\\.toml$|^mise\\.toml$"
 pass_filenames = false
+
+[[repos.hooks]]
+id = "db-query-viewer"
+name = "SQL log viewer fixtures"
+language = "system"
+entry = "mise run db:queries:test"
+files = "^scripts/db-queries.*$|^scripts/fixtures/db-queries\\.jsonl$"
+pass_filenames = false

@@ -437,3 +437,16 @@ run = ["mise run compose:config", "mise run e2e:config"]
 [tasks."ci:e2e"]
 description = "Test this revision's prepared registry images on the job-local engine"
 run = "bash scripts/ci-e2e.sh"
+
+[tasks."db:queries"]
+description = "Follow API SQL with timings, row counts, and request context"
+usage = '''
+flag "--activities" help="Only queries for activity HTTP requests"
+flag "--min-ms <milliseconds>" default="0" help="Minimum elapsed milliseconds"
+flag "--tail <lines>" default="0" help="Recent raw log lines to include before following"
+'''
+run = "bash scripts/db-queries.sh"
+
+[tasks."db:queries:test"]
+description = "Test the SQL log viewer with structured query fixtures"
+run = "bash scripts/db-queries-test.sh"

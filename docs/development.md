@@ -161,3 +161,30 @@ The session is removed on exit. Host Git/GitHub commands remain supported.
 - Keep editor host builds and automatic dependency downloads disabled. During
   cache migration use ordinary copies (`cp --reflink=never`) so OrbStack's
   allocation-based quota accounts for the migrated data.
+
+## Inspecting activity queries
+
+Run these commands **inside the checks container** with the local stack's
+`COMPOSE_PROJECT_NAME` and Compose overrides, then browse the activity screens:
+
+```sh
+mise run db:queries --activities
+mise run db:queries --activities --min-ms 50
+mise run db:queries --tail 1000
+```
+
+The viewer prints SQL, elapsed milliseconds, row counts, and request trace IDs.
+Use the trace ID to group simultaneous requests; repeated statements under the
+same trace can expose N+1 reads. `--activities` includes list, detail, map, and
+other activity endpoints. Omit it to include queries from all API endpoints.
+`--tail` counts raw API log lines, not matching queries. Stop following with Ctrl+C.
+The [observability spec](specs/observability.md#local-sql-diagnostics) defines
+query timing and diagnostic coverage.
+
+Development enables this stream through `sqlx::query=debug` in the API's
+`RUST_LOG`. For an existing container, apply the environment change without
+rebuilding images or restarting dependencies:
+
+```sh
+mise exec -- docker compose up -d --no-deps --no-build bike-rs
+```

@@ -111,3 +111,24 @@
 - Verify named stages, query ancestry, workload fields, cache hit/miss behavior,
   and trace continuity through blocking heatmap rendering and map RPCs.
 - Keep build/unit evidence separate from deployed trace verification.
+
+## Local SQL diagnostics
+
+- Development API containers enable SQLx query events at `DEBUG`; runtime/E2E
+  defaults and Temporal worker logging retain their existing filters.
+- `mise run db:queries` follows API query events from the current Compose project.
+  Show statement text, elapsed milliseconds, returned/affected rows, log level,
+  HTTP method/route, trace ID, operation, and activity ID when available.
+- Keep each executed statement visible, including repetitions, so developers can
+  identify N+1 patterns. This stream is independent of exported span sampling.
+- `--activities` restricts output to requests under `/api/activities`, including
+  authentication queries before the controller starts. `--min-ms` filters by
+  elapsed milliseconds; `--tail` includes recent raw log lines before following.
+- Use SQLx's existing structured events rather than adding query instrumentation
+  or logging bound parameters. Prepared SQL retains its placeholders. Elapsed
+  time includes client execution and result transfer; use PostgreSQL
+  `EXPLAIN (ANALYZE, BUFFERS)` on a selected read query for a server execution plan.
+- Recreate only the development API after changing its logging environment;
+  preserve PostgreSQL, Temporal, uploads, and their persistent volumes.
+- Verify the formatter with fixture events covering list/detail requests,
+  repeated statements, slow statements, missing context, and output filters.
