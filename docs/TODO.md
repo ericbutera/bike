@@ -29,6 +29,29 @@
 
 ## Activities
 
+- [x] Show accessible sport icons before feed titles, with original mountain/fat
+      bike artwork and baseline-aligned location/date metadata; see the
+      [activity-list specification](specs/activity-list.md).
+- [x] Show icons in the activity filter, preserving URL selection and keyboard
+      access, and a location pin in the activity-detail header.
+- [x] Match the feed's upload action to the shared compact Refresh icon button.
+- [x] Simplify the activity-detail header, split summary/data cards, hide empty
+      matches/signals, combine signal toggles with summaries, and use a compact
+      lap table; see the [detail layout](specs/activity-details.md#detail-layout).
+- [x] Clarify selected-climb numbers and activity-distance ranges, reduce metric
+      text, and fit elevation profiles to their sample range and phone viewport.
+- [x] Remove import details, workflow links, and regeneration from the activity
+      detail actions menu, including for administrators.
+- [x] Try shared Segments/Climbs tabs with counts, populated-data defaults,
+      preserved detail state, keyboard access, and independent map layers.
+- [x] Make the header sport and Training/Race tags editable, put Edit activity
+      first, and support title/location/description plus recorded gear names and
+      private notes. Preserve partial writes, manual history, and sport eligibility.
+- [x] Compact Activity data with a visible elapsed-time/metadata grid and no
+      provenance fields or Show more button; show a clock beside the header time.
+      Place measurements and details in two columns, stacking on mobile.
+      Tighten card gaps, soften map-control borders, allow starred segments to
+      collapse, and show twenty climb rows before scrolling.
 - [ ] Decide how detected climbs should be named and related to matched segments;
       see [climb identification](specs/activity-details.md#climb-identification).
 

@@ -3,9 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACTIVITY_TYPES, type ActivityType } from "../../lib/activityTypes";
 import ActivityDetailPanel from "../ActivityDetailPanel";
+import MatchedSegmentsSection from "../MatchedSegmentsSection";
+import ActivitySignalsCard from "../activity-detail/ActivitySignalsCard";
 import RequireAuth from "../RequireAuth";
 import type { RouteMapProps } from "../RouteMapTypes";
 import { segmentEffort } from "../../tests/fixtures/activitySegments";
+import {
+  activityLap,
+  climbingRoutePoints as makeClimbingRoutePoints,
+} from "../../tests/fixtures/activities";
 
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("recharts")>();
@@ -33,7 +39,6 @@ vi.mock("recharts", async (importOriginal) => {
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useActivity: vi.fn(),
-  useRegenerateActivity: vi.fn(),
   useUpdateActivity: vi.fn(),
   useDeleteActivity: vi.fn(),
   useSegments: vi.fn(),
@@ -64,7 +69,6 @@ vi.mock("../../lib/activitySourceFiles", () => ({
 
 vi.mock("../../lib/queries", () => ({
   useActivity: mocks.useActivity,
-  useRegenerateActivity: mocks.useRegenerateActivity,
   useUpdateActivity: mocks.useUpdateActivity,
   useDeleteActivity: mocks.useDeleteActivity,
   useSegments: mocks.useSegments,
@@ -102,6 +106,7 @@ function makeActivity(
     original_filename: string | null;
     format: string | null;
     started_at: string;
+    location: string | null;
     ended_at: string | null;
     distance_meters: number | null;
     moving_time_seconds: number | null;
@@ -235,17 +240,7 @@ function makeActivity(
         share_percent: 3.1,
       },
     ],
-    laps: [
-      {
-        lap_index: 1,
-        title: "Lap 1",
-        duration_seconds: 1600,
-        distance_meters: 14000,
-        average_speed_mps: 8.7,
-        average_heart_rate_bpm: 142,
-        max_heart_rate_bpm: 162,
-      },
-    ],
+    laps: [activityLap({ title: "Lap 1" })],
     chart_points: [
       {
         elapsed_seconds: 0,
@@ -340,66 +335,6 @@ function makeActivity(
   };
 }
 
-function makeClimbingRoutePoints() {
-  return [
-    {
-      elapsed_seconds: 0,
-      latitude: 45.0,
-      longitude: -122.0,
-      distance_meters: 0,
-      elevation_meters: 100,
-      speed_mps: 0,
-      heart_rate_bpm: 128,
-      cadence_rpm: 80,
-      power_watts: 142,
-    },
-    {
-      elapsed_seconds: 120,
-      latitude: 45.01,
-      longitude: -121.99,
-      distance_meters: 600,
-      elevation_meters: 132,
-      speed_mps: 5,
-      heart_rate_bpm: 142,
-      cadence_rpm: 82,
-      power_watts: 210,
-    },
-    {
-      elapsed_seconds: 240,
-      latitude: 45.02,
-      longitude: -121.98,
-      distance_meters: 1200,
-      elevation_meters: 168,
-      speed_mps: 5,
-      heart_rate_bpm: 148,
-      cadence_rpm: 84,
-      power_watts: 225,
-    },
-    {
-      elapsed_seconds: 360,
-      latitude: 45.03,
-      longitude: -121.97,
-      distance_meters: 1800,
-      elevation_meters: 202,
-      speed_mps: 5,
-      heart_rate_bpm: 154,
-      cadence_rpm: 86,
-      power_watts: 238,
-    },
-    {
-      elapsed_seconds: 480,
-      latitude: 45.04,
-      longitude: -121.96,
-      distance_meters: 2400,
-      elevation_meters: 225,
-      speed_mps: 5,
-      heart_rate_bpm: 160,
-      cadence_rpm: 88,
-      power_watts: 250,
-    },
-  ];
-}
-
 function makeManyClimbRoutePoints(count: number) {
   const points: ReturnType<typeof makeClimbingRoutePoints> = [];
   let elapsedSeconds = 0;
@@ -487,12 +422,6 @@ describe("ActivityDetailPanel", () => {
       isError: false,
       error: null,
     });
-    mocks.useRegenerateActivity.mockReturnValue({
-      regenerateAsync: vi.fn().mockResolvedValue(makeActivity()),
-      isPending: false,
-      isError: false,
-      error: null,
-    });
     mocks.useUpdateActivity.mockReturnValue({
       updateAsync: vi.fn().mockResolvedValue(makeActivity()),
       isPending: false,
@@ -524,6 +453,61 @@ describe("ActivityDetailPanel", () => {
     vi.unstubAllGlobals();
   });
 
+  it("hides the matched-segments card when an activity has no matches", () => {
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({ sport: "hike", segment_efforts: [] }),
+    });
+    const { container } = render(
+      <MatchedSegmentsSection
+        activityId={7}
+        selectedSegmentIds={[]}
+        onToggleSegmentMatch={vi.fn()}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows decorative location and clock icons beside the header metadata", () => {
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({ location: "Traverse City, Michigan" }),
+    });
+    render(<ActivityDetailPanel activityId={7} />);
+    const location = screen.getByText("Traverse City, Michigan");
+    expect(location.querySelector("svg")).toHaveAttribute(
+      "data-icon",
+      "location-dot",
+    );
+    expect(location.querySelector("svg")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(location.nextElementSibling?.tagName).toBe("TIME");
+    const clock = location.nextElementSibling?.querySelector("svg");
+    expect(clock).toHaveAttribute("data-icon", "clock");
+    expect(clock).toHaveAttribute("aria-hidden", "true");
+    expect(location.nextElementSibling).toHaveAttribute(
+      "datetime",
+      "2026-05-06T12:00:00Z",
+    );
+    expect(
+      screen.getByRole("heading", { name: "Lunch Ride" }).closest(".card"),
+    ).toBeNull();
+  });
+
+  it("omits the location group when no location is available", () => {
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({ location: null }),
+    });
+    const { container } = render(<ActivityDetailPanel activityId={7} />);
+    expect(
+      container.querySelector('[data-icon="location-dot"]'),
+    ).not.toBeInTheDocument();
+    expect(container.querySelector("time")).toHaveAttribute(
+      "datetime",
+      "2026-05-06T12:00:00Z",
+    );
+  });
+
   it("renders the summary metrics, laps, and charts", () => {
     render(<ActivityDetailPanel activityId={7} />);
 
@@ -539,7 +523,7 @@ describe("ActivityDetailPanel", () => {
     expect(screen.getByText("53m 20s")).toBeInTheDocument();
     expect(screen.getAllByText("19.5 mph").length).toBeGreaterThan(0);
     expect(screen.getAllByText("168 bpm").length).toBeGreaterThan(0);
-    expect(screen.getByText("lunch-ride.tcx")).toBeInTheDocument();
+    expect(screen.queryByText("lunch-ride.tcx")).not.toBeInTheDocument();
     expect(screen.getByText("Above 170 bpm")).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "Activity route map" }),
@@ -561,7 +545,11 @@ describe("ActivityDetailPanel", () => {
     expect(
       screen.queryByRole("img", { name: "North Climb attempts chart" }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Time")).not.toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("region", { name: "Matched segments" }),
+      ).queryByText("Time"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText(
         "Hover or tap a point to see leaderboard position and max heart rate.",
@@ -597,8 +585,8 @@ describe("ActivityDetailPanel", () => {
     expect(screen.getByText(/^2 runs?$/i)).toBeInTheDocument();
     expect(screen.queryByText(/High heart rate at/i)).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Regenerate derived data" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Regenerate derived data" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Download original source" }),
     ).toHaveAttribute(
@@ -613,7 +601,21 @@ describe("ActivityDetailPanel", () => {
     expect(
       screen.queryByText(/These lap rollups come from/i),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Lap 1" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("table", { name: "Lap splits" })).getByRole(
+        "cell",
+        { name: "Lap 1" },
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 lap").closest(".badge")).toBeNull();
+    expect(
+      screen.getByRole("region", { name: "Activity summary" }),
+    ).not.toContainElement(
+      screen.getByRole("region", { name: "Activity data" }),
+    );
+    expect(
+      screen.queryByLabelText("Activity data details"),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("Ride signals")).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "Activity signals chart" }),
@@ -660,6 +662,138 @@ describe("ActivityDetailPanel", () => {
       climbs: false,
     });
   });
+
+  it("shares a card between segments and climbs while retaining detail selections", async () => {
+    const user = userEvent.setup();
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({ route_points: makeClimbingRoutePoints() }),
+    });
+    render(<ActivityDetailPanel activityId={7} />);
+    const card = screen.getByRole("region", { name: "Segments and climbs" });
+    const segments = screen.getByRole("tab", { name: "Segments (1)" });
+    const climbs = screen.getByRole("tab", { name: "Climbs (1)" });
+    expect(segments).toHaveAttribute("aria-selected", "true");
+    expect(within(card).getAllByRole("tabpanel")).toHaveLength(1);
+    expect(card.querySelector(".card")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Show time & runs" }));
+    const overview = currentMap();
+    await user.click(climbs);
+    expect(
+      screen.queryByRole("link", { name: "North Climb" }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Show climb 1 details" }),
+    );
+    expect(
+      screen.getByRole("img", { name: "Climb 1 elevation profile" }),
+    ).toBeInTheDocument();
+    await user.click(segments);
+    expect(
+      screen.getByRole("img", { name: "North Climb attempts chart" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: "Climb 1 elevation profile" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Highlight North Climb" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await user.click(climbs);
+    expect(
+      screen.getByRole("button", { name: "Show climb 1 details" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("img", { name: "Climb 1 elevation profile" }),
+    ).toBeInTheDocument();
+    expect(currentMap()).toBe(overview);
+    expect(currentMap().overlayLayers).toMatchObject({
+      segments: true,
+      climbs: false,
+    });
+  });
+
+  it("supports keyboard tab focus, selection, and wrapping", async () => {
+    const user = userEvent.setup();
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({ route_points: makeClimbingRoutePoints() }),
+    });
+    render(<ActivityDetailPanel activityId={7} />);
+    const segments = screen.getByRole("tab", { name: "Segments (1)" });
+    const climbs = screen.getByRole("tab", { name: "Climbs (1)" });
+    act(() => segments.focus());
+    for (const [key, target] of [
+      ["{ArrowRight}", climbs],
+      ["{ArrowRight}", segments],
+      ["{ArrowLeft}", climbs],
+      ["{Home}", segments],
+      ["{End}", climbs],
+    ] as const) {
+      await user.keyboard(key);
+      expect(target).toHaveFocus();
+      expect(target).toHaveAttribute("aria-selected", "true");
+      expect(target).toHaveAttribute("tabindex", "0");
+      expect(screen.getByRole("tabpanel")).toHaveAttribute(
+        "aria-labelledby",
+        target.id,
+      );
+      expect(target).toHaveAttribute(
+        "aria-controls",
+        screen.getByRole("tabpanel").id,
+      );
+    }
+  });
+
+  it("resets detail tabs and climb selection when navigating to another activity", async () => {
+    const user = userEvent.setup();
+    const activity = makeActivity({ route_points: makeClimbingRoutePoints() });
+    mocks.useActivity.mockReturnValue({ data: activity });
+    const { rerender } = render(<ActivityDetailPanel activityId={7} />);
+    await user.click(screen.getByRole("tab", { name: "Climbs (1)" }));
+    await user.click(
+      screen.getByRole("button", { name: "Show climb 1 details" }),
+    );
+    mocks.useActivity.mockReturnValue({ data: { ...activity, id: 8 } });
+    rerender(<ActivityDetailPanel activityId={8} />);
+    expect(screen.getByRole("tab", { name: "Segments (1)" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.click(screen.getByRole("tab", { name: "Climbs (1)" }));
+    expect(
+      screen.getByRole("button", { name: "Show climb 1 details" }),
+    ).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it.each([
+    { segments: true, climbs: false, tabs: ["Segments (1)"] },
+    { segments: false, climbs: true, tabs: ["Climbs (1)"] },
+    { segments: false, climbs: false, tabs: [] },
+  ])(
+    "only offers populated detail tabs: $tabs",
+    ({ segments, climbs, tabs }) => {
+      mocks.useActivity.mockReturnValue({
+        data: makeActivity({
+          route_points: climbs ? makeClimbingRoutePoints() : [],
+          segment_efforts: segments ? [segmentEffort()] : [],
+        }),
+      });
+      render(<ActivityDetailPanel activityId={7} />);
+      expect(
+        screen
+          .queryAllByRole("tab")
+          .map((tab) => tab.getAttribute("aria-label")),
+      ).toEqual(tabs);
+      if (tabs.length === 0) {
+        expect(
+          screen.queryByRole("region", { name: "Segments and climbs" }),
+        ).not.toBeInTheDocument();
+      } else {
+        expect(screen.getByRole("tab", { name: tabs[0] })).toHaveAttribute(
+          "aria-selected",
+          "true",
+        );
+      }
+    },
+  );
 
   it("toggles climb and segment layers independently and restores the selected segments", async () => {
     const user = userEvent.setup();
@@ -992,8 +1126,10 @@ describe("ActivityDetailPanel", () => {
 
     render(<ActivityDetailPanel activityId={7} />);
 
-    expect(screen.getByText("Climbs")).toBeInTheDocument();
-    expect(screen.getByText("1 climb")).not.toHaveClass("badge");
+    expect(screen.getByRole("tab", { name: "Climbs (1)" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(screen.getByText("1.5 mi")).toBeInTheDocument();
     expect(screen.getByText("410 ft")).toBeInTheDocument();
     expect(screen.getByText("5.2%")).toBeInTheDocument();
@@ -1011,7 +1147,12 @@ describe("ActivityDetailPanel", () => {
     expect(
       screen.getByRole("button", { name: "Show climb 1 details" }),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("Climb: 0 - 1.5 mi")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Climb 1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Activity distance: 0 - 1.5 mi"),
+    ).toBeInTheDocument();
     expect(screen.getByText("elevation gain")).toBeInTheDocument();
     expect(screen.getByText("elevation loss")).toBeInTheDocument();
     expect(screen.getByText("category")).toBeInTheDocument();
@@ -1109,34 +1250,39 @@ describe("ActivityDetailPanel", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it.each([5, 6])("keeps five climb rows visible with %i records", (count) => {
-    mocks.useActivity.mockReturnValue({
-      data: makeActivity({
-        route_points: makeManyClimbRoutePoints(count),
-        segment_efforts: [],
-      }),
-      isLoading: false,
-      isError: false,
-      error: null,
-    });
+  it.each([20, 21])(
+    "keeps twenty climb rows visible with %i records",
+    (count) => {
+      mocks.useActivity.mockReturnValue({
+        data: makeActivity({
+          route_points: makeManyClimbRoutePoints(count),
+          segment_efforts: [],
+        }),
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
 
-    render(<ActivityDetailPanel activityId={7} />);
+      render(<ActivityDetailPanel activityId={7} />);
 
-    expect(screen.getByText(`${count} climbs`)).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: `Show climb ${count} details` }),
-    ).toBeInTheDocument();
+      expect(
+        screen.getByRole("tab", { name: `Climbs (${count})` }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: `Show climb ${count} details` }),
+      ).toBeInTheDocument();
 
-    const climbScroll = screen.getByTestId("activity-climbs-table-scroll");
+      const climbScroll = screen.getByTestId("activity-climbs-table-scroll");
 
-    if (count > 5) {
-      expect(climbScroll).toHaveClass("overflow-y-auto");
-      expect(climbScroll.style.maxHeight).toBe("calc(15rem + 2px)");
-    } else {
-      expect(climbScroll).not.toHaveClass("overflow-y-auto");
-      expect(climbScroll.style.maxHeight).toBe("");
-    }
-  });
+      if (count > 20) {
+        expect(climbScroll).toHaveClass("overflow-y-auto");
+        expect(climbScroll.style.maxHeight).toBe("calc(52.5rem + 2px)");
+      } else {
+        expect(climbScroll).not.toHaveClass("overflow-y-auto");
+        expect(climbScroll.style.maxHeight).toBe("");
+      }
+    },
+  );
 
   it("shows the correct run details when a chart point is hovered", () => {
     render(<ActivityDetailPanel activityId={7} />);
@@ -1211,18 +1357,51 @@ describe("ActivityDetailPanel", () => {
     const heartRateButton = screen.getByRole("button", { name: "Heart rate" });
     const powerButton = screen.getByRole("button", { name: "Power" });
     const speedButton = screen.getByRole("button", { name: "Speed" });
+    const elevationButton = screen.getByRole("button", { name: "Elevation" });
+
+    expect(heartRateButton).toHaveTextContent("Peak 168 bpm");
+    expect(powerButton).toHaveTextContent("Peak 314 W");
+    expect(speedButton).toHaveTextContent("Top speed");
 
     await user.click(heartRateButton);
 
     expect(heartRateButton).toHaveAttribute("aria-pressed", "false");
+    expect(heartRateButton).toHaveTextContent("Peak 168 bpm");
+
+    await user.click(elevationButton);
+    expect(
+      screen.queryByRole("img", { name: "Activity signals chart" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Turn on at least one signal layer to render the chart.",
+      ),
+    ).toBeInTheDocument();
 
     await user.click(powerButton);
 
     expect(powerButton).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("img", { name: "Activity signals chart" }),
+    ).toBeInTheDocument();
 
     await user.click(speedButton);
 
     expect(speedButton).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("hides the signal card when there are no usable signal series", () => {
+    const { container, rerender } = render(
+      <ActivitySignalsCard chartPoints={[]} unitSystem="metric" />,
+    );
+    expect(container).toBeEmptyDOMElement();
+    rerender(
+      <ActivitySignalsCard
+        chartPoints={makeActivity().chart_points.slice(0, 1)}
+        unitSystem="metric"
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("orders matched segments alphabetically and expands a card on demand", async () => {
@@ -1282,7 +1461,8 @@ describe("ActivityDetailPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps starred matched segments open", () => {
+  it("starts starred segments expanded and allows collapsing without removing the star", async () => {
+    const user = userEvent.setup();
     mocks.useSegments.mockReturnValue({
       data: [{ id: 11, starred: true }],
       isLoading: false,
@@ -1295,33 +1475,20 @@ describe("ActivityDetailPanel", () => {
     expect(
       screen.getByRole("img", { name: "North Climb attempts chart" }),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Hide time & runs" }));
     expect(
-      screen.getByRole("button", { name: "Starred stays open" }),
-    ).toBeDisabled();
-  });
-
-  it("shows the regenerate action", async () => {
-    const user = userEvent.setup();
-    const regenerateAsync = vi
-      .fn()
-      .mockResolvedValue({ id: "bike-reprocess-7", status: "running" });
-    mocks.useRegenerateActivity.mockReturnValue({
-      regenerateAsync,
-      isPending: false,
-      isError: false,
-      error: null,
-    });
-
-    render(<ActivityDetailPanel activityId={7} />);
-
-    await user.click(
-      screen.getByRole("button", { name: "Regenerate derived data" }),
-    );
-
-    expect(regenerateAsync).toHaveBeenCalledWith(7);
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Activity reprocessing started.",
-    );
+      screen.queryByRole("img", { name: "North Climb attempts chart" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Unstar North Climb" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: "Highlight North Climb" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    await user.click(screen.getByRole("button", { name: "Show time & runs" }));
+    expect(
+      screen.getByRole("img", { name: "North Climb attempts chart" }),
+    ).toBeInTheDocument();
   });
 
   it("updates the activity type from the actions menu", async () => {
@@ -1345,7 +1512,6 @@ describe("ActivityDetailPanel", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(updateAsync).toHaveBeenCalledWith(7, {
-      title: "Lunch Ride",
       activity_type: ACTIVITY_TYPES.Race,
     });
   });
@@ -1375,7 +1541,6 @@ describe("ActivityDetailPanel", () => {
 
     expect(updateAsync).toHaveBeenCalledWith(7, {
       title: "Evening Trail Work",
-      activity_type: ACTIVITY_TYPES.Training,
     });
   });
 
@@ -1413,7 +1578,7 @@ describe("ActivityDetailPanel", () => {
     expect(mocks.routerPush).toHaveBeenCalledWith("/");
   });
 
-  it("renders the route map empty state with a regenerate action when route points are missing", () => {
+  it("renders the route map empty state when route points are missing", () => {
     mocks.useActivity.mockReturnValue({
       data: makeActivity({ route_points: [], segment_efforts: [] }),
       isLoading: false,

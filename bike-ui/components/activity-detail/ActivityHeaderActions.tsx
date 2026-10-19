@@ -3,42 +3,58 @@
 import { faBars } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
-import TemporalLink from "../ui/TemporalLink";
 import { activitySourceFileUrl } from "../../lib/activitySourceFiles";
-import { formatActivityTypeLabel } from "../../lib/activityTypes";
-import { formatSport } from "../../lib/activityFormatting";
-import type { Activity } from "../../lib/queries";
+import {
+  useUpdateActivity,
+  type Activity,
+  type UpdateActivityInput,
+} from "../../lib/queries";
 import { hasSegmentBuilderRoute } from "../../lib/segmentBuilder";
+import {
+  ActivitySportSelect,
+  ActivityTypeSelect,
+} from "./ActivityClassificationSelect";
 
 export function ActivityHeaderActions({
   activity,
-  isRegenerating,
   isDeleting,
-  isAdmin,
   onOpenEditDialog,
-  onRegenerate,
   onDelete,
 }: {
   activity: Activity;
-  isRegenerating: boolean;
   isDeleting: boolean;
-  isAdmin?: boolean;
   onOpenEditDialog: () => void;
-  onRegenerate: () => void;
   onDelete: () => void;
 }) {
   const canBuildSegment = hasSegmentBuilderRoute(activity.route_points);
   const segmentBuilderHref = `/segments/builder?activityId=${activity.id}`;
+  const update = useUpdateActivity();
+  async function saveClassification(patch: UpdateActivityInput) {
+    try {
+      await update.updateAsync(activity.id, patch);
+    } catch {
+      /* The mutation exposes the save error below. */
+    }
+  }
 
   return (
     <div className="flex flex-col items-start gap-3 sm:items-end">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <span className="badge badge-outline h-8">
-          {formatSport(activity.sport)}
-        </span>
-        <span className="badge badge-outline h-8">
-          {formatActivityTypeLabel(activity.activity_type)}
-        </span>
+        <ActivitySportSelect
+          value={activity.sport}
+          iconOnly
+          disabled={update.isPending}
+          onChange={(sport) => {
+            void saveClassification({ sport });
+          }}
+        />
+        <ActivityTypeSelect
+          value={activity.activity_type}
+          disabled={update.isPending}
+          onChange={(activity_type) => {
+            void saveClassification({ activity_type });
+          }}
+        />
 
         <div className="dropdown dropdown-end">
           <button
@@ -54,39 +70,13 @@ export function ActivityHeaderActions({
             className="dropdown-content menu z-20 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
           >
             <li>
-              {canBuildSegment && (
-                <Link href={segmentBuilderHref}>Build segment</Link>
-              )}
-            </li>
-            <li>
               <button type="button" onClick={onOpenEditDialog}>
                 Edit activity
               </button>
             </li>
-            {isAdmin && activity.activity_import_id ? (
+            {canBuildSegment ? (
               <li>
-                <Link href={`/admin/imports/${activity.activity_import_id}`}>
-                  Import details
-                </Link>
-              </li>
-            ) : null}
-
-            {isAdmin ? (
-              <li>
-                <TemporalLink />
-              </li>
-            ) : null}
-            {activity.can_regenerate ? (
-              <li>
-                <button
-                  type="button"
-                  onClick={onRegenerate}
-                  disabled={isRegenerating}
-                >
-                  {isRegenerating
-                    ? "Regenerating..."
-                    : "Regenerate derived data"}
-                </button>
+                <Link href={segmentBuilderHref}>Build segment</Link>
               </li>
             ) : null}
             {activity.can_download_source_file ? (
@@ -109,6 +99,11 @@ export function ActivityHeaderActions({
           </ul>
         </div>
       </div>
+      {update.isError ? (
+        <p role="alert" className="text-sm text-error">
+          Unable to update activity. Please try again.
+        </p>
+      ) : null}
 
       {!canBuildSegment ? (
         <p className="text-sm text-base-content/60 sm:text-right">

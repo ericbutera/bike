@@ -127,7 +127,9 @@ impl StravaActivitySummary {
             .map(str::to_owned)
             .or_else(|| field("gear_id"));
         crate::activity_data::ActivitySourceMetadata {
+            location: None,
             description: field("description"),
+            private_notes: field("private_note"),
             gear: gear_id.map(|id| crate::activity_data::ActivityGear {
                 id,
                 name: gear

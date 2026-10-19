@@ -10,6 +10,7 @@ import {
 } from "../../lib/activityFormatting";
 import { type Activity } from "../../lib/queries";
 import MetricCard from "../MetricCard";
+import ActivitySportIcon from "../ActivitySportIcon";
 import ActivityAchievementChip from "./ActivityAchievementChip";
 import { activityAchievements } from "./activityAchievements";
 import ActivityRoutePreview from "./ActivityRoutePreview";
@@ -42,33 +43,30 @@ export default function ActivityStreamCard({
         />
 
         <div>
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-4">
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                <h3 className="min-w-0 flex-1 text-base font-semibold text-base-content">
-                  <Link
-                    href={`/activities/${activity.id}`}
-                    className="link link-hover link-primary no-underline"
-                  >
-                    {activity.title}
-                  </Link>
-                </h3>
-                {activity.location ? (
-                  <span className="hidden text-sm text-base-content/60 sm:inline">
-                    {activity.location}
-                  </span>
-                ) : null}
-              </div>
-              {activity.location ? (
-                <p className="mt-1 text-sm text-base-content/60 sm:hidden">
-                  {activity.location}
-                </p>
-              ) : null}
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-baseline sm:gap-x-4">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="flex h-6 shrink-0 items-center self-start">
+                <ActivitySportIcon sport={activity.sport} />
+              </span>
+              <h3 className="min-w-0 flex-1 text-base font-semibold text-base-content">
+                <Link
+                  href={`/activities/${activity.id}`}
+                  className="link link-hover link-primary no-underline"
+                >
+                  {activity.title}
+                </Link>
+              </h3>
             </div>
 
-            <span className="text-sm text-base-content/70 sm:text-right">
-              {formatActivityTimestamp(activity.started_at)}
-            </span>
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-base-content/60 sm:justify-end">
+              {activity.location ? <span>{activity.location}</span> : null}
+              <time
+                className="whitespace-nowrap"
+                dateTime={activity.started_at}
+              >
+                {formatActivityTimestamp(activity.started_at)}
+              </time>
+            </div>
           </div>
 
           {achievements.length > 0 ? (

@@ -1,48 +1,26 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import type { Activity } from "../../lib/queries";
+import { render, screen, within } from "@testing-library/react";
+import { expect, it } from "vitest";
+import { activity } from "../../tests/fixtures/activities";
 import ActivityMetricsSummary from "../activity-detail/ActivityMetricsSummary";
 
-const activity: Activity = {
-  id: 42,
-  title: "Fixture walk",
-  sport: "walk",
-  source: "strava_sync",
-  started_at: "2026-10-14T12:00:00Z",
-};
-
-describe("ActivityMetricsSummary source metadata", () => {
-  it("shows a description and named gear while rendering description as text", () => {
-    render(
-      <ActivityMetricsSummary
-        activity={{
-          ...activity,
-          description: "A walk <script>fixture</script>",
-          gear: { id: "fixture-gear", name: "Fixture shoes" },
-        }}
-        unitSystem="metric"
-      />,
-    );
-    expect(screen.getByText("Fixture shoes")).toBeInTheDocument();
-    expect(
-      screen.getByText("A walk <script>fixture</script>"),
-    ).toBeInTheDocument();
-    expect(document.querySelector("script")).toBeNull();
-  });
-
-  it("uses the retained gear ID when Strava supplies no gear name", () => {
-    render(
-      <ActivityMetricsSummary
-        activity={{ ...activity, gear: { id: "fixture-gear" } }}
-        unitSystem="metric"
-      />,
-    );
-    expect(screen.getByText("fixture-gear")).toBeInTheDocument();
-  });
-
-  it("keeps legacy activities with no metadata readable", () => {
-    render(<ActivityMetricsSummary activity={activity} unitSystem="metric" />);
-    expect(screen.queryByText("Gear")).not.toBeInTheDocument();
-    expect(screen.getByText("strava_sync")).toBeInTheDocument();
-  });
+it("groups the main stats in their own summary card", () => {
+  render(
+    <ActivityMetricsSummary
+      activity={activity({
+        distance_meters: 14000,
+        total_time_seconds: 1600,
+        elevation_gain_meters: 250,
+        relative_effort: 106,
+      })}
+      unitSystem="metric"
+    />,
+  );
+  const summary = within(
+    screen.getByRole("region", { name: "Activity summary" }),
+  );
+  expect(summary.getByText("14.0 km")).toBeInTheDocument();
+  expect(summary.getByText("26m 40s")).toBeInTheDocument();
+  expect(summary.getByText("250 m")).toBeInTheDocument();
+  expect(summary.getByText("106")).toBeInTheDocument();
+  expect(summary.queryByText("Activity data")).not.toBeInTheDocument();
 });

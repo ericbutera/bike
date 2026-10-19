@@ -29,7 +29,7 @@ export default function ActivitySegmentLegend({
           <button
             key={segmentGroup.segmentId}
             type="button"
-            className={`btn btn-sm ${isSelected ? "btn-active" : "btn-outline"}`}
+            className={`btn btn-sm border-base-300 hover:border-base-300 ${isSelected ? "bg-base-200" : "bg-base-100"}`}
             aria-label={`Highlight ${segmentGroup.segmentTitle}`}
             aria-pressed={isSelected}
             onMouseEnter={() => onHoverSegment(segmentGroup.segmentId, true)}

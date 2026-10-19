@@ -55,7 +55,7 @@ export type ActivityLap = {
 
 export type Activity = Pick<
   components["schemas"]["ActivityResponse"],
-  "description" | "gear"
+  "description" | "gear" | "private_notes"
 > & {
   id: number;
   title: string;

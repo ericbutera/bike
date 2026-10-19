@@ -3925,6 +3925,10 @@ components:
           - string
           - 'null'
           example: saturday-hills.fit
+        private_notes:
+          type:
+          - string
+          - 'null'
         relative_effort:
           type:
           - integer
@@ -5729,6 +5733,10 @@ components:
                 - string
                 - 'null'
                 example: saturday-hills.fit
+              private_notes:
+                type:
+                - string
+                - 'null'
               relative_effort:
                 type:
                 - integer
@@ -7934,6 +7942,30 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/ActivityType'
+        description:
+          type:
+          - string
+          - 'null'
+          description: Empty text clears the description.
+        gear_name:
+          type:
+          - string
+          - 'null'
+          description: Changes the existing gear's display name while preserving its identifier.
+        location:
+          type:
+          - string
+          - 'null'
+          description: Empty text clears the manual location and restores route-derived location.
+        private_notes:
+          type:
+          - string
+          - 'null'
+          description: Empty text clears private notes.
+        sport:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ActivitySport'
         title:
           type:
           - string

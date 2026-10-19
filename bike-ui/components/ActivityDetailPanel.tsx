@@ -1,30 +1,26 @@
 "use client";
 
+import { faClock, faLocationDot } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import TemporalLink from "./ui/TemporalLink";
 import { formatActivityTimestamp } from "../lib/activityFormatting";
-import {
-  useActivity,
-  useDeleteActivity,
-  useRegenerateActivity,
-} from "../lib/queries";
+import { useActivity, useDeleteActivity } from "../lib/queries";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
-import ActivityClimbsCard from "./activity-detail/ActivityClimbsCard";
+import ActivityRouteDetails from "./activity-detail/ActivityRouteDetails";
 import { ActivityHeaderActions } from "./activity-detail/ActivityHeaderActions";
 import ActivityModal from "./activity-detail/ActivityModal";
-import LapCard from "./activity-detail/LapCard";
+import ActivityDataCard from "./activity-detail/ActivityDataCard";
+import ActivityLapsTable from "./activity-detail/ActivityLapsTable";
 import ActivityMetricsSummary from "./activity-detail/ActivityMetricsSummary";
 import ActivityRouteMap from "./activity-detail/ActivityRouteMap";
 import ActivitySignalsCard from "./activity-detail/ActivitySignalsCard";
 import { useKeyedState } from "../lib/useKeyedState";
-import MatchedSegmentsSection from "./MatchedSegmentsSection";
 import TrainingProfileSnapshot from "./TrainingProfileSnapshot";
 import { AppCard, CardHeader } from "./ui/Card";
 import InfoTooltip from "./ui/InfoTooltip";
 import { ErrorCard, LoadingCard } from "./ui/QueryState";
-import { useAuth } from "../lib/auth";
 
 const LAP_SPLITS_HELP_TEXT =
   "These lap rollups come from the upload-time read side and can be regenerated when the development flag is enabled.";
@@ -41,33 +37,16 @@ export default function ActivityDetailPanel({
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const router = useRouter();
   const { unitSystem } = useUnitPreferences();
-  const { user } = useAuth();
   const activityQuery = useActivity(activityId);
   useDocumentTitle(activityQuery.data?.title ?? "Activity");
-  const regenerateMutation = useRegenerateActivity();
-  const [reprocessingJob, setReprocessingJob] = useState<string | null>(null);
   const deleteMutation = useDeleteActivity();
   const activity = activityQuery.data;
-  const isAdmin = Boolean(user?.is_admin);
   function toggleSegmentMatch(segmentId: number) {
     setSelectedSegmentIds((current) =>
       current.includes(segmentId)
         ? current.filter((id) => id !== segmentId)
         : [...current, segmentId],
     );
-  }
-
-  async function handleRegenerate() {
-    if (!activity) {
-      return;
-    }
-
-    try {
-      const job = await regenerateMutation.regenerateAsync(activity.id);
-      setReprocessingJob(job.id);
-    } catch {
-      // The mutation exposes the API error state used below.
-    }
   }
 
   async function handleDelete() {
@@ -107,49 +86,47 @@ export default function ActivityDetailPanel({
   }
 
   return (
-    <section className="space-y-8">
-      <AppCard bodyClassName="gap-6">
-        {reprocessingJob ? (
-          <p role="status">
-            Activity reprocessing started.{" "}
-            <TemporalLink workflowId={reprocessingJob} />
-          </p>
-        ) : null}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="mt-2 text-4xl font-semibold">{activity.title}</h1>
-            <p className="mt-3 text-sm text-base-content/70">
+    <section className="space-y-4">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold text-base-content">
+            {activity.title}
+          </h1>
+          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-base-content/70">
+            {activity.location ? (
+              <span className="inline-flex items-center gap-1.5">
+                <FontAwesomeIcon icon={faLocationDot} aria-hidden="true" />
+                {activity.location}
+              </span>
+            ) : null}
+            <time
+              dateTime={activity.started_at}
+              className="inline-flex items-center gap-1.5"
+            >
+              <FontAwesomeIcon icon={faClock} aria-hidden="true" />
               {formatActivityTimestamp(activity.started_at)}
-              {" - "}
-              {activity.location}
-            </p>
-          </div>
-          <ActivityHeaderActions
-            activity={activity}
-            isRegenerating={regenerateMutation.isPending}
-            isDeleting={deleteMutation.isPending}
-            isAdmin={isAdmin}
-            onOpenEditDialog={() => setIsActivityModalOpen(true)}
-            onRegenerate={() => {
-              void handleRegenerate();
-            }}
-            onDelete={() => {
-              void handleDelete();
-            }}
-          />
+            </time>
+          </p>
         </div>
+        <ActivityHeaderActions
+          activity={activity}
+          isDeleting={deleteMutation.isPending}
+          onOpenEditDialog={() => setIsActivityModalOpen(true)}
+          onDelete={() => {
+            void handleDelete();
+          }}
+        />
+      </header>
 
-        {isActivityModalOpen ? (
-          <ActivityModal
-            activityId={activity.id}
-            initialTitle={activity.title}
-            initialActivityType={activity.activity_type}
-            onClose={() => setIsActivityModalOpen(false)}
-          />
-        ) : null}
+      {isActivityModalOpen ? (
+        <ActivityModal
+          activity={activity}
+          onClose={() => setIsActivityModalOpen(false)}
+        />
+      ) : null}
 
-        <ActivityMetricsSummary activity={activity} unitSystem={unitSystem} />
-      </AppCard>
+      <ActivityMetricsSummary activity={activity} unitSystem={unitSystem} />
+      <ActivityDataCard activity={activity} unitSystem={unitSystem} />
 
       <ActivityRouteMap
         key={activity.id}
@@ -159,10 +136,10 @@ export default function ActivityDetailPanel({
         selectedSegmentIds={selectedSegmentIds}
       />
 
-      <ActivityClimbsCard activity={activity} unitSystem={unitSystem} />
-
-      <MatchedSegmentsSection
-        activityId={activityId}
+      <ActivityRouteDetails
+        key={`details-${activity.id}`}
+        activity={activity}
+        unitSystem={unitSystem}
         selectedSegmentIds={selectedSegmentIds}
         onToggleSegmentMatch={toggleSegmentMatch}
       />
@@ -177,7 +154,7 @@ export default function ActivityDetailPanel({
         unitSystem={unitSystem}
       />
 
-      <AppCard>
+      <AppCard as="section" aria-label="Lap splits">
         <CardHeader
           className="mb-3"
           title="Lap splits"
@@ -188,7 +165,7 @@ export default function ActivityDetailPanel({
             />
           }
           actions={
-            <span className="badge badge-outline">
+            <span className="text-sm text-base-content/60">
               {(activity.laps ?? []).length} lap
               {(activity.laps ?? []).length === 1 ? "" : "s"}
             </span>
@@ -196,15 +173,10 @@ export default function ActivityDetailPanel({
         />
 
         {(activity.laps ?? []).length > 0 ? (
-          <div className="grid gap-4 xl:grid-cols-2">
-            {(activity.laps ?? []).map((lap) => (
-              <LapCard
-                key={`${lap.lap_index}-${lap.title}`}
-                lap={lap}
-                unitSystem={unitSystem}
-              />
-            ))}
-          </div>
+          <ActivityLapsTable
+            laps={activity.laps ?? []}
+            unitSystem={unitSystem}
+          />
         ) : (
           <div className="alert mt-5">
             <span>This upload did not contain explicit lap data.</span>

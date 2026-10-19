@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ActivityStream from "../ActivityStream";
 import RequireAuth from "../RequireAuth";
+import { formatActivityTimestamp } from "../../lib/activityFormatting";
 
 const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
@@ -188,9 +189,7 @@ describe("ActivityStream", () => {
     const latestEffortLocations = within(
       latestEffortArticle as HTMLElement,
     ).getAllByText("Portland, OR");
-    expect(latestEffortLocations).toHaveLength(2);
-    expect(latestEffortLocations[0]).toHaveClass("hidden");
-    expect(latestEffortLocations[1]).toHaveClass("sm:hidden");
+    expect(latestEffortLocations).toHaveLength(1);
     expect(
       (latestEffortArticle?.firstElementChild as HTMLElement).className,
     ).toContain("sm:grid-cols-[8.5rem_minmax(0,1fr)]");
@@ -202,7 +201,7 @@ describe("ActivityStream", () => {
       within(earlierEffortArticle as HTMLElement).getAllByText(
         "Traverse City, MI",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(screen.queryByText("morning-ride.gpx")).not.toBeInTheDocument();
     expect(screen.queryByText("earlier-effort.gpx")).not.toBeInTheDocument();
     expect(screen.queryByText("Mountain biking")).not.toBeInTheDocument();
@@ -215,6 +214,78 @@ describe("ActivityStream", () => {
       "page",
     );
     expect(screen.getByRole("button", { name: "2" })).toBeInTheDocument();
+  });
+
+  it("aligns location and date in one metadata row and places the sport before the title", () => {
+    const activity = makeActivity({ sport: "mountain_bike" });
+    mocks.useActivities.mockReturnValue({
+      data: [activity],
+      isError: false,
+      isFetching: false,
+    });
+
+    render(<ActivityStream />);
+
+    const timestamp = screen.getByText(
+      formatActivityTimestamp(activity.started_at),
+    );
+    const location = screen.getByText("Portland, OR");
+    const metadata = timestamp.parentElement;
+    expect(location.parentElement).toBe(metadata);
+    expect(metadata).toHaveClass(
+      "flex",
+      "items-baseline",
+      "text-sm",
+      "text-base-content/60",
+    );
+    expect(timestamp).toHaveAttribute("datetime", activity.started_at);
+    const heading = screen.getByRole("heading", {
+      name: activity.title,
+      level: 3,
+    });
+    const icon = screen.getByRole("img", { name: "Mountain bike" });
+    expect(icon.parentElement?.nextElementSibling).toBe(heading);
+    expect(heading.parentElement).toContainElement(icon);
+    expect(metadata).not.toContainElement(icon);
+  });
+
+  it("resets pagination and preserves other URL parameters when selecting or clearing a sport", async () => {
+    mocks.searchParams = "sport=walk&page=3&q=forest";
+    const user = userEvent.setup();
+    render(<ActivityStream />);
+
+    expect(mocks.useActivities).toHaveBeenLastCalledWith({
+      page: 3,
+      perPage: 10,
+      sport: "walk",
+    });
+    await user.click(
+      screen.getByRole("button", { name: "Activity type: Walk" }),
+    );
+    await user.click(screen.getByRole("menuitemradio", { name: "Hike" }));
+    expect(mocks.routerReplace).toHaveBeenLastCalledWith(
+      "/?sport=hike&q=forest",
+      { scroll: false },
+    );
+    expect(mocks.useActivities).toHaveBeenLastCalledWith({
+      page: 1,
+      perPage: 10,
+      sport: "hike",
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: "Activity type: Hike" }),
+    );
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "All activity types" }),
+    );
+    expect(mocks.routerReplace).toHaveBeenLastCalledWith("/?q=forest", {
+      scroll: false,
+    });
+    expect(mocks.useActivities).toHaveBeenLastCalledWith({
+      page: 1,
+      perPage: 10,
+    });
   });
 
   it("shows segment achievements on the activity list", () => {

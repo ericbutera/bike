@@ -2,7 +2,7 @@
 
 import ResponsiveChart from "../ui/ResponsiveChart";
 
-import { type KeyboardEvent, useMemo } from "react";
+import { type KeyboardEvent } from "react";
 import {
   Area,
   CartesianGrid,
@@ -11,10 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  type ActivityClimb,
-  buildActivityClimbs,
-} from "../../lib/activityClimbs";
+import { type ActivityClimb } from "../../lib/activityClimbs";
 import {
   FEET_PER_METER,
   formatDistance,
@@ -23,13 +20,11 @@ import {
   METERS_PER_MILE,
   type UnitSystem,
 } from "../../lib/activityFormatting";
-import type { Activity } from "./types";
 import MetricCard from "../MetricCard";
-import { AppCard, CardHeader } from "../ui/Card";
 import { useKeyedState } from "../../lib/useKeyedState";
 import ViewRouteOnMap from "../ViewRouteOnMap";
 
-const CLIMB_LIST_VISIBLE_ROW_COUNT = 5;
+const CLIMB_LIST_VISIBLE_ROW_COUNT = 20;
 const CLIMB_LIST_MAX_HEIGHT = `calc(${(CLIMB_LIST_VISIBLE_ROW_COUNT + 1) * 2.5}rem + 2px)`;
 
 function formatGradePercent(value: number | null | undefined) {
@@ -136,20 +131,20 @@ function ClimbElevationTooltip({
   );
 }
 
-export default function ActivityClimbsCard({
-  activity,
+export default function ActivityClimbsPanel({
+  activityId,
+  climbs: activityClimbs,
   unitSystem,
+  active,
 }: {
-  activity: Activity;
+  activityId: number | string;
+  climbs: ActivityClimb[];
   unitSystem: UnitSystem;
+  active: boolean;
 }) {
   const [selectedClimbId, setSelectedClimbId] = useKeyedState<string | null>(
-    String(activity.id),
+    String(activityId),
     null,
-  );
-  const activityClimbs = useMemo(
-    () => buildActivityClimbs(activity.route_points),
-    [activity.route_points],
   );
   const selectedClimb =
     activityClimbs.find((climb) => climb.id === selectedClimbId) ?? null;
@@ -172,17 +167,8 @@ export default function ActivityClimbsCard({
   }
 
   return (
-    <AppCard id="activity-climbs-card">
-      <CardHeader
-        className="mb-3"
-        title="Climbs"
-        actions={
-          <span className="text-sm text-base-content/60">
-            {activityClimbs.length} climb
-            {activityClimbs.length === 1 ? "" : "s"}
-          </span>
-        }
-      />
+    <section id="activity-climbs-card" aria-label="Climbs">
+      <h2 className="sr-only">Climbs</h2>
 
       {activityClimbs.length > 0 ? (
         <>
@@ -259,21 +245,26 @@ export default function ActivityClimbsCard({
           </div>
 
           {selectedClimb ? (
-            <div className="mt-6 border-t border-base-300 pt-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <h3 className="text-lg font-semibold text-base-content">
-                  Climb:{" "}
-                  {formatDistanceRange(
-                    selectedClimb.startDistanceMeters,
-                    selectedClimb.endDistanceMeters,
-                    unitSystem,
-                  )}
-                </h3>
-              </div>
+            <section
+              className="mt-6 border-t border-base-300 pt-6"
+              aria-label={`Climb ${selectedClimb.sequence} details`}
+            >
+              <h3 className="text-lg font-semibold text-base-content">
+                Climb {selectedClimb.sequence}
+              </h3>
+              <p className="mt-1 text-sm text-base-content/60">
+                Activity distance:{" "}
+                {formatDistanceRange(
+                  selectedClimb.startDistanceMeters,
+                  selectedClimb.endDistanceMeters,
+                  unitSystem,
+                )}
+              </p>
 
-              <div className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4">
                 <MetricCard
                   variant="plain"
+                  size="sm"
                   label="distance"
                   value={formatDistance(
                     selectedClimb.distanceMeters,
@@ -282,6 +273,7 @@ export default function ActivityClimbsCard({
                 />
                 <MetricCard
                   variant="plain"
+                  size="sm"
                   label="elevation gain"
                   value={formatElevation(
                     selectedClimb.elevationGainMeters,
@@ -290,6 +282,7 @@ export default function ActivityClimbsCard({
                 />
                 <MetricCard
                   variant="plain"
+                  size="sm"
                   label="elevation loss"
                   value={formatElevation(
                     selectedClimb.elevationLossMeters,
@@ -298,27 +291,31 @@ export default function ActivityClimbsCard({
                 />
                 <MetricCard
                   variant="plain"
+                  size="sm"
                   label="category"
                   value={formatClimbCategory(selectedClimb.category)}
                 />
                 <MetricCard
                   variant="plain"
+                  size="sm"
                   label="max grade"
                   value={formatGradePercent(selectedClimb.maxGradePercent)}
                 />
                 <MetricCard
                   variant="plain"
+                  size="sm"
                   label="avg grade"
                   value={formatGradePercent(selectedClimb.avgGradePercent)}
                 />
                 <MetricCard
                   variant="plain"
+                  size="sm"
                   label="estimated"
                   value={formatDuration(selectedClimb.durationSeconds)}
                 />
               </div>
 
-              {elevationRows.length > 1 ? (
+              {active && elevationRows.length > 1 ? (
                 <div
                   role="img"
                   aria-label={`Climb ${selectedClimb.sequence} elevation profile`}
@@ -328,7 +325,7 @@ export default function ActivityClimbsCard({
                     <ResponsiveChart
                       width="100%"
                       height="100%"
-                      minWidth={320}
+                      minWidth={0}
                       minHeight={180}
                       initialDimension={{ width: 320, height: 180 }}
                     >
@@ -344,6 +341,7 @@ export default function ActivityClimbsCard({
                         <XAxis
                           axisLine={false}
                           dataKey="distance"
+                          domain={["dataMin", "dataMax"]}
                           tick={{
                             fill: "var(--color-base-content)",
                             fontSize: 10,
@@ -373,7 +371,7 @@ export default function ActivityClimbsCard({
                   </div>
                 </div>
               ) : null}
-            </div>
+            </section>
           ) : null}
         </>
       ) : (
@@ -381,6 +379,6 @@ export default function ActivityClimbsCard({
           <span>No sustained climbs found.</span>
         </div>
       )}
-    </AppCard>
+    </section>
   );
 }

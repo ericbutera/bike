@@ -40,6 +40,16 @@ on `activities::Entity`, and deleting the import stays on `activity_imports::Ent
   Import and archive-job reads also require their owner explicitly.
 - `activity.update_details` owns title validation and the partial write. A blank
   title rejects the whole update; omitted fields retain their stored values.
+- The typed activity edit patch also supports the normalized sport and editable
+  location/description/private-notes metadata and the recorded gear's display
+  name. Gear-name edits apply to recorded gear and preserve its source identifier.
+  Empty text clears metadata overrides. Preserve
+  recordings, gear, import provenance, owner checks, row locking, and manual
+  history in the same transaction. Sport changes refresh cycling eligibility
+  and dependent projections through existing operations.
+- Retained-file reprocessing preserves saved title, sport, Training/Race, and
+  source metadata while replacing recording-derived measurements. Keep its
+  existing source-version fence.
 - `activities::Model::linked_to_imports` hydrates only the owner's activities.
   An import's explicit activity link takes precedence over the activity's reverse
   import link. A missing or foreign explicit link leaves an owned reverse link

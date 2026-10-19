@@ -23,6 +23,27 @@ test("activity detail exposes the activity surface in Bike", async ({
 
     await openActivityDetail(page, target, activityId);
 
+    const header = page
+      .getByRole("heading", { level: 1 })
+      .locator("xpath=ancestor::header[1]");
+    const location = header.locator("p > span");
+    if (await location.count()) {
+      const positions = await header.locator("p").evaluate((row) => {
+        const textBounds = (node) => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          return range.getBoundingClientRect().toJSON();
+        };
+        return {
+          location: textBounds(row.querySelector("span").lastChild),
+          time: textBounds(row.querySelector("time")),
+        };
+      });
+      expect(
+        Math.abs(positions.location.y - positions.time.y),
+      ).toBeLessThanOrEqual(0.5);
+    }
+
     await expect(
       page.getByText("Relative effort", { exact: true }),
     ).toBeVisible();
@@ -43,25 +64,25 @@ test("activity detail exposes the activity surface in Bike", async ({
     await expect(matchedSegment).toHaveAttribute("aria-pressed", "true");
 
     if (expectedClimbCount > 0) {
+      await page.getByRole("tab", { name: /^Climbs/ }).click();
       const climb = page
         .getByRole("button", { name: /^Show climb \d+ details$/ })
         .first();
       await climb.focus();
       await page.keyboard.press("Enter");
       await expect(climb).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        page.getByRole("tab", {
+          name: `Climbs (${expectedClimbCount})`,
+          exact: true,
+        }),
+      ).toHaveAttribute("aria-selected", "true");
+      await page.getByRole("tab", { name: /^Segments/ }).click();
+    } else {
+      await expect(page.getByRole("tab", { name: /^Climbs/ })).toHaveCount(0);
     }
-    await expect(page.getByRole("heading", { name: "Climbs" })).toBeVisible();
     await expect(
-      page.getByText(
-        `${expectedClimbCount} climb${expectedClimbCount === 1 ? "" : "s"}`,
-        { exact: true },
-      ),
-    ).toBeVisible();
-    if (expectedClimbCount === 0) {
-      await expect(page.getByText("No sustained climbs found.")).toBeVisible();
-    }
-    await expect(
-      page.getByRole("heading", { name: "Matched segments" }),
+      page.getByRole("tabpanel", { name: /^Segments/ }),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Zone distribution" }),
@@ -69,7 +90,13 @@ test("activity detail exposes the activity surface in Bike", async ({
     await expect(
       page.getByRole("heading", { name: "Ride signals" }),
     ).toBeVisible();
-    await expect(page.getByLabel("Activity data details")).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Activity summary" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Activity data" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Activity data details")).toHaveCount(0);
     await expect(
       page.getByText("Training profile", { exact: true }),
     ).toHaveCount(0);

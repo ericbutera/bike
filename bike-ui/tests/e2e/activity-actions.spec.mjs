@@ -16,6 +16,15 @@ test("activity original source downloads work in Bike", async ({
     await openActivityDetail(page, target, activityId);
 
     await page.getByRole("button", { name: "Open activity actions" }).click();
+    await expect(
+      page.getByRole("link", { name: "Import details" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Open Temporal workflows" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Regenerate derived data" }),
+    ).toHaveCount(0);
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("link", { name: "Download original source" }).click();
     const download = await downloadPromise;
