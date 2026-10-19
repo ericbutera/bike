@@ -19,11 +19,31 @@ Track active Bike work in `docs/TODO.md`. Work one bounded task at a time and
 deliver its result for review on a feature branch. Preserve historical
 operational evidence unless a task explicitly retires it.
 
-Run local lint, formatting, type checks, tests, and builds on the host through
-the owning mise tasks. Use Docker only for dependencies or checks that require
-a container environment; `mise run checks:docker <task>` is an explicit fallback.
-Git and GitHub commands run on the host. Keep native and Linux build caches
-separate, and treat generated reports as temporary output.
+Host development execution is prohibited: this project generated almost 500 GB
+of scattered host output in one day. Speed, an installed toolchain, and an old
+approval rule do not justify an exception. This applies to mise itself, Cargo,
+rustup, Next.js, package managers, editor builds, hooks, and one-off scripts.
+Run builds, dependency installation, formatting, linting, type checks, tests,
+coverage, code generation, and other cache-writing work inside a Docker
+container. Run the existing mise commands unchanged inside that container;
+do not wrap individual tasks or prek entries in Docker-dispatch scripts.
+Git and GitHub may use host authentication. Enter the checks container
+with Docker directly; run mise only inside the container.
+Git and GitHub commands may also run inside the container using the existing
+host `gh` login's temporary token, as described in the development guide.
+Never persist authentication tokens in source, images, or build caches.
+Follow the [shared build storage contract](docs/development.md#shared-build-storage):
+all Bike caches, artifacts, scratch, and temporary output share one 200 GiB
+quota. Keep databases, uploads, and other user data outside this volume.
+Do not link or mount Docker caches into host `.cache`, `.scratch`, or
+`.artifacts` directories. Those host paths must be safe to purge independently
+of Docker, without removing configuration or breaking local development.
+Remove task scratch when work finishes or its PR merges; preserve only
+requested deliverables and output belonging to active work.
+Run Playwright/Chromium, visual previews, screenshots, and one-off browser checks
+in the pinned browser container. Keep browser warnings and errors fatal. Retiring
+cross-implementation parity does not retire the current UI's light/dark appearance
+tests or reviewed screenshot baselines.
 
 ## specs
 
@@ -33,13 +53,13 @@ always update specs before writing code. make sure features aren't described mul
 
 ## git
 
-Use the existing workspace-level `.worktrees/` directory inside the approved
-workspace, with a unique repository/task name such as `.worktrees/bike-<task>`.
-A multi-repository task uses one checkout per repository it edits. Unique
-checkout basenames also keep the existing Docker build-cache namespaces apart.
-Reuse an assigned worktree; do not create another worktree inside it. Do not
-create sibling project directories, additional clones, or worktrees outside the
-approved workspace. Keep each task's worktree path fixed until cleanup.
+Keep the primary editor checkout on host `main`. Agent clones and worktrees live
+under `worktrees/` on the shared Docker disk and count toward its 200 GiB quota.
+Create and use them inside Docker as described in the development guide; never
+create host `.worktrees`, extra host clones, or source archives. Reuse an assigned
+Docker checkout and shared caches. Publish completed work before removing its
+checkout; preserve active uncommitted source. Git/GitHub may use host authentication,
+but that exception does not authorize host worktrees or host hook execution.
 
 Create PRs for work. Keep PR descriptions & remote code updated for review when you've completed work.
 
@@ -176,6 +196,7 @@ This project uses mise for all language and package-manager tooling.
 Before running Node, Rust, Go, Python, pnpm, npm, cargo, task, or similar commands:
 
 - check `mise.toml`
+- enter the development checks container described in [local development](docs/development.md)
 - run tools through `mise exec -- <command>`
 - if tools are missing, run `mise install`
 
@@ -215,7 +236,7 @@ public files. CI receives repository locations through generically named secrets
 
 ## other rules
 
-- Clean up git `.worktrees` when finished with a PR.
+- Clean up completed Docker Git worktrees after their PRs merge.
 - Do not introduce new scripting languages without explicit approval. Only shell scripts are allowed.
 - Create shell scripts instead of multi-line commands.
 - Use mise as the task runner.

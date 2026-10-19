@@ -17,6 +17,7 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
+    "tsBuildInfoFile": ".artifacts/tsconfig.tsbuildinfo",
     "plugins": [
       {
         "name": "next"

@@ -116,7 +116,7 @@ while IFS= read -r project; do
   id="$(jq -r .id <<<"$project")"
   case "$(jq -r .language <<<"$project")" in
     Rust) printf '{"data":[{"files":[],"totals":{"lines":{"count":5,"covered":4,"percent":80}}}]}\n' ;;
-    Next.js|Node.js) printf '{"total":{"lines":{"total":5,"covered":4,"pct":80}}}\n' ;;
+    Next.js) printf '{"total":{"lines":{"total":5,"covered":4,"pct":80}}}\n' ;;
     Go) printf '{"lines":5,"covered":4,"percent":80}\n' ;;
   esac >"$fixture/.artifacts/coverage/$id/coverage-summary.json"
 done < <(jq -c '.[]' "$fixture/coverage-projects.json")
@@ -172,8 +172,6 @@ test_publication_identity() {
 test_publication_identity
 
 # A real Go module proves report identity and paths.
-jq 'map(if .id == "map-renderer" then .language = "Go" | .include = "map-renderer/**/*.go" | .exclude = ["*_test.go", "*.pb.go"] else . end)' "$fixture/coverage-projects.json" >"$fixture/projects.next.json"
-mv "$fixture/projects.next.json" "$fixture/coverage-projects.json"
 export GOTOOLCHAIN=local GOMODCACHE="$fixture/go-mod" GOCACHE="${GOCACHE:-$repo/.cache/coverage-fixture-go-build}"
 while IFS= read -r id; do
   printf 'Retired provider report\n' >"$fixture/.artifacts/coverage/$id/html/retired.mjs.html"

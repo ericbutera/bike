@@ -4,6 +4,7 @@ services:
     ports:
       - "${BIKE_RUST_POSTGRES_PORT:-5432}:5432"
   migration:
+    env_file: ./docker/dev-cache.env
     image: bike-dev-api
     build: &api_build
       context: ./bike-rs
@@ -16,8 +17,14 @@ services:
         PROTOC_VERSION: ${PROTOC_VERSION:?Run Compose through mise}
     command: [cargo, run, --locked, --bin, migration, --, up]
     volumes:
-      - ./bike-rs:/app
+      - ./bike-rs:/app:ro
+      - build_storage:/cache
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume: {nocopy: true, subpath: tmp/migration}
   bike-rs:
+    env_file: ./docker/dev-cache.env
     image: bike-dev-api
     build: *api_build
     environment:
@@ -31,11 +38,19 @@ services:
       OAUTH_DEV_EMAIL: developer@bike.local
       OAUTH_DEV_NAME: Local Developer
       OAUTH_DEV_SUBJECT: bike-local-dev
+      MAP_IMAGE_CACHE_DIR: /cache/map-images
     ports:
       - "${BIKE_RUST_API_PORT:-3000}:3000"
     volumes:
-      - ./bike-rs:/app
+      - ./bike-rs:/app:ro
+      - build_storage:/cache
+      - ${BIKE_UPLOADS_DIR:-uploads}:/app/uploads
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume: {nocopy: true, subpath: tmp/api}
   ui:
+    env_file: ./docker/dev-cache.env
     image: bike-dev-ui
     build:
       context: ./bike-ui
@@ -47,14 +62,52 @@ services:
     environment:
       API_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}/api
       CDN_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}/uploads
-      PNPM_CONFIG_STORE_DIR: /app/node_modules/.pnpm-store
     ports:
       - "${BIKE_RUST_UI_PORT:-3001}:3000"
     volumes:
-      - ./bike-ui:/app
-      - ui_next_node_modules:/app/node_modules
-      - ui_next_cache:/app/.next
+      - build_storage:/cache
+      - ${BIKE_DOCKER_STORAGE_ROOT:-/var/lib/docker/volumes/bike-build-storage/_data}/ui/next-env.d.ts:/app/next-env.d.ts
+      - type: volume
+        source: build_storage
+        target: /app/node_modules
+        volume: {nocopy: true, subpath: ui/node_modules}
+      - type: volume
+        source: build_storage
+        target: /app/.next
+        volume: {nocopy: true, subpath: ui/next}
+      - type: volume
+        source: build_storage
+        target: /app/.artifacts
+        volume: {nocopy: true, subpath: artifacts/ui}
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume: {nocopy: true, subpath: tmp/ui}
+    develop:
+      watch:
+        - action: sync
+          path: ${BIKE_UI_SOURCE:-./bike-ui}
+          target: /app
+          initial_sync: true
+          ignore:
+            - node_modules/
+            - .next/
+            - .artifacts/
+            - .cache/
+            - .scratch/
+            - .pnpm-store/
+            - next-env.d.ts
+            - '*.tsbuildinfo'
+            - .env*
+            - .mise.local.toml
   bike-maps:
+    env_file: ./docker/dev-cache.env
+    volumes:
+      - build_storage:/cache
+      - type: volume
+        source: build_storage
+        target: /tmp
+        volume: {nocopy: true, subpath: tmp/maps}
     build:
       context: .
       dockerfile: map-renderer/Dockerfile
@@ -71,7 +124,10 @@ services:
       - "${BIKE_RUST_JAEGER_GRPC_PORT:-4317}:4317"
       - "${BIKE_RUST_JAEGER_HTTP_PORT:-4318}:4318"
 volumes:
+  uploads:
+    name: ${BIKE_UPLOADS_VOLUME:-bike_uploads}
   postgres_data:
     name: ${BIKE_RUST_POSTGRES_VOLUME:-bike_postgres_data}
-  ui_next_node_modules:
-  ui_next_cache:
+  build_storage:
+    external: true
+    name: bike-build-storage

@@ -178,7 +178,7 @@ export function visualViewport() {
 }
 
 export function visualThemes() {
-  const themes = (process.env.PLAYWRIGHT_THEMES ?? "light")
+  const themes = (process.env.PLAYWRIGHT_THEMES ?? "light,dark")
     .split(",")
     .map((theme) => theme.trim());
   if (themes.some((theme) => !["light", "dark"].includes(theme))) {

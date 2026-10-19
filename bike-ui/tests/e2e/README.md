@@ -1,6 +1,9 @@
 # Bike browser tests
 
 Browser regressions belong to the UI and use its locked Playwright dependencies.
+Run Playwright/Chromium, visual previews, screenshots, and one-off UI checks in
+the pinned browser container. Browser warnings and errors are fatal. Screenshots,
+traces, profiles, and reports belong on the shared Docker disk, never host scratch.
 Backend HTTP and database regressions remain in
 [`bike-rs/api/tests`](../../../bike-rs/api/tests/README.md).
 [TEST11](../../../docs/E2E-TODO.md) tracks implementation and runtime acceptance;
@@ -8,7 +11,8 @@ configured CI steps alone do not establish a verified release gate.
 
 ## Disposable local runs
 
-Install the root mise tools and have a reachable Docker engine with Compose.
+Run the commands below inside the [checks container](../../../docs/development.md#checks-container),
+with a reachable Docker engine and Compose.
 Each run records the engine's native metadata alongside its test artifacts.
 Prepare cached release images separately from test execution:
 
@@ -24,6 +28,12 @@ PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
 
 - The default selects all required connected and API-mocked specs. Screenshot comparisons run only when explicitly
   selected with `PLAYWRIGHT_VISUAL=1`; reviewed baselines remain in `snapshots/`.
+- `map-rendering` checks actual canvas pixels, backgrounds, routes, layers, and
+  controls in both light and dark themes in the default browser gate. These tests
+  remain after retiring comparisons with removed implementations.
+- Full-page `frontend-visual` comparisons default to both light and dark themes.
+  `PLAYWRIGHT_THEMES=light` or `dark` narrows an explicit visual run. Keep reviewed
+  baselines; a changed appearance requires review before updating screenshots.
 - Each run resolves its image inputs once and owns a unique Compose project,
   network, PostgreSQL volume, uploads, renderer styles, and cache. It exposes no
   host ports and shares no development data or source mounts.
@@ -133,5 +143,10 @@ models, rather than committed SQL datasets or database dumps.
   ephemeral checkout is not the only copy. Runs older than seven days are
   removed by the owning CI task. Docker TLS certificates are not copied there.
 
-Direct UI Playwright tasks require an explicitly prepared external environment
-and scenario; prefer `mise run e2e` for disposable connected coverage.
+Direct UI Playwright tasks run inside the pinned browser container and require
+an explicitly prepared environment and scenario. Prefer `mise run e2e` for
+disposable connected coverage. For a container's published preview port, route
+browser traffic through `host.docker.internal`; preserve the localhost origin
+with Chromium's host resolver mapping when required by the development server.
+Mount fixtures read-only and write all screenshots and profiles to the shared
+Docker disk. Do not start a host preview server.

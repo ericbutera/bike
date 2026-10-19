@@ -21,6 +21,7 @@ services:
         aliases: [api.e2e.test]
     volumes:
       - uploads:/app/uploads
+      - ${BIKE_E2E_MAP_CACHE:-map_image_cache}:/cache
   temporal:
     image: ${BIKE_TEMPORAL_TOOLS_IMAGE:?Run Compose through mise}
     entrypoint: [temporal]
@@ -36,7 +37,7 @@ services:
       CDN_URL: http://api.e2e.test:3000/uploads
       LOCAL_ADMIN_AUTO_LOGIN: 'false'
     volumes:
-      - ui_image_cache:/app/.next/cache/images
+      - ${BIKE_E2E_UI_CACHE:-ui_image_cache}:/app/.next/cache/images
     networks:
       default:
         aliases: [ui.e2e.test]
