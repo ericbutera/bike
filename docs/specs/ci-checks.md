@@ -1,9 +1,11 @@
 # CI checks
 
 - Local host checks, prek hooks, and CI call the owning mise tasks with pinned
-  tooling. Run lint, formatting, type checks, builds, and tests on the host by
-  default. Docker is an explicit fallback for checks requiring a container
-  environment. Formatter, compiler, and linter warnings fail checks.
+  tooling. Run lint, formatting, type checks, builds, and unit tests on the host
+  by default. Run Playwright and Chromium browser checks in Docker, including
+  visual previews and screenshots. Docker remains an explicit fallback for
+  other checks requiring a container environment. Formatter, compiler, linter,
+  and browser warnings fail checks.
 - Use `mise run coverage:unit` for native unit coverage.
   `mise run checks:docker <task>` remains available for explicit Linux checks.
 - `lint:maps` and `format:check` cover JavaScript under `map-renderer/`.

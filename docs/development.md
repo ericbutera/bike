@@ -30,8 +30,8 @@ mise run compose:up
 - `COMPOSE_PROJECT_NAME` defaults to `bike`; preserve the existing project's
   database volume when switching checkouts.
 - `NEXT_PUBLIC_TEMPORAL_UI_URL` configures admin job links; default is localhost.
-- Run lint, formatting, type checks, builds, and tests on the host through mise.
-  Docker is required only for checks or service dependencies that need it.
+- Run lint, formatting, type checks, builds, and unit tests on the host through
+  mise. Run Playwright and Chromium browser checks in Docker.
 - Run `mise run lint:ui`, `mise run lint:maps`, and `mise run lint:rs` for the
   owning JavaScript/TypeScript and Rust checks.
 - Run `mise --cd bike-ui run test` for all UI unit tests and coverage, and
@@ -40,9 +40,10 @@ mise run compose:up
   unit coverage. `mise run checks:docker <task>` is an explicit Linux fallback.
   Activities and child workflows use fixture-backed mocks; no running database,
   HTTP service, or Temporal server is required.
-- Direct host Playwright tasks require a prepared external UI and test
-  environment. The disposable connected suite still uses Docker for its
-  PostgreSQL, Temporal, application services, and scenario resets; see the
+- Browser tests, visual previews, screenshots, and one-off UI checks use the
+  pinned browser container. Prefer `mise run e2e [spec]` for the disposable
+  connected suite with PostgreSQL, Temporal, application services, and scenario
+  resets; see the
   [browser test guide](../bike-ui/tests/e2e/README.md).
 - Run `mise exec -- docker compose logs temporal-worker` to inspect correlated logs.
 - Run `mise run compose:down` to stop the stack without deleting its volumes.

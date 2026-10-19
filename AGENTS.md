@@ -30,11 +30,17 @@ task. Let Cargo discover tests; do not maintain test-name allowlists in tasks or
 CI. Keep coverage, production builds, and E2E checks in their owning CI gates.
 Keep required prek checks active; never bypass or weaken them.
 
-Run local lint, formatting, type checks, tests, and builds on the host through
+Run local lint, formatting, type checks, unit tests, and builds on the host through
 the owning mise tasks. Use Docker only for dependencies or checks that require
 a container environment; `mise run checks:docker <task>` is an explicit fallback.
 Git and GitHub commands run on the host. Keep native and Linux build caches
 separate, and treat generated reports as temporary output.
+
+Run Playwright and Chromium browser commands in Docker, including E2E tests,
+visual previews, screenshots, and one-off UI checks. Reuse the pinned browser
+image and owning mise tasks; prefer `mise run e2e [spec]` for browser regressions.
+Use this route from the start instead of attempting a native browser launch
+and requesting unsandboxed execution. Keep browser warnings and errors fatal.
 
 Put regression tests in Bike's existing Rust or UI test paths so the owning CI
 tasks discover them. Keep CI and focused local tasks on the same tooling and

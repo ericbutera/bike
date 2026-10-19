@@ -1,6 +1,9 @@
 # Bike browser tests
 
 Browser regressions belong to the UI and use its locked Playwright dependencies.
+Run all commands that launch Playwright or Chromium in Docker, including visual
+previews, screenshots, and one-off UI checks. Reuse the pinned browser image;
+keep browser warnings and errors fatal.
 Backend HTTP and database regressions remain in
 [`bike-rs/api/tests`](../../../bike-rs/api/tests/README.md).
 [TEST11](../../../docs/E2E-TODO.md) tracks implementation and runtime acceptance;
@@ -133,5 +136,10 @@ models, rather than committed SQL datasets or database dumps.
   ephemeral checkout is not the only copy. Runs older than seven days are
   removed by the owning CI task. Docker TLS certificates are not copied there.
 
-Direct UI Playwright tasks require an explicitly prepared external environment
-and scenario; prefer `mise run e2e` for disposable connected coverage.
+Direct UI Playwright tasks run inside the browser container and require an
+explicitly prepared external environment and scenario; prefer `mise run e2e`
+for disposable connected coverage. For checks against a host preview server,
+route container traffic through `host.docker.internal`. Preserve the original
+localhost origin with Chromium's host resolver mapping when required by the
+development server. Mount needed fixtures read-only and write screenshots to
+the task's workspace scratch directory.
