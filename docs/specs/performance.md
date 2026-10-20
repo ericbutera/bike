@@ -75,3 +75,27 @@ manifest and storage budget. Never seed the developer's database.
   tools; separate producers/backfills from reader cutovers.
 - No database replacement, generic caching/coordination framework, or broad UI
   rewrite. Record unrelated findings for later slices.
+
+## PERF08 small baseline
+
+- `mise run perf:small` owns a disposable PostgreSQL/API stack using the existing
+  runtime images and migrations. It generates ten non-admin owners with 100
+  activities each, 201 GPS points per activity, two repeated attempts on each
+  nonempty activity, and tied durations. Shared Rust fixtures provide defaults;
+  the existing analytics builders prepare ranks and summaries before measurement.
+- The seed contains empty, ready, missing, and stale activity result examples.
+  Correctness checks cover tenant isolation, counts, repeated occurrences, route
+  bounds, and stored rankings. Synthetic short recordings are not the later
+  long-recording or skewed-capacity profile.
+- Measure activity list/detail and segment summary/comparison at concurrency one,
+  with ten warmups and three runs of 200 requests per scenario. Record the first
+  request separately; it is not a cold database/cache claim.
+- PostgreSQL `pg_stat_statements` deltas give query calls, execution time, and
+  returned/affected rows for each request batch, including authentication.
+  Report SQL execution time separately from HTTP wall time; their difference
+  also includes networking and pool waits, not just application computation.
+- The database has a 512 MiB filesystem ceiling; fixture storage is limited to
+  128 MiB. API and PostgreSQL each have two CPUs and 1 GiB memory. No worker,
+  browser, concurrent workload, application optimization, or new API is included.
+- [The initial PERF08 report](../performance/PERF08.md) retains the two successful
+  baseline runs and documents unmeasured metrics and workload limitations.

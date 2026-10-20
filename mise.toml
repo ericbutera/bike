@@ -437,3 +437,12 @@ run = ["mise run compose:config", "mise run e2e:config"]
 [tasks."ci:e2e"]
 description = "Test this revision's prepared registry images on the job-local engine"
 run = "bash scripts/ci-e2e.sh"
+
+[tasks."perf:small"]
+description = "Seed and measure the small isolated API baseline (PERF08 only)"
+timeout = "15m"
+run = "bash scripts/perf-small.sh"
+
+[tasks."perf:build"]
+description = "Build the existing release API target with its source revision label"
+run = 'docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load api --set "api.labels.org.opencontainers.image.revision=$(git rev-parse HEAD)"'

@@ -1,0 +1,21 @@
+# PERF08: isolated, bounded data; uses the same API image and migrations as E2E.
+services:
+  postgres:
+    command:
+      [
+        postgres,
+        -c,
+        shared_preload_libraries=pg_stat_statements,
+        -c,
+        pg_stat_statements.track=all,
+      ]
+    volumes: !reset []
+    tmpfs:
+      - /var/lib/postgresql/data:size=536870912
+    mem_limit: 1g
+    cpus: 2
+  bike-rs:
+    environment:
+      MAP_RENDERER_GRPC_ADDRESS: ""
+    mem_limit: 1g
+    cpus: 2

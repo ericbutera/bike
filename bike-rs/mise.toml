@@ -166,3 +166,15 @@ if [ "${usage_refresh_recording:-false}" = "true" ]; then set -- "$@" --refresh-
 if [ -n "${usage_register_manifest:-}" ]; then set -- "$@" --register-manifest "$usage_register_manifest"; fi
 cargo run -p integrations --bin recover-generated-imports -- "$@"
 '''
+
+[tasks."perf:test"]
+description = "Check the small performance fixture and report calculations"
+run = "cargo test -p api --locked --test performance"
+
+[tasks."perf:seed"]
+description = "Seed only the isolated PERF08 database"
+run = "cargo test -p api --locked --test performance seed_small -- --ignored --nocapture"
+
+[tasks."perf:measure"]
+description = "Measure the isolated PERF08 API"
+run = "cargo test -p api --locked --test performance baseline -- --ignored --nocapture"

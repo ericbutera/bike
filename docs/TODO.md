@@ -63,8 +63,9 @@ and comparison requirements. Each checkbox is a separate PR.
 
 ### Activity reads
 
-- [ ] **PERF08 — Small dataset and API baseline.** Use existing fixtures/tools for
+- [x] **PERF08 — Small dataset and API baseline.** Use existing fixtures/tools for
       1,000 activities and authenticated list/detail/segment comparisons. Deliver
+      See the [baseline report](performance/PERF08.md); PR 102 remains under review.
       a reproducible report; exclude capacity, browser, and worker-load testing.
 - [ ] **PERF01a — Reliable stored activity ranks.** Verify rank/PR and achievement
       producers across imports, rematching, removals, retries, and completed-empty

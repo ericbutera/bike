@@ -1,0 +1,576 @@
+[
+  {
+    "api_revision": "9139a674e0027a1817accfc09eb8ab796069797a",
+    "runner_revision": "9139a674e0027a1817accfc09eb8ab796069797a",
+    "runner_dirty": true,
+    "runner_source_sha256": "fe9eb438f3e6836fed6583be319c752e7bda5c519459471fd49ee0f4b7a95654",
+    "architecture": "aarch64",
+    "seed_seconds": 11,
+    "fixture": {
+      "activities": 1000,
+      "activities_per_owner": 100,
+      "chart_points_per_activity": 101,
+      "efforts": 1980,
+      "empty_activity": 1001,
+      "input_bytes": 55526779,
+      "input_sha256": "b6d72a4d4094ee953bbd1b55ab3a66e1b9dbcfc8c1fe9c781340df0fba145b99",
+      "logical_clock": "2026-09-01T00:00:00Z",
+      "missing_activity": 1002,
+      "note": "synthetic short recordings; actual worker analytics builders; no worker throughput claim",
+      "owners": 10,
+      "ready_activity": 1100,
+      "route_points_per_activity": 201,
+      "seed": 8,
+      "segment": 1,
+      "segments": 10,
+      "stale_activity": 1003,
+      "storage_budget_bytes": 134217728,
+      "version": 1
+    },
+    "measurements": {
+      "cache_state": "first request separate; warmups before each scenario; database and OS caches not reset",
+      "concurrency": 1,
+      "first_request": [
+        {
+          "bytes": 104319,
+          "elapsed_ms": 9.316583999999999,
+          "scenario": "activity_list"
+        },
+        {
+          "bytes": 54449,
+          "elapsed_ms": 2.956471,
+          "scenario": "activity_detail"
+        },
+        {
+          "bytes": 290,
+          "elapsed_ms": 1.3512979999999999,
+          "scenario": "segment_summary"
+        },
+        {
+          "bytes": 1659182,
+          "elapsed_ms": 52.753944,
+          "scenario": "segment_comparison"
+        }
+      ],
+      "request_timeout_seconds": 5,
+      "requests_per_run": 200,
+      "runs": [
+        {
+          "elapsed_ms": 2398.8480069999996,
+          "errors": 0,
+          "p50_ms": 8.457120999999999,
+          "p95_ms": 9.776002,
+          "requests": 200,
+          "requests_per_second": 83.37335229926472,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 1,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 168.19249599999966,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 2279.906475,
+          "errors": 0,
+          "p50_ms": 8.326495,
+          "p95_ms": 8.608289,
+          "requests": 200,
+          "requests_per_second": 87.72289661574825,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 2,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 156.50682400000005,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 2327.8120649999996,
+          "errors": 0,
+          "p50_ms": 8.359329,
+          "p95_ms": 9.468418,
+          "requests": 200,
+          "requests_per_second": 85.91758888404938,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 3,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 163.63649800000076,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 684.7504749999999,
+          "errors": 0,
+          "p50_ms": 1.7320499999999999,
+          "p95_ms": 2.357927,
+          "requests": 200,
+          "requests_per_second": 292.0771979019073,
+          "response_bytes_max": 54449,
+          "response_bytes_min": 54449,
+          "run": 1,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 21.888854000000492,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 642.52462,
+          "errors": 0,
+          "p50_ms": 1.647716,
+          "p95_ms": 1.8043410000000002,
+          "requests": 200,
+          "requests_per_second": 311.2721190356877,
+          "response_bytes_max": 54449,
+          "response_bytes_min": 54449,
+          "run": 2,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 19.348815999999943,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 645.767176,
+          "errors": 0,
+          "p50_ms": 1.665008,
+          "p95_ms": 1.84455,
+          "requests": 200,
+          "requests_per_second": 309.70914508048645,
+          "response_bytes_max": 54449,
+          "response_bytes_min": 54449,
+          "run": 3,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 19.837866000000076,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 185.939998,
+          "errors": 0,
+          "p50_ms": 0.926045,
+          "p95_ms": 1.003046,
+          "requests": 200,
+          "requests_per_second": 1075.615801609291,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 1,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 6.125014999999848,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 182.389148,
+          "errors": 0,
+          "p50_ms": 0.917087,
+          "p95_ms": 1.001755,
+          "requests": 200,
+          "requests_per_second": 1096.5564683705852,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 2,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 6.125297000000046,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 175.25245,
+          "errors": 0,
+          "p50_ms": 0.863837,
+          "p95_ms": 0.960087,
+          "requests": 200,
+          "requests_per_second": 1141.2108646697948,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 3,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 5.972288000000162,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 17505.350528000003,
+          "errors": 0,
+          "p50_ms": 39.725053,
+          "p95_ms": 43.076067,
+          "requests": 200,
+          "requests_per_second": 11.425078274216661,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 1,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 726.7496389999983,
+            "rows": 60200
+          }
+        },
+        {
+          "elapsed_ms": 17550.574271999998,
+          "errors": 0,
+          "p50_ms": 39.479052,
+          "p95_ms": 42.964442,
+          "requests": 200,
+          "requests_per_second": 11.395638507343769,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 2,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 722.9105380000005,
+            "rows": 60200
+          }
+        },
+        {
+          "elapsed_ms": 17504.298607,
+          "errors": 0,
+          "p50_ms": 39.58051,
+          "p95_ms": 42.898525,
+          "requests": 200,
+          "requests_per_second": 11.425764864409913,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 3,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 716.2249529999999,
+            "rows": 60200
+          }
+        }
+      ],
+      "unmeasured": [
+        "decode/build/serialization stage times",
+        "peak memory",
+        "process CPU"
+      ],
+      "warmups": 10
+    },
+    "runtime": [
+      {
+        "image": "sha256:25c947409f02b4c156f3af83fb9a92019b40938202326610e3a609c6abb86d39",
+        "limits": {
+          "memory": 1073741824,
+          "nano_cpus": 2000000000
+        }
+      },
+      {
+        "image": "sha256:a470461db3d4079fb4cb545328a6ef7c7d1ffc33e6981f5d3e2cfda1634d297e",
+        "limits": {
+          "memory": 1073741824,
+          "nano_cpus": 2000000000
+        }
+      }
+    ],
+    "database_bytes": 21485235,
+    "postgres_version": "17.11 (Debian 17.11-1.pgdg13+2)"
+  },
+  {
+    "api_revision": "9139a674e0027a1817accfc09eb8ab796069797a",
+    "runner_revision": "9139a674e0027a1817accfc09eb8ab796069797a",
+    "runner_dirty": true,
+    "runner_source_sha256": "fe9eb438f3e6836fed6583be319c752e7bda5c519459471fd49ee0f4b7a95654",
+    "architecture": "aarch64",
+    "seed_seconds": 11,
+    "fixture": {
+      "activities": 1000,
+      "activities_per_owner": 100,
+      "chart_points_per_activity": 101,
+      "efforts": 1980,
+      "empty_activity": 1001,
+      "input_bytes": 55526779,
+      "input_sha256": "b6d72a4d4094ee953bbd1b55ab3a66e1b9dbcfc8c1fe9c781340df0fba145b99",
+      "logical_clock": "2026-09-01T00:00:00Z",
+      "missing_activity": 1002,
+      "note": "synthetic short recordings; actual worker analytics builders; no worker throughput claim",
+      "owners": 10,
+      "ready_activity": 1100,
+      "route_points_per_activity": 201,
+      "seed": 8,
+      "segment": 1,
+      "segments": 10,
+      "stale_activity": 1003,
+      "storage_budget_bytes": 134217728,
+      "version": 1
+    },
+    "measurements": {
+      "cache_state": "first request separate; warmups before each scenario; database and OS caches not reset",
+      "concurrency": 1,
+      "first_request": [
+        {
+          "bytes": 104319,
+          "elapsed_ms": 8.910415,
+          "scenario": "activity_list"
+        },
+        {
+          "bytes": 54449,
+          "elapsed_ms": 2.705012,
+          "scenario": "activity_detail"
+        },
+        {
+          "bytes": 290,
+          "elapsed_ms": 1.37009,
+          "scenario": "segment_summary"
+        },
+        {
+          "bytes": 1659182,
+          "elapsed_ms": 43.215902,
+          "scenario": "segment_comparison"
+        }
+      ],
+      "request_timeout_seconds": 5,
+      "requests_per_run": 200,
+      "runs": [
+        {
+          "elapsed_ms": 2271.2937,
+          "errors": 0,
+          "p50_ms": 8.13812,
+          "p95_ms": 9.518918,
+          "requests": 200,
+          "requests_per_second": 88.05554297095087,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 1,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 154.04876599999943,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 2282.256374,
+          "errors": 0,
+          "p50_ms": 8.192245000000002,
+          "p95_ms": 9.294458,
+          "requests": 200,
+          "requests_per_second": 87.6325737451966,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 2,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 154.2356659999998,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 2296.377771,
+          "errors": 0,
+          "p50_ms": 8.170703,
+          "p95_ms": 9.538001000000001,
+          "requests": 200,
+          "requests_per_second": 87.09368402956902,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 3,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 155.84088900000097,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 657.536649,
+          "errors": 0,
+          "p50_ms": 1.665924,
+          "p95_ms": 2.158468,
+          "requests": 200,
+          "requests_per_second": 304.1655553407792,
+          "response_bytes_max": 54449,
+          "response_bytes_min": 54449,
+          "run": 1,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 20.427957999999762,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 635.626551,
+          "errors": 0,
+          "p50_ms": 1.618632,
+          "p95_ms": 1.792258,
+          "requests": 200,
+          "requests_per_second": 314.65016633642796,
+          "response_bytes_max": 54449,
+          "response_bytes_min": 54449,
+          "run": 2,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 18.80152700000008,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 673.487387,
+          "errors": 0,
+          "p50_ms": 1.689507,
+          "p95_ms": 2.292385,
+          "requests": 200,
+          "requests_per_second": 296.96176032469634,
+          "response_bytes_max": 54449,
+          "response_bytes_min": 54449,
+          "run": 3,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 21.823824999999943,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 187.07262799999998,
+          "errors": 0,
+          "p50_ms": 0.908796,
+          "p95_ms": 1.155589,
+          "requests": 200,
+          "requests_per_second": 1069.1034927889077,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 1,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 6.9868320000000494,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 213.474163,
+          "errors": 0,
+          "p50_ms": 1.001837,
+          "p95_ms": 1.44434,
+          "requests": 200,
+          "requests_per_second": 936.8815279064942,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 2,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 7.48929000000021,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 198.63618,
+          "errors": 0,
+          "p50_ms": 0.930545,
+          "p95_ms": 1.316797,
+          "requests": 200,
+          "requests_per_second": 1006.8659193909186,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 3,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 7.242396999999755,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 17359.993603,
+          "errors": 0,
+          "p50_ms": 39.325092,
+          "p95_ms": 42.238189000000006,
+          "requests": 200,
+          "requests_per_second": 11.520741572476028,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 1,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 722.3985689999986,
+            "rows": 60200
+          }
+        },
+        {
+          "elapsed_ms": 17439.219123000003,
+          "errors": 0,
+          "p50_ms": 39.397676,
+          "p95_ms": 42.787107999999996,
+          "requests": 200,
+          "requests_per_second": 11.468403406677005,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 2,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 723.9844270000003,
+            "rows": 60200
+          }
+        },
+        {
+          "elapsed_ms": 17390.580614000002,
+          "errors": 0,
+          "p50_ms": 39.317301,
+          "p95_ms": 42.256439,
+          "requests": 200,
+          "requests_per_second": 11.50047858890883,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 3,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 734.9945979999993,
+            "rows": 60200
+          }
+        }
+      ],
+      "unmeasured": [
+        "decode/build/serialization stage times",
+        "peak memory",
+        "process CPU"
+      ],
+      "warmups": 10
+    },
+    "runtime": [
+      {
+        "image": "sha256:25c947409f02b4c156f3af83fb9a92019b40938202326610e3a609c6abb86d39",
+        "limits": {
+          "memory": 1073741824,
+          "nano_cpus": 2000000000
+        }
+      },
+      {
+        "image": "sha256:a470461db3d4079fb4cb545328a6ef7c7d1ffc33e6981f5d3e2cfda1634d297e",
+        "limits": {
+          "memory": 1073741824,
+          "nano_cpus": 2000000000
+        }
+      }
+    ],
+    "database_bytes": 21485235,
+    "postgres_version": "17.11 (Debian 17.11-1.pgdg13+2)"
+  }
+]
