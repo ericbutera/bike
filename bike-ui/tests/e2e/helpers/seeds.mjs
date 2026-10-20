@@ -395,3 +395,30 @@ export function sessionData(token) {
     ],
   };
 }
+
+// Staging uses the same scenario records and the operator's normal SSO identity.
+export function stagingData(ownerEmail, makeKey) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
+    throw new Error("Staging requires the operator's login email");
+  }
+  const data = baselineData();
+  for (const record of data.records) {
+    if (record.entity !== "users") continue;
+    record.values.api_key = makeKey(record.values.id);
+    if (record.values.id === 1) {
+      record.values.email = ownerEmail;
+      record.values.name = "Staging Reviewer";
+    }
+  }
+  return { ...data, prepare_heatmaps: true };
+}
+
+if (process.argv[2] === "--staging") {
+  const { createHmac } = await import("node:crypto");
+  const key = process.env.BIKE_STAGING_FIXTURE_KEY;
+  if (!key || key.length < 32)
+    throw new Error("Staging requires a private fixture key");
+  const makeKey = (id) =>
+    createHmac("sha256", key).update(String(id)).digest("hex");
+  process.stdout.write(JSON.stringify(stagingData(process.argv[3], makeKey)));
+}

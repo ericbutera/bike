@@ -1,9 +1,5 @@
 # No development overlay, host ports, source mounts or globally named volumes.
 services:
-  postgres:
-    environment:
-      POSTGRES_INITDB_ARGS: --auth-local=scram-sha-256 --auth-host=scram-sha-256
-      PGPASSWORD: postgres
   bike-rs:
     environment:
       DATABASE_URL: postgres://bike_application:e2e-application@postgres:5432/bike
@@ -22,15 +18,6 @@ services:
     volumes:
       - uploads:/app/uploads
       - ${BIKE_E2E_MAP_CACHE:-map_image_cache}:/cache
-  temporal:
-    image: ${BIKE_TEMPORAL_TOOLS_IMAGE:?Run Compose through mise}
-    entrypoint: [temporal]
-    command: [server, start-dev, --ip, 0.0.0.0, --namespace, bike, --search-attribute, BikeUserId=Keyword]
-    healthcheck:
-      test: [CMD, temporal, --address, localhost:7233, operator, cluster, health]
-      interval: 2s
-      timeout: 3s
-      retries: 30
   ui:
     environment:
       API_URL: http://api.e2e.test:3000/api

@@ -22,15 +22,11 @@ fn outdoor_route() -> serde_json::Value {
 #[tokio::test]
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
 async fn recording_summary_backfills_original_evidence_and_cannot_be_overridden() {
-    let (db, schema) = legacy_fixture().await;
+    let (db, schema) = fixture_at(Some("m20261006_000002_heatmap_cycling_sources")).await;
     let mut route = outdoor_route();
     route["recording"] = serde_json::json!({"environment":"virtual"});
     set_route(&db, 1, route).await;
-    db.execute_unprepared(include_str!(
-        "../../../migration/src/activity_recording_environment.sql"
-    ))
-    .await
-    .unwrap();
+    migrate_through(&db, "m20261006_000003_activity_recording_environment").await;
     assert_recording_summary(&db, "virtual").await;
     assert!(db
         .execute_unprepared("UPDATE activities SET recording_environment='outdoor' WHERE id=1")
@@ -145,7 +141,16 @@ async fn backfill_recovers_legacy_virtual_copy_and_preserves_real_activity() {
         serde_json::to_value(serialize_derived_activity_data(&original)).unwrap(),
     )
     .await;
-    prepare(&db, 1, 2).await;
+    let error = prepare_activity(
+        &db,
+        PendingProjection {
+            activity_id: 1,
+            generation: 2,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("retry the current generation"));
     assert_eq!(status(&db, 1).await, "pending");
     let stored = activities::Entity::find_by_id(1)
         .select_only()
@@ -181,7 +186,7 @@ async fn backfill_recovers_legacy_virtual_copy_and_preserves_real_activity() {
 #[tokio::test]
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
 async fn policy_upgrade_requeues_chunks_and_rejects_old_worker_publication() {
-    let (db, schema) = legacy_fixture().await;
+    let (db, schema) = fixture_at(Some("m20261005_000001_heatmap_projection_virtual_ride_filter")).await;
     set_policy(&db, "ready", 3).await.unwrap();
     heatmap_chunks::ActiveModel {
         activity_id: Set(1),
@@ -196,14 +201,7 @@ async fn policy_upgrade_requeues_chunks_and_rejects_old_worker_publication() {
     .insert(&db)
     .await
     .unwrap();
-    db.execute_unprepared(include_str!(
-        "../../../migration/src/heatmap_projection_recording_policy.sql"
-    ))
-    .await
-    .unwrap();
-    db.execute_unprepared(include_str!("../../../migration/src/heatmap_cycling_sources.sql"))
-        .await
-        .unwrap();
+    Migrator::up(&db, None).await.unwrap();
     assert_eq!(status(&db, 1).await, "pending");
     assert_eq!(heatmap_chunks::Entity::find().count(&db).await.unwrap(), 0);
     assert!(!Projection::pending(&db, 1, 1).await.unwrap());
@@ -226,18 +224,19 @@ async fn insert_route(
     started_at: chrono::DateTime<chrono::Utc>,
     route: serde_json::Value,
 ) {
-    activities::Entity::insert_many([activities::ActiveModel {
-        id: Set(id),
-        user_id: Set(1),
-        sport: Set(sport.into()),
-        source: Set("archive_url_import".into()),
-        started_at: Set(started_at),
-        derived_data_json: Set(Some(serde_json::from_value(route).unwrap())),
-        ..Default::default()
-    }])
-    .exec_without_returning(db)
-    .await
-    .unwrap();
+    fixtures::insert(
+        db,
+        activities::ActiveModel {
+            id: Set(id),
+            user_id: Set(1),
+            sport: Set(sport.into()),
+            source: Set("archive_url_import".into()),
+            started_at: Set(started_at),
+            derived_data_json: Set(Some(serde_json::from_value(route).unwrap())),
+            ..fixtures::new_activity()
+        },
+    )
+    .await;
 }
 
 async fn set_policy(

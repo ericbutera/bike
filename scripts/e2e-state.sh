@@ -7,7 +7,7 @@ snapshots=/tmp/bike-e2e-snapshots
 
 compose() {
   docker compose --project-name "${BIKE_E2E_PROJECT:?}" \
-    --file compose.runtime.yaml --file compose.e2e.yaml "$@"
+    --file compose.yaml --file compose.e2e.yaml --profile worker "$@"
 }
 
 sql() {
@@ -17,6 +17,8 @@ sql() {
 prepare() {
   compose up --detach --wait postgres temporal
   compose run --rm migration
+  compose run --rm --no-deps migration /app/migration status
+  compose run --rm --no-deps migration /app/recover-generated-imports --user-id 1 --limit 1
   sql --dbname bike <<'SQL'
 CREATE ROLE bike_application LOGIN PASSWORD 'e2e-application';
 GRANT CONNECT ON DATABASE bike TO bike_application;
@@ -27,8 +29,21 @@ UPDATE feature_flags SET enabled = true WHERE feature_key = 'enhanced_maps';
 SQL
   files
   mkdir -p "$snapshots"
-  compose up --detach --no-deps bike-rs ui bike-maps
+  compose up --detach --no-deps bike-rs ui bike-maps temporal-worker
   compose exec -T --user root ui chown nextjs:nextjs /app/.next/cache/images
+}
+
+stop_worker() {
+  local log=/workspace/bike-ui/.artifacts/playwright/backend.log worker
+  compose stop temporal-worker
+  compose logs --no-color bike-rs temporal-worker > "$log"
+  cat "$log"
+  if grep -Ei '\b(WARN|ERROR)\b|"level":"(warn|error)"' "$log"; then exit 1; fi
+  worker="$(compose ps --all --quiet temporal-worker)"
+  [[ -n "$worker" ]]
+  test "$(docker inspect --format '{{.State.ExitCode}}' "$worker")" = 0
+  compose rm --force temporal-worker
+  printf 'Backend API, worker, migrations and recovery helper passed; worker removed before fixtures.\n'
 }
 
 seed() {
@@ -36,16 +51,7 @@ seed() {
     --env "BIKE_E2E_PROJECT=$BIKE_E2E_PROJECT" \
     --env DATABASE_URL=postgres://postgres:postgres@postgres:5432/bike \
     bike-rs /app/e2e-fixtures
-  # PostgreSQL sequence metadata, rather than a hand-maintained table/ID list.
-  sql --dbname bike <<'SQL'
-SELECT format('SELECT setval(%L, COALESCE((SELECT max(%I) FROM %I.%I), 1), EXISTS (SELECT 1 FROM %I.%I))',
-              pg_get_serial_sequence(format('%I.%I', table_schema, table_name), column_name),
-              column_name, table_schema, table_name, table_schema, table_name)
-FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND pg_get_serial_sequence(format('%I.%I', table_schema, table_name), column_name) IS NOT NULL
-\gexec
-SQL
+  sql --dbname bike < /workspace/scripts/fixture-sequences.sql
 }
 
 snapshot() {
@@ -78,8 +84,9 @@ files() {
   chown -R 65534:65534 /data/uploads /data/cache
 }
 
-case "${1:?Choose prepare, seed, snapshot, restore, verify or files}" in
+case "${1:?Choose prepare, stop-worker, seed, snapshot, restore, verify or files}" in
   prepare) prepare ;;
+  stop-worker) stop_worker ;;
   seed) seed "${2:?}" ;;
   snapshot) snapshot "${2:?}" ;;
   restore) restore "${2:?}" "${3:-0}" ;;

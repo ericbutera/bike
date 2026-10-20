@@ -1,5 +1,0 @@
-# Compatibility entry point; runtime and development settings have one owner.
-name: bike-rust
-
-include:
-  - path: ../compose.yaml

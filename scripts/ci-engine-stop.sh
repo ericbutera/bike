@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared EXIT handler for consumers of the disposable CI Docker engine.
+# Workflow cleanup for the disposable CI Docker engine.
 finish_ci_engine() {
   local engine_attempt
   mkdir -p "$BIKE_E2E_ENGINE_STATE_DIR"
@@ -15,9 +15,10 @@ finish_ci_engine() {
   return 1
 }
 
-stop_ci_engine() {
-  local result=$?
-  trap - EXIT
-  finish_ci_engine || result=1
-  exit "$result"
-}
+
+# The workflow owns shutdown even when checks fail before image acceptance.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  set -euo pipefail
+  : "${BIKE_E2E_ENGINE_STATE_DIR:?CI must select the job-local engine directory}"
+  finish_ci_engine
+fi

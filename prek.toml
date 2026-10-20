@@ -24,7 +24,7 @@ id = "workflow-lint"
 name = "Woodpecker workflow lint"
 language = "system"
 entry = "mise run ci:check"
-files = "^\\.woodpecker/.*\\.yaml$|^mise\\.toml$|^scripts/check-ci\\.sh$"
+files = "^\\.woodpecker/.*\\.yaml$|^mise\\.toml$|^scripts/check-ci(-test)?\\.sh$"
 pass_filenames = false
 
 [[repos.hooks]]
@@ -44,28 +44,11 @@ files = "^scripts/coverage-.*\\.sh$|^coverage-projects\\.json$|^(map-renderer|bi
 pass_filenames = false
 
 [[repos.hooks]]
-id = "rust-coverage-cache"
-name = "Rust compiled dependency cache regression"
-language = "system"
-entry = "mise run coverage:cache:test"
-files = "^scripts/coverage-rust-cache-test\\.sh$|^\\.woodpecker/.*\\.yaml$|^(bike-rs/)?mise\\.toml$|^prek\\.toml$"
-pass_filenames = false
-
-[[repos.hooks]]
-id = "rust-ci-reuse"
-name = "Rust CI input and result reuse regression"
-language = "system"
-# This fixture exercises Linux's os-release, sha256sum, and flock behavior.
-entry = "mise run checks:docker ci:rust:cache:test"
-files = "^scripts/(ci-rust.*|ci-engine-stop|coverage-transfer)\\.sh$|^\\.woodpecker/.*\\.yaml$|^(bike-rs/)?mise\\.toml$|^prek\\.toml$"
-pass_filenames = false
-
-[[repos.hooks]]
 id = "compose-runtime"
 name = "Shared development and E2E runtime configuration"
 language = "system"
 entry = "mise run runtime:check"
-files = "^compose.*\\.yaml$|^bike-rs/compose\\.yaml$|^mise\\.toml$"
+files = "^compose.*\\.yaml$|^docker/.*\\.env$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
@@ -138,4 +121,12 @@ name = "Map service protobuf freshness"
 language = "system"
 entry = "mise --cd map-renderer run generate:protobuf:check"
 files = "^(proto|bike-rs/proto)/bike/maps/.*\\.proto$|^map-renderer/gen/|^map-renderer/mise\\.toml$|^mise\\.toml$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "storage-policy"
+name = "Image storage safety fixtures"
+language = "system"
+entry = "mise run storage:test"
+files = "^scripts/storage-.*\\.sh$|^mise\\.toml$|^docker/buildkitd\\.toml$"
 pass_filenames = false

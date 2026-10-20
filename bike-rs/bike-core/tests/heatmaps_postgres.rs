@@ -1,4 +1,5 @@
 //! Opt-in integration checks against a disposable PostgreSQL database.
+#![cfg(feature = "test-fixtures")]
 #[path = "heatmaps_postgres/recording.rs"]
 mod recording;
 
@@ -7,7 +8,9 @@ use bike_core::heatmaps::{
     preparation::prepare_activity,
     projection::{PendingProjection, Projection},
 };
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
+use bike_core::{auth::entities::users, entities::activities, test_support as fixtures};
+use migration::{Migrator, MigratorTrait};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Set, Statement};
 
 #[tokio::test]
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
@@ -101,9 +104,15 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
         .await
         .unwrap();
     assert!(Projection::enabled(&db).await.unwrap());
-    db.execute_unprepared("INSERT INTO activities(id,user_id,sport,source) VALUES (4,2,'ride','fixture')")
-        .await
-        .unwrap();
+    fixtures::insert(
+        &db,
+        activities::ActiveModel {
+            id: Set(4),
+            user_id: Set(2),
+            ..fixtures::new_activity()
+        },
+    )
+    .await;
     prepare(&db, 1, 1).await;
     assert_eq!(status(&db, 1).await, "skipped");
     let route = serde_json::json!({"v":2,"route_points":[{"elapsed_seconds":0,"longitude":-85.0,"latitude":45.0},{"elapsed_seconds":10,"longitude":-85.001,"latitude":45.001}]});
@@ -141,27 +150,43 @@ async fn prepares_backfills_and_invalidates_activity_generations() {
         .unwrap()
         .unwrap();
     assert_eq!(row.try_get::<i64>("", "count").unwrap(), 0);
+    assert_virtual_recordings_are_skipped(&db, route).await;
     // Deleting an account must also allow activity cascade triggers to finish.
-    db.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "INSERT INTO activities(id,user_id,sport,source,derived_data_json) VALUES(2,2,'VirtualRide','fixture',$1)",
-        [route.clone().into()],
-    ))
-    .await
-    .unwrap();
-    prepare(&db, 2, 1).await;
-    assert_eq!(status(&db, 2).await, "skipped");
-    db.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "INSERT INTO activities(id,user_id,title,sport,source,derived_data_json) VALUES(5,1,'Zwift morning ride','road_ride','strava_sync',$1)",
-        [route.clone().into()],
-    )).await.unwrap();
-    prepare(&db, 5, 1).await;
-    assert_eq!(status(&db, 5).await, "skipped");
     db.execute_unprepared("DELETE FROM users WHERE id=2").await.unwrap();
     db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
         .unwrap();
+}
+
+async fn assert_virtual_recordings_are_skipped(db: &sea_orm::DatabaseConnection, route: serde_json::Value) {
+    fixtures::insert(
+        db,
+        activities::ActiveModel {
+            id: Set(2),
+            user_id: Set(2),
+            sport: Set("VirtualRide".into()),
+            derived_data_json: Set(Some(serde_json::from_value(route.clone()).unwrap())),
+            ..fixtures::new_activity()
+        },
+    )
+    .await;
+    prepare(db, 2, 1).await;
+    assert_eq!(status(db, 2).await, "skipped");
+    fixtures::insert(
+        db,
+        activities::ActiveModel {
+            id: Set(5),
+            user_id: Set(1),
+            title: Set("Zwift morning ride".into()),
+            sport: Set("road_ride".into()),
+            source: Set("strava_sync".into()),
+            derived_data_json: Set(Some(serde_json::from_value(route).unwrap())),
+            ..fixtures::new_activity()
+        },
+    )
+    .await;
+    prepare(db, 5, 1).await;
+    assert_eq!(status(db, 5).await, "skipped");
 }
 
 async fn assert_prepared_route_length(db: &sea_orm::DatabaseConnection, expected: usize) {
@@ -184,7 +209,7 @@ async fn assert_prepared_route_length(db: &sea_orm::DatabaseConnection, expected
 #[tokio::test]
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
 async fn upgrades_existing_heatmap_projections_for_speed_filter() {
-    let (db, schema) = legacy_fixture().await;
+    let (db, schema) = fixture_at(Some("m20261003_000002_heatmap_projections")).await;
     db.execute_unprepared(
         "UPDATE heatmap_projections SET status='ready', min_x=0.1, min_y=0.1, max_x=0.2, max_y=0.2 WHERE activity_id=1;
          INSERT INTO heatmap_chunks(activity_id,band,chunk_index,min_x,min_y,max_x,max_y,points)
@@ -193,9 +218,7 @@ async fn upgrades_existing_heatmap_projections_for_speed_filter() {
     .await
     .unwrap();
 
-    db.execute_unprepared(include_str!("../../migration/src/heatmap_projection_speed_filter.sql"))
-        .await
-        .unwrap();
+    migrate_through(&db, "m20261004_000002_heatmap_projection_speed_filter").await;
 
     let projection = db
         .query_one_raw(Statement::from_string(
@@ -232,10 +255,8 @@ async fn upgrades_existing_heatmap_projections_for_speed_filter() {
 #[tokio::test]
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
 async fn upgrades_existing_heatmap_projections_for_virtual_ride_filter() {
-    let (db, schema) = legacy_fixture().await;
-    db.execute_unprepared(include_str!("../../migration/src/heatmap_projection_speed_filter.sql"))
-        .await
-        .unwrap();
+    let (db, schema) = fixture_at(Some("m20261003_000002_heatmap_projections")).await;
+    migrate_through(&db, "m20261004_000002_heatmap_projection_speed_filter").await;
     db.execute_unprepared(
         "UPDATE heatmap_projections SET status='ready', min_x=0.1, min_y=0.1, max_x=0.2, max_y=0.2 WHERE activity_id=1;
          INSERT INTO heatmap_chunks(activity_id,band,chunk_index,min_x,min_y,max_x,max_y,points)
@@ -244,11 +265,7 @@ async fn upgrades_existing_heatmap_projections_for_virtual_ride_filter() {
     .await
     .unwrap();
 
-    db.execute_unprepared(include_str!(
-        "../../migration/src/heatmap_projection_virtual_ride_filter.sql"
-    ))
-    .await
-    .unwrap();
+    migrate_through(&db, "m20261005_000001_heatmap_projection_virtual_ride_filter").await;
 
     let projection = db
         .query_one_raw(Statement::from_string(
@@ -402,49 +419,57 @@ async fn status(db: &sea_orm::DatabaseConnection, id: i32) -> String {
 }
 
 async fn fixture() -> (sea_orm::DatabaseConnection, String) {
-    let (db, schema) = legacy_fixture().await;
-    db.execute_unprepared(include_str!(
-        "../../migration/src/heatmap_projection_virtual_ride_filter.sql"
-    ))
-    .await
-    .unwrap();
-    db.execute_unprepared(include_str!(
-        "../../migration/src/heatmap_projection_recording_policy.sql"
-    ))
-    .await
-    .unwrap();
-    db.execute_unprepared(include_str!("../../migration/src/heatmap_cycling_sources.sql"))
-        .await
-        .unwrap();
-    db.execute_unprepared(include_str!("../../migration/src/activity_recording_environment.sql"))
-        .await
-        .unwrap();
-    // The baseline tests start with one new activity at generation/revision 1.
-    db.execute_unprepared("UPDATE heatmap_projections SET generation=1; UPDATE heatmap_user_states SET revision=1")
-        .await
-        .unwrap();
-    (db, schema)
+    fixture_at(None).await
 }
 
-async fn legacy_fixture() -> (sea_orm::DatabaseConnection, String) {
+async fn fixture_at(revision: Option<&str>) -> (sea_orm::DatabaseConnection, String) {
     let url = std::env::var("BIKE_HEATMAP_TEST_DATABASE_URL").expect("disposable database URL");
     let db = disposable_database(url).await;
     let schema = format!("heatmap_test_{}", uuid::Uuid::new_v4().simple());
     db.execute_unprepared(&format!("CREATE SCHEMA {schema}; SET search_path TO {schema}"))
         .await
         .unwrap();
-    db.execute_unprepared(r#"
-        CREATE TABLE users(id integer PRIMARY KEY);
-        CREATE TABLE activities(id integer PRIMARY KEY, user_id integer REFERENCES users(id) ON DELETE CASCADE, title text NOT NULL DEFAULT '', sport text NOT NULL, source text NOT NULL, format text, started_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), derived_data_json jsonb);
-        CREATE TABLE feature_flags(feature_key text PRIMARY KEY, enabled boolean NOT NULL);
-        INSERT INTO users VALUES (1),(2);
-        INSERT INTO feature_flags VALUES ('heatmaps',false);
-        INSERT INTO activities(id,user_id,sport,source) VALUES (1,1,'ride','fixture');
-    "#).await.unwrap();
-    db.execute_unprepared(include_str!("../../migration/src/heatmap_projections.sql"))
-        .await
-        .unwrap();
+    match revision {
+        Some(revision) => migrate_through(&db, revision).await,
+        None => Migrator::up(&db, None).await.unwrap(),
+    }
+    seed_baseline(&db).await;
     (db, schema)
+}
+
+async fn migrate_through(db: &sea_orm::DatabaseConnection, revision: &str) {
+    let pending = Migrator::get_pending_migrations(db).await.unwrap();
+    let steps = pending
+        .iter()
+        .position(|migration| migration.name() == revision)
+        .expect("target revision must be a pending production migration")
+        + 1;
+    Migrator::up(db, Some(u32::try_from(steps).unwrap())).await.unwrap();
+}
+
+async fn seed_baseline(db: &sea_orm::DatabaseConnection) {
+    for id in 1..=2 {
+        let user = fixtures::insert(
+            db,
+            users::ActiveModel {
+                pid: Set(uuid::Uuid::new_v4()),
+                email: Set(format!("heatmap-{id}@example.test")),
+                api_key: Set(format!("heatmap-{id}")),
+                ..fixtures::new_customer()
+            },
+        )
+        .await;
+        assert_eq!(user.id, id);
+    }
+    let activity = fixtures::insert(
+        db,
+        activities::ActiveModel {
+            user_id: Set(1),
+            ..fixtures::new_activity()
+        },
+    )
+    .await;
+    assert_eq!(activity.id, 1);
 }
 
 async fn disposable_database(url: String) -> sea_orm::DatabaseConnection {
@@ -484,7 +509,23 @@ async fn seed_routes(db: &sea_orm::DatabaseConnection) {
     ))
     .await
     .unwrap();
-    db.execute_raw(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO activities(id,user_id,sport,source,derived_data_json,started_at) VALUES(2,2,'ride','fixture',$1,'2026-01-01'),(3,1,'mountain_bike','fixture',$1,'2025-01-01')",[route.into()])).await.unwrap();
+    for (id, user_id, sport, started_at) in [
+        (2, 2, "ride", "2026-01-01T00:00:00Z"),
+        (3, 1, "mountain_bike", "2025-01-01T00:00:00Z"),
+    ] {
+        fixtures::insert(
+            db,
+            activities::ActiveModel {
+                id: Set(id),
+                user_id: Set(user_id),
+                sport: Set(sport.into()),
+                started_at: Set(started_at.parse().unwrap()),
+                derived_data_json: Set(Some(serde_json::from_value(route.clone()).unwrap())),
+                ..fixtures::new_activity()
+            },
+        )
+        .await;
+    }
     prepare(db, 1, 2).await;
     prepare(db, 2, 1).await;
     prepare(db, 3, 1).await;

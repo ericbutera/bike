@@ -30,16 +30,15 @@ run = "cargo run --bin temporal-worker"
 
 [tasks."tracing:dev"]
 description = "Start lightweight local tracing with Jaeger"
-run = "docker compose --profile tracing up jaeger"
+run = "mise --cd .. exec -- docker compose --profile tracing up jaeger"
 
 [tasks."compose:up"]
-description = "Start the Rust Bike Compose stack"
-depends = ["services:up"]
-run = "docker compose up --build"
+description = "Start the root development stack"
+run = "mise --cd .. run compose:up"
 
 [tasks."compose:config"]
-description = "Validate the Rust Bike Compose stack"
-run = "docker compose config"
+description = "Validate the root development stack"
+run = "mise --cd .. run compose:config"
 
 [tasks."services:up"]
 description = "Start the shared Bike map service"
@@ -61,10 +60,6 @@ run = [
   "cargo test --workspace --locked --test '*'",
   "cargo test --workspace --locked --doc",
 ]
-
-[tasks."test:ci"]
-description = "Collect Rust unit coverage and run integrations after shared CI preparation"
-run = ["mise run coverage:unit:collect", "mise run test:non-unit"]
 
 [tasks."test:strava:postgres"]
 description = "Verify Strava source writes and watermark repair in disposable PostgreSQL"
@@ -112,7 +107,7 @@ run = "cargo fmt"
 description = "Run heatmap regressions against a disposable PostgreSQL database"
 run = '''
 : "${BIKE_HEATMAP_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
-cargo test -p bike-core --test heatmaps_postgres -- --ignored
+cargo test -p bike-core --locked --features test-fixtures --test heatmaps_postgres -- --ignored
 '''
 
 [tasks."fmt:check"]
@@ -121,7 +116,7 @@ run = "cargo fmt --check"
 
 [tasks.lint]
 description = "Run Rust Clippy checks"
-run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+run = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
 
 [tasks."openapi:react-query"]
 description = "Generate the shared UI TypeScript client from the common OpenAPI contract"
