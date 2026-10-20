@@ -161,3 +161,54 @@ The session is removed on exit. Host Git/GitHub commands remain supported.
 - Keep editor host builds and automatic dependency downloads disabled. During
   cache migration use ordinary copies (`cp --reflink=never`) so OrbStack's
   allocation-based quota accounts for the migrated data.
+
+## Branch review environments
+
+Run these commands **inside a checks container** whose checkout contains the
+`review` task. Fetch the refs you want to compare first; the launcher uses local
+Git refs and prints the exact resolved commit.
+
+```sh
+git fetch origin main perf/activity-stored-ranks
+mise run review up baseline origin/main 3100 missing-ranks
+mise run review up change origin/perf/activity-stored-ranks 3200 missing-ranks
+mise run review list
+```
+
+Open [baseline](http://baseline.localhost:3101/activities/1109) and
+[change](http://change.localhost:3201/activities/1109) side by side. Each environment
+uses three consecutive loopback ports: API, UI, and Temporal UI. Use a different
+base port for each instance. The separate `<name>.localhost` origins also keep
+browser cookies apart. Developer login is automatic.
+
+Each instance builds the selected commit's API, UI, worker, and map renderer.
+Branches must support the current runtime configuration and fixture CLI. This
+does not change your editor branch or your ordinary development stack.
+
+The default `baseline` scenario reuses the small synthetic E2E dataset: two rides,
+one segment, and stored times and ranks. `missing-ranks` clears only activity
+1109's stored ranks. Main's older reader can calculate ranks from history; the
+stored-ranks branch shows “No global rank” while retaining the ride
+and effort times. This fixture's activity 1109 is synthetic, not the real local
+ride with the same ID.
+
+```sh
+mise run review reset change
+mise run review down baseline
+mise run review down change
+```
+
+Reset discards only that instance's database, uploads, and caches, then reapplies
+its migrations and saved fixtures using the original image IDs. It does not
+rebuild or follow a moved branch. Use `down` followed by `up` to select a newer
+commit or a different scenario. Down removes the instance's containers, volumes,
+detached checkout, and saved review data.
+
+PostgreSQL runs on a 512 MiB `tmpfs`; stopping its container loses the database.
+Use `reset` after a restart. Temporal uses its disposable dev server. These
+instances are for review data, not persistent personal uploads or capacity tests.
+The saved configuration and build output remain on the shared quota disk.
+
+See the [branch environment spec](specs/branch-review-environments.md).
+
+![Branch comparison using the missing-ranks fixture](performance/branch-review.png)

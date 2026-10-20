@@ -28,5 +28,6 @@ COPY bike-rs/api/tests/fixtures/platform /workspace/bike-rs/api/tests/fixtures/p
 COPY compose.runtime.yaml compose.e2e.yaml /workspace/
 COPY scripts/e2e-state.sh /workspace/scripts/e2e-state.sh
 COPY scripts/e2e-reset.sql /workspace/scripts/e2e-reset.sql
+COPY scripts/fixture-sequences.sql /workspace/scripts/fixture-sequences.sql
 RUN mkdir -p .artifacts/playwright
 ENTRYPOINT ["xvfb-run", "--auto-servernum", "pnpm", "exec", "playwright", "test"]

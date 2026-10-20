@@ -13,3 +13,4 @@
 !compose.e2e.yaml
 !scripts/e2e-state.sh
 !scripts/e2e-reset.sql
+!scripts/fixture-sequences.sql

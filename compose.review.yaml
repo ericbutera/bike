@@ -1,0 +1,101 @@
+# Launched through scripts/review.sh; every resource belongs to one review name.
+services:
+  postgres:
+    volumes: !override []
+    tmpfs:
+      - /var/lib/postgresql/data:size=512m
+    environment:
+      POSTGRES_INITDB_ARGS: --auth-local=scram-sha-256 --auth-host=scram-sha-256
+      PGPASSWORD: postgres
+
+  bike-rs:
+    environment: &review_environment
+      APP_ENV: local
+      LOCAL_ADMIN_ENABLED: "true"
+      OAUTH_PROVIDERS: ""
+      CORS_ALLOWED_ORIGINS: ${BIKE_FRONTEND_URL}
+      ALLOW_LOCAL_ARCHIVE_IMPORTS: "true"
+    ports:
+      - "127.0.0.1:${REVIEW_API_PORT}:3000"
+    volumes: !override
+      - uploads:/app/uploads
+      - ${REVIEW_DIRECTORY}/cache:/cache
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+  ui:
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "Promise.all([fetch('http://127.0.0.1:3000'), fetch('http://bike-rs:3000/api/auth/current')]).then(rs => process.exit(rs.every(r => r.ok) ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - ${REVIEW_DIRECTORY}/ui-cache:/app/.next/cache
+    environment:
+      HOSTNAME: 0.0.0.0
+      LOCAL_ADMIN_AUTO_LOGIN: "true"
+    ports:
+      - "127.0.0.1:${REVIEW_UI_PORT}:3000"
+
+  temporal:
+    extends:
+      file: compose.e2e.yaml
+      service: temporal
+    command:
+      - server
+      - start-dev
+      - --ip
+      - 0.0.0.0
+      - --namespace
+      - bike
+      - --search-attribute
+      - BikeCustomerId=Keyword
+      - --search-attribute
+      - BikeUserId=Keyword
+      - --search-attribute
+      - StravaAthleteId=Keyword
+      - --search-attribute
+      - StravaActivityId=Keyword
+      - --search-attribute
+      - StravaEventId=Keyword
+      - --search-attribute
+      - CorrelationId=Keyword
+    ports:
+      - "127.0.0.1:${REVIEW_TEMPORAL_PORT}:8233"
+
+  temporal-worker:
+    extends:
+      file: compose.runtime.yaml
+      service: bike-rs
+    image: ${BIKE_WORKER_IMAGE}
+    command: [/app/temporal-worker]
+    environment:
+      <<: *review_environment
+      TEMPORAL_TASK_QUEUE: bike-strava
+    volumes: !override
+      - uploads:/app/uploads
+      - ${REVIEW_DIRECTORY}/cache:/cache
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+  fixture-files:
+    image: ${BIKE_POSTGRES_IMAGE}
+    user: root
+    entrypoint: [sh, -ec]
+    command:
+      - |
+        cp -R /fixtures/. /app/uploads/
+        chown -R 65534:65534 /app/uploads /cache
+    volumes:
+      - ${REVIEW_DIRECTORY}/uploads:/fixtures:ro
+      - uploads:/app/uploads
+      - ${REVIEW_DIRECTORY}/cache:/cache
+
+volumes:
+  uploads:

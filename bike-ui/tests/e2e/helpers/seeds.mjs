@@ -8,6 +8,7 @@ const update = (entity, values) => ({ entity, operation: "update", values });
 
 export const scenarios = [
   "baseline",
+  "missing-ranks",
   "laps",
   "climb",
   "zones",
@@ -361,8 +362,25 @@ function uploadResultScenario() {
   ];
 }
 
+function missingRanksScenario() {
+  return baselineData()
+    .records.filter(
+      (record) =>
+        record.entity === "segment_efforts" &&
+        record.values.activity_id === 1109,
+    )
+    .map((record) =>
+      update("segment_efforts", {
+        id: record.values.id,
+        overall_rank: null,
+        user_rank: null,
+      }),
+    );
+}
+
 const scenarioBuilders = {
   baseline: () => [],
+  "missing-ranks": missingRanksScenario,
   laps: lapScenario,
   climb: climbScenario,
   zones: zoneScenario,

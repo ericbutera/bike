@@ -432,8 +432,24 @@ run = "docker compose --project-name bike-e2e-config --file compose.runtime.yaml
 
 [tasks."runtime:check"]
 description = "Validate shared development and disposable runtime configuration"
-run = ["mise run compose:config", "mise run e2e:config"]
+run = ["mise run compose:config", "mise run e2e:config", "mise run review:config"]
 
 [tasks."ci:e2e"]
 description = "Test this revision's prepared registry images on the job-local engine"
 run = "bash scripts/ci-e2e.sh"
+
+[tasks.review]
+description = "Run a named branch environment with disposable fixture-backed PostgreSQL"
+usage = '''
+arg "<action>" help="up, reset, down or list"
+arg "[name]" default="" help="Unique local environment name"
+arg "[ref]" default="" help="Committed branch, tag or SHA"
+arg "[port]" default="3100" help="First of three consecutive loopback ports"
+arg "[scenario]" default="baseline" help="Shared E2E fixture scenario"
+'''
+run = 'bash scripts/review.sh "$usage_action" "$usage_name" "$usage_ref" "$usage_port" "$usage_scenario"'
+
+[tasks."review:config"]
+description = "Validate branch review services with native Compose"
+env = { REVIEW_DIRECTORY = "/review", REVIEW_API_PORT = "3100", REVIEW_UI_PORT = "3101", REVIEW_TEMPORAL_PORT = "3102", BIKE_FRONTEND_URL = "http://baseline.localhost:3101", BIKE_WORKER_IMAGE = "bike-worker:review" }
+run = "docker compose --project-name bike-review-config --file compose.runtime.yaml --file compose.review.yaml config --quiet"
