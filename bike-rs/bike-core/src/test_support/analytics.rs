@@ -79,5 +79,10 @@ pub fn activity_analytics() -> crate::entities::activity_analytics::Model {
 }
 
 pub fn activity_id_row() -> std::collections::BTreeMap<String, sea_orm::Value> {
-    [("id".into(), super::activity().id.into())].into()
+    let activity = super::activity();
+    [
+        ("id".into(), activity.id.into()),
+        ("user_id".into(), activity.user_id.into()),
+    ]
+    .into()
 }

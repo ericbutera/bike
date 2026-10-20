@@ -16,7 +16,7 @@ async fn activity_rebuild_clears_obsolete_cycling_results_and_keeps_affected_seg
     };
     let db = fixture
         .activity_rebuild_mock(&activity)
-        .append_exec_results((0..4).map(|_| fixtures::written()));
+        .append_exec_results((0..5).map(|_| fixtures::written()));
     let operations = fixture.operations(db);
     let mut change = fixture.domain.change(ActivityStatus::Applied);
     change.bike_activity_id = Some(activity.id);
@@ -51,7 +51,7 @@ async fn activity_rebuild_rolls_back_when_obsolete_training_results_cannot_be_cl
     };
     let db = fixture
         .activity_rebuild_mock(&activity)
-        .append_exec_results((0..3).map(|_| fixtures::written()))
+        .append_exec_results((0..4).map(|_| fixtures::written()))
         .append_exec_errors([sea_orm::DbErr::Custom("fixture training delete failed".into())]);
     let operations = fixture.operations(db);
     let mut change = fixture.domain.change(ActivityStatus::Applied);

@@ -355,10 +355,13 @@ where
     let rebuild = build_segment_analytics(input);
     let txn = db.begin().await?;
     let current = segments::Model::lock_for_analytics(&txn, id).await?;
-    if current.is_none_or(|current| {
-        current.last_activity_change_at != segment.last_activity_change_at || current.updated_at != segment.updated_at
-    }) {
+    let Some(current) = current else {
         return Ok(());
+    };
+    if current.last_activity_change_at != segment.last_activity_change_at || current.updated_at != segment.updated_at {
+        return Err(sea_orm::DbErr::Custom(format!(
+            "Segment {id} changed during rank rebuild; retry"
+        )));
     }
     persist_segment_analytics_rebuild(&txn, &[id], rebuild).await?;
     txn.commit().await?;
@@ -549,9 +552,9 @@ where
     }
 
     let txn = db.begin().await?;
-    activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
+    let owners = activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
     let input = load_activity_analytics_input(&txn, &activity_ids).await?;
-    let analytics_by_activity_id = build_activity_analytics(input);
+    let analytics_by_activity_id = build_activity_analytics(owners, input);
     activity_analytics::Model::delete_by_activity_ids(&txn, &activity_ids).await?;
     activity_analytics::Model::store_summaries(&txn, analytics_by_activity_id).await?;
     txn.commit().await
@@ -583,8 +586,22 @@ where
     })
 }
 
-fn build_activity_analytics(input: ActivityAnalyticsInput) -> HashMap<i32, ActivityAnalyticsAccumulator> {
-    let mut analytics_by_activity_id = HashMap::<i32, ActivityAnalyticsAccumulator>::new();
+fn build_activity_analytics(
+    owners: Vec<(i32, i32)>,
+    input: ActivityAnalyticsInput,
+) -> HashMap<i32, ActivityAnalyticsAccumulator> {
+    let mut analytics_by_activity_id = owners
+        .into_iter()
+        .map(|(id, user_id)| {
+            (
+                id,
+                ActivityAnalyticsAccumulator {
+                    user_id: Some(user_id),
+                    ..Default::default()
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
 
     for effort in input.efforts {
         apply_effort_to_activity_analytics(

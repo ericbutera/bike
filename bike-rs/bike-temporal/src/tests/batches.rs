@@ -287,3 +287,27 @@ fn a_failed_reprocessing_child_stops_the_batch_before_the_next_activity() {
     mock.fail_child(child);
     mock.assert_failure_message("Fixture child failed");
 }
+
+#[test]
+fn an_empty_rematch_still_completes_activity_achievements() {
+    let task = background_activity(42);
+    let mut mock = WorkflowMock::new::<RegenerateActivitySegments>(task.clone());
+    mock.activity("rebuild_activity_segments", &task, &Vec::<i32>::new());
+    mock.activity("rebuild_activity_achievements", &task, &());
+    mock.result::<()>();
+}
+
+#[test]
+fn a_failed_rank_backfill_child_stops_before_advancing_the_page() {
+    let first = background_activity(42);
+    let mut mock = WorkflowMock::new::<RegenerateUserSegments>(page());
+    mock.activity(
+        "activity_page",
+        &cycling(page()),
+        &vec![first.clone(), background_activity(43)],
+    );
+    let child = mock.start_child("regenerate_activity_segments", &first);
+    mock.assert_pending();
+    mock.fail_child(child);
+    mock.assert_failure_message("Fixture child failed");
+}

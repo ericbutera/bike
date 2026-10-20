@@ -35,10 +35,7 @@ async fn segment_matching_has_operation_parents_for_both_route_directions() {
     assert_eq!(attribute(&matching, "route_point_count"), &0_i64.into());
     let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([Vec::<BTreeMap<String, sea_orm::Value>>::new()])
-        .append_exec_results([sea_orm::MockExecResult {
-            rows_affected: 0,
-            last_insert_id: 0,
-        }])
+        .append_exec_results([test_support::written(), test_support::written()])
         .into_connection();
     let trace = capture(async {
         assert!(

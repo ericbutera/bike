@@ -76,6 +76,38 @@
   without extending it to a rounded tick. Keep the entire profile visible on
   narrow screens, and preserve units, tooltips, and climb selection behavior.
 
+## Stored segment rankings
+
+- Detail and edit responses expose `segment_ranks_state`: `ready`, `missing`,
+  or `updating`. Feed responses omit it.
+- Return only the activity's stored efforts, ranks, and personal-best summary.
+  Missing ranks remain null; stale saved values remain usable. Never read other
+  activities' efforts, calculate ranks, or submit repair work from this read.
+- Ready requires complete ranks/PR context current against each segment's
+  `last_activity_change_at`. Missing data takes precedence over stale data.
+  Updating means saved values are stale, not a claim that a job is running.
+- With zero efforts, an existing zero-count analytics row indicates completed
+  empty; an absent row means missing, and a nonzero row means updating.
+- Display available effort times and saved ranks without availability notices.
+  Keep empty segment panels hidden; missing ranks use the normal missing-value
+  presentation. Availability remains an API diagnostic, not a rider action.
+- The existing worker sequence awaits segment ranks/PR summaries before writing
+  achievements. Write a zero-count, empty-highlight row for every surviving
+  activity with no efforts. Replace output atomically; retries must not resurrect
+  deleted activities or retain removed achievements.
+- A changed segment snapshot fails the rebuild so the existing worker retry
+  reloads it. A deleted segment needs no rebuild. Segment rematching commits
+  replacement efforts, freshness, and affected activity summaries together before
+  rebuilding ranks, so a retry cannot lose removed memberships.
+- Backfill through the existing **Regenerate user segments** admin task: one user
+  at a time, 16 cycling activities per page with awaited children and the existing
+  ID cursor/Continue-As-New. Repeat a failed batch safely. No import reparse is
+  needed. For an individual non-cycling activity that previously had matches,
+  use **Regenerate activity segments** to clear them and persist empty completion.
+  See [worker composition](background-work.md#bike-workflow-composition-and-bounded-batches).
+  Roll out the worker first and complete the relevant user backfills before the
+  stored-only reader. No new schema, background scan, or request-time repair.
+
 ## Route map and matched segments
 
 - Matched segment lines use the same 6 CSS pixel width and 9 CSS pixel white

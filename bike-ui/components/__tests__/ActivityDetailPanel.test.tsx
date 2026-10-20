@@ -159,6 +159,7 @@ function makeActivity(
       cadence_rpm: number | null;
       power_watts: number | null;
     }>;
+    segment_ranks_state: "ready" | "missing" | "updating";
     segment_efforts: Array<{
       segment_id: number;
       segment_title: string;
@@ -451,6 +452,66 @@ describe("ActivityDetailPanel", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it.each(["ready", "missing", "updating"] as const)(
+    "shows available results without notices when rankings are %s",
+    (state) => {
+      mocks.useActivity.mockReturnValue({
+        data: makeActivity({ segment_ranks_state: state }),
+      });
+      render(<ActivityDetailPanel activityId={7} />);
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("tab", { name: "Segments (1)" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Lunch Ride" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("#1 overall")).toBeInTheDocument();
+    },
+  );
+
+  it.each(["ready", "missing", "updating"] as const)(
+    "hides empty segments when rankings are %s",
+    (state) => {
+      mocks.useActivity.mockReturnValue({
+        data: makeActivity({
+          segment_ranks_state: state,
+          segment_efforts: [],
+          route_points: [],
+        }),
+      });
+      render(<ActivityDetailPanel activityId={7} />);
+      expect(
+        screen.queryByRole("region", { name: "Segments and climbs" }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Lunch Ride" }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it("keeps effort times usable when saved ranks are missing", () => {
+    const activity = makeActivity();
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({
+        segment_ranks_state: "missing",
+        segment_efforts: activity.segment_efforts.map((effort) => ({
+          ...effort,
+          overall_rank: null,
+          personal_rank: null,
+          personal_best_duration_seconds: null,
+        })),
+      }),
+    });
+    render(<ActivityDetailPanel activityId={7} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show time & runs" }));
+    fireEvent.mouseEnter(screen.getByLabelText("North Climb run 1 point"));
+    expect(screen.getByText("Run 1 · 5m 12s")).toBeInTheDocument();
+    expect(screen.queryByText("#1 overall")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("hides the matched-segments card when an activity has no matches", () => {

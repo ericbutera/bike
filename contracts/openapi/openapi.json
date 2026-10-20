@@ -6071,6 +6071,17 @@
               "$ref": "#/components/schemas/ActivitySegmentEffort"
             }
           },
+          "segment_ranks_state": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActivitySegmentRanksState",
+                "description": "Availability of stored segment ranks, independent of job execution status."
+              }
+            ]
+          },
           "source": {
             "type": "string",
             "example": "manual_upload"
@@ -6305,6 +6316,14 @@
           "segment_title": "Riverfront climb",
           "start_route_point_index": 120
         }
+      },
+      "ActivitySegmentRanksState": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "missing",
+          "updating"
+        ]
       },
       "ActivitySport": {
         "type": "string",
@@ -8590,6 +8609,17 @@
                   "items": {
                     "$ref": "#/components/schemas/ActivitySegmentEffort"
                   }
+                },
+                "segment_ranks_state": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ActivitySegmentRanksState",
+                      "description": "Availability of stored segment ranks, independent of job execution status."
+                    }
+                  ]
                 },
                 "source": {
                   "type": "string",

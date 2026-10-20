@@ -38,7 +38,7 @@ pub async fn replace_segment_efforts_for_segment<C>(
     segment_route_points: &[ActivityRoutePoint],
 ) -> Result<Vec<i32>, AppError>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + TransactionTrait,
 {
     bike_core::segment_support::replace_segment_efforts_for_segment(db, user_id, segment_id, segment_route_points)
         .await

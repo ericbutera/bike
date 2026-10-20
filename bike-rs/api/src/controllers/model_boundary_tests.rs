@@ -3,7 +3,7 @@ use axum::body::{to_bytes, Body};
 use axum::http::Request;
 use axum::response::Response;
 use axum::Router;
-use bike_core::entities::{activities, activity_training_analyses, segment_efforts};
+use bike_core::entities::{activities, activity_analytics, activity_training_analyses, segment_efforts};
 use bike_core::test_support;
 use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
@@ -81,6 +81,7 @@ async fn owned_activity_update_preserves_fields_and_commits_its_audit() {
             .append_query_results([vec![before.clone()], vec![before]])
             .append_query_results([vec![after.clone()]])
             .append_query_results([Vec::<segment_efforts::Model>::new()])
+            .append_query_results([Vec::<activity_analytics::Model>::new()])
             .append_query_results([Vec::<activity_training_analyses::Model>::new()])
             .append_exec_results([MockExecResult {
                 rows_affected: 1,

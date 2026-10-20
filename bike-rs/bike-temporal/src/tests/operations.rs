@@ -17,7 +17,7 @@ async fn activity_achievements_rebuild_current_rows_without_execution_records() 
         .append_query_results([vec![fixtures::activity()]])
         .append_query_results([vec![fixtures::activity_id_row()]])
         .append_query_results([Vec::<segment_efforts::Model>::new()])
-        .append_exec_results([fixtures::written()]);
+        .append_exec_results([fixtures::written(), fixtures::written()]);
     operations(mock)
         .rebuild_activity_achievements(fixtures::activity_task())
         .await

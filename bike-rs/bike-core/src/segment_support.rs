@@ -188,22 +188,40 @@ pub async fn replace_segment_efforts_for_segment<C>(
     segment_route_points: &[ActivityRoutePoint],
 ) -> Result<Vec<i32>, SegmentSupportError>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + TransactionTrait,
 {
-    if segment_route_points.len() < 2 {
-        let affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
-        segment_efforts::Entity::delete_for_segment(db, segment_id).await?;
-        return Ok(affected_activity_ids);
-    }
-
     let mut affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
+    let replacements = segment_effort_replacements(db, user_id, segment_route_points).await?;
+    affected_activity_ids.extend(replacements.iter().map(|(_, id, _)| *id));
+    affected_activity_ids.sort_unstable();
+    affected_activity_ids.dedup();
+
+    let txn = db.begin().await?;
+    activities::Model::lock_for_analytics(&txn, &affected_activity_ids).await?;
+    segment_efforts::Entity::delete_for_segment(&txn, segment_id).await?;
+    for (owner, activity_id, matches) in replacements {
+        insert_matches(&txn, owner, segment_id, activity_id, &matches).await?;
+    }
+    segments::Model::mark_activity_changes(&txn, &[segment_id], chrono::Utc::now()).await?;
+    // Preserve removal completion even if the worker stops before rebuilding ranks.
+    crate::analytics::rebuild_activity_analytics_cache(&txn, &affected_activity_ids).await?;
+    txn.commit().await?;
+    Ok(affected_activity_ids)
+}
+
+async fn segment_effort_replacements(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    segment_route_points: &[ActivityRoutePoint],
+) -> Result<Vec<(i32, i32, Vec<MatchedSegmentEffort>)>, SegmentSupportError> {
     let mut replacements = Vec::new();
+    if segment_route_points.len() < 2 {
+        return Ok(replacements);
+    }
     let mut after_id = 0;
     loop {
         let candidates = activities::Model::matching_routes_page(db, user_id, after_id, 16).await?;
-        let Some(last) = candidates.last() else {
-            break;
-        };
+        let Some(last) = candidates.last() else { break };
         after_id = last.id;
         for activity in candidates {
             let route_points = deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
@@ -213,21 +231,10 @@ where
             let matches = match_segment_efforts(segment_route_points, &route_points);
             if !matches.is_empty() {
                 replacements.push((activity.user_id, activity.id, matches));
-                affected_activity_ids.push(activity.id);
             }
         }
     }
-
-    segment_efforts::Entity::delete_for_segment(db, segment_id).await?;
-
-    for (user_id, activity_id, matches) in replacements {
-        insert_matches(db, user_id, segment_id, activity_id, &matches).await?;
-    }
-
-    affected_activity_ids.sort_unstable();
-    affected_activity_ids.dedup();
-
-    Ok(affected_activity_ids)
+    Ok(replacements)
 }
 
 async fn load_activity_ids_for_segment<C>(db: &C, segment_id: i32) -> Result<Vec<i32>, SegmentSupportError>
@@ -723,6 +730,100 @@ fn haversine_distance_meters(start_latitude: f64, start_longitude: f64, end_lati
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support as fixtures;
+
+    #[tokio::test]
+    async fn rematching_removes_old_achievements_atomically_and_can_be_retried() {
+        for fail_completion in [true, false] {
+            let mut db = fixtures::postgres_mock()
+                .append_query_results([vec![std::collections::BTreeMap::from([("activity_id", 42.into())])]])
+                .append_query_results([vec![fixtures::activity_id_row()], vec![fixtures::activity_id_row()]])
+                .append_query_results([Vec::<segment_efforts::Model>::new()])
+                .append_exec_results([fixtures::written(), fixtures::written(), fixtures::written()]);
+            db = if fail_completion {
+                db.append_exec_errors([DbErr::Custom("completion failed".into())])
+            } else {
+                db.append_exec_results([fixtures::written()])
+            };
+            let db = db.into_connection();
+            let result = replace_segment_efforts_for_segment(&db, 7, 1, &[]).await;
+            let log = db.into_transaction_log();
+            let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
+            let end = if fail_completion {
+                assert!(result.unwrap_err().message.contains("completion failed"));
+                "ROLLBACK"
+            } else {
+                assert_eq!(result.unwrap(), vec![42]);
+                "COMMIT"
+            };
+            assert_eq!(statements.last().unwrap().sql, end);
+            let lock = statements.iter().position(|s| s.sql.ends_with("FOR UPDATE")).unwrap();
+            let delete = statements
+                .iter()
+                .position(|s| s.sql.starts_with("DELETE FROM \"segment_efforts\""))
+                .unwrap();
+            assert!(lock < delete);
+            assert!(statements
+                .iter()
+                .any(|s| s.sql.starts_with("INSERT INTO \"activity_analytics\"")));
+        }
+        // A retry after commit finds no old membership; its empty result must
+        // leave the already-completed activity projection alone.
+        let db = fixtures::postgres_mock()
+            .append_query_results([Vec::<std::collections::BTreeMap<String, sea_orm::Value>>::new()])
+            .append_exec_results([fixtures::written(), fixtures::written()])
+            .into_connection();
+        assert!(replace_segment_efforts_for_segment(&db, 7, 1, &[])
+            .await
+            .unwrap()
+            .is_empty());
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(!log.contains("activity_analytics"));
+        assert!(log.contains("COMMIT"));
+    }
+
+    #[tokio::test]
+    async fn rematching_stores_new_efforts_and_pending_achievements_together() {
+        use crate::activity_data::{serialize_derived_activity_data, ActivityDerivedData};
+        let route = vec![
+            route_point(0, 35.0000, -120.0000, 0.0),
+            route_point(30, 35.0004, -120.0004, 60.0),
+            route_point(60, 35.0008, -120.0008, 120.0),
+        ];
+        let activity = activities::Model {
+            derived_data_json: Some(serialize_derived_activity_data(&ActivityDerivedData {
+                route_points: route.clone(),
+                ..Default::default()
+            })),
+            ..fixtures::activity()
+        };
+        let db = fixtures::postgres_mock()
+            .append_query_results([Vec::<std::collections::BTreeMap<String, sea_orm::Value>>::new()])
+            .append_query_results([vec![activity], Vec::<activities::Model>::new()])
+            .append_query_results([vec![fixtures::activity_id_row()]])
+            .append_query_results([vec![fixtures::segment_effort()]])
+            .append_query_results([vec![fixtures::activity_id_row()]])
+            .append_query_results([vec![fixtures::segment_effort()]])
+            .append_query_results([vec![fixtures::segment()]])
+            .append_query_results([Vec::<crate::entities::segment_user_summaries::Model>::new()])
+            .append_exec_results((0..4).map(|_| fixtures::written()))
+            .into_connection();
+        assert_eq!(
+            replace_segment_efforts_for_segment(&db, 7, 1, &route).await.unwrap(),
+            vec![42]
+        );
+        let log = db.into_transaction_log();
+        let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
+        let insert = statements
+            .iter()
+            .find(|s| s.sql.starts_with("INSERT INTO \"activity_analytics\""))
+            .unwrap();
+        assert_eq!(
+            &insert.values.as_ref().unwrap().0[..7],
+            &[42.into(), 7.into(), 1.into(), 0.into(), 0.into(), 0.into(), 0.into()]
+        );
+        assert_eq!(statements.last().unwrap().sql, "COMMIT");
+    }
 
     fn route_point(elapsed_seconds: i32, latitude: f64, longitude: f64, distance_meters: f64) -> ActivityRoutePoint {
         ActivityRoutePoint {

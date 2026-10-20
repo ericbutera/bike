@@ -1,0 +1,1464 @@
+{
+  "baseline": {
+    "api_revision": "9139a674e0027a1817accfc09eb8ab796069797a",
+    "runner_revision": "7c28f98dae022ea038985e3c072cb164bdc97595",
+    "runner_dirty": false,
+    "runner_source_sha256": "601371da487be573f822aa67d477f43dd040a1832665c4c98b3ae31866a39d32",
+    "architecture": "aarch64",
+    "seed_seconds": 11,
+    "fixture": {
+      "activities": 1000,
+      "activities_per_owner": 100,
+      "chart_points_per_activity": 101,
+      "efforts": 1980,
+      "empty_activity": 1001,
+      "input_bytes": 55526779,
+      "input_sha256": "b6d72a4d4094ee953bbd1b55ab3a66e1b9dbcfc8c1fe9c781340df0fba145b99",
+      "logical_clock": "2026-09-01T00:00:00Z",
+      "missing_activity": 1002,
+      "note": "synthetic short recordings; actual worker analytics builders; no worker throughput claim",
+      "owners": 10,
+      "ready_activity": 1100,
+      "route_points_per_activity": 201,
+      "seed": 8,
+      "segment": 1,
+      "segments": 10,
+      "stale_activity": 1003,
+      "storage_budget_bytes": 134217728,
+      "version": 2
+    },
+    "measurements": {
+      "availability": [
+        {
+          "efforts": null,
+          "id": 1001,
+          "state": null
+        },
+        {
+          "efforts": [
+            {
+              "duration_seconds": 250,
+              "effort_index": 1,
+              "end_route_point_index": 50,
+              "overall_rank": 79,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": 79,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 0
+            },
+            {
+              "duration_seconds": 250,
+              "effort_index": 2,
+              "end_route_point_index": 150,
+              "overall_rank": 80,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": 80,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 100
+            }
+          ],
+          "id": 1002,
+          "state": null
+        },
+        {
+          "efforts": [
+            {
+              "duration_seconds": 300,
+              "effort_index": 1,
+              "end_route_point_index": 50,
+              "overall_rank": 119,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": 119,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 0
+            },
+            {
+              "duration_seconds": 300,
+              "effort_index": 2,
+              "end_route_point_index": 150,
+              "overall_rank": 120,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": 120,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 100
+            }
+          ],
+          "id": 1003,
+          "state": null
+        },
+        {
+          "efforts": [
+            {
+              "duration_seconds": 150,
+              "effort_index": 1,
+              "end_route_point_index": 50,
+              "overall_rank": 39,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": 39,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 0
+            },
+            {
+              "duration_seconds": 150,
+              "effort_index": 2,
+              "end_route_point_index": 150,
+              "overall_rank": 40,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": 40,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 100
+            }
+          ],
+          "id": 1100,
+          "state": null
+        }
+      ],
+      "cache_state": "first request separate; warmups before each scenario; database and OS caches not reset",
+      "concurrency": 1,
+      "first_request": [
+        {
+          "bytes": 104319,
+          "elapsed_ms": 9.547588,
+          "scenario": "activity_list"
+        },
+        {
+          "bytes": 54449,
+          "elapsed_ms": 2.13577,
+          "scenario": "activity_detail"
+        },
+        {
+          "bytes": 54476,
+          "elapsed_ms": 2.536315,
+          "scenario": "activity_missing"
+        },
+        {
+          "bytes": 54836,
+          "elapsed_ms": 2.164104,
+          "scenario": "activity_stale"
+        },
+        {
+          "bytes": 54590,
+          "elapsed_ms": 2.1976869999999997,
+          "scenario": "activity_empty"
+        },
+        {
+          "bytes": 290,
+          "elapsed_ms": 1.205678,
+          "scenario": "segment_summary"
+        },
+        {
+          "bytes": 1659182,
+          "elapsed_ms": 44.534219,
+          "scenario": "segment_comparison"
+        }
+      ],
+      "grown_history": {
+        "cache_state": "first request separate; warmups before each scenario; database and OS caches not reset",
+        "concurrency": 1,
+        "first_request": [
+          {
+            "bytes": 54449,
+            "elapsed_ms": 2.537488,
+            "scenario": "activity_detail"
+          },
+          {
+            "bytes": 54476,
+            "elapsed_ms": 4.703604,
+            "scenario": "activity_missing"
+          },
+          {
+            "bytes": 54836,
+            "elapsed_ms": 4.423929,
+            "scenario": "activity_stale"
+          }
+        ],
+        "request_timeout_seconds": 5,
+        "requests_per_run": 200,
+        "runs": [
+          {
+            "elapsed_ms": 659.8486260000001,
+            "errors": 0,
+            "p50_ms": 1.7113779999999998,
+            "p95_ms": 1.985929,
+            "requests": 200,
+            "requests_per_second": 303.09982035182713,
+            "response_bytes_max": 54449,
+            "response_bytes_min": 54449,
+            "run": 1,
+            "scenario": "activity_detail",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 19.377714000001106,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 682.24899,
+            "errors": 0,
+            "p50_ms": 1.710295,
+            "p95_ms": 2.47358,
+            "requests": 200,
+            "requests_per_second": 293.1481071155561,
+            "response_bytes_max": 54449,
+            "response_bytes_min": 54449,
+            "run": 2,
+            "scenario": "activity_detail",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 20.803477000000385,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 677.234465,
+            "errors": 0,
+            "p50_ms": 1.769664,
+            "p95_ms": 2.155201,
+            "requests": 200,
+            "requests_per_second": 295.318697343615,
+            "response_bytes_max": 54449,
+            "response_bytes_min": 54449,
+            "run": 3,
+            "scenario": "activity_detail",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 20.501627999998163,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 1245.604984,
+            "errors": 0,
+            "p50_ms": 4.464383,
+            "p95_ms": 5.607247,
+            "requests": 200,
+            "requests_per_second": 160.56454700248693,
+            "response_bytes_max": 54476,
+            "response_bytes_min": 54476,
+            "run": 1,
+            "scenario": "activity_missing",
+            "sql": {
+              "calls": 1600,
+              "execution_ms": 212.68863300000157,
+              "rows": 386600
+            }
+          },
+          {
+            "elapsed_ms": 1218.157099,
+            "errors": 0,
+            "p50_ms": 4.431137,
+            "p95_ms": 5.085475,
+            "requests": 200,
+            "requests_per_second": 164.18243604554982,
+            "response_bytes_max": 54476,
+            "response_bytes_min": 54476,
+            "run": 2,
+            "scenario": "activity_missing",
+            "sql": {
+              "calls": 1600,
+              "execution_ms": 207.4560789999996,
+              "rows": 386600
+            }
+          },
+          {
+            "elapsed_ms": 1232.624869,
+            "errors": 0,
+            "p50_ms": 4.488255,
+            "p95_ms": 5.218751,
+            "requests": 200,
+            "requests_per_second": 162.25536660010386,
+            "response_bytes_max": 54476,
+            "response_bytes_min": 54476,
+            "run": 3,
+            "scenario": "activity_missing",
+            "sql": {
+              "calls": 1600,
+              "execution_ms": 211.92267600000014,
+              "rows": 386600
+            }
+          },
+          {
+            "elapsed_ms": 1294.27025,
+            "errors": 0,
+            "p50_ms": 4.652443,
+            "p95_ms": 6.0709,
+            "requests": 200,
+            "requests_per_second": 154.5272326239439,
+            "response_bytes_max": 54836,
+            "response_bytes_min": 54836,
+            "run": 1,
+            "scenario": "activity_stale",
+            "sql": {
+              "calls": 1600,
+              "execution_ms": 217.93238400000155,
+              "rows": 386600
+            }
+          },
+          {
+            "elapsed_ms": 1446.1790919999999,
+            "errors": 0,
+            "p50_ms": 5.456181,
+            "p95_ms": 6.942878,
+            "requests": 200,
+            "requests_per_second": 138.29545808424675,
+            "response_bytes_max": 54836,
+            "response_bytes_min": 54836,
+            "run": 2,
+            "scenario": "activity_stale",
+            "sql": {
+              "calls": 1600,
+              "execution_ms": 238.18760399999974,
+              "rows": 386600
+            }
+          },
+          {
+            "elapsed_ms": 1320.72488,
+            "errors": 0,
+            "p50_ms": 4.728309,
+            "p95_ms": 5.974328,
+            "requests": 200,
+            "requests_per_second": 151.43199240707875,
+            "response_bytes_max": 54836,
+            "response_bytes_min": 54836,
+            "run": 3,
+            "scenario": "activity_stale",
+            "sql": {
+              "calls": 1600,
+              "execution_ms": 220.38734900000145,
+              "rows": 386600
+            }
+          }
+        ],
+        "segment_efforts": 1926,
+        "unmeasured": [
+          "decode/build/serialization stage times",
+          "peak memory",
+          "process CPU"
+        ],
+        "warmups": 10
+      },
+      "request_timeout_seconds": 5,
+      "requests_per_run": 200,
+      "runs": [
+        {
+          "elapsed_ms": 2337.378434,
+          "errors": 0,
+          "p50_ms": 8.337285999999999,
+          "p95_ms": 9.309253,
+          "requests": 200,
+          "requests_per_second": 85.56594734115698,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 1,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 157.08185099999992,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 2307.466283,
+          "errors": 0,
+          "p50_ms": 8.307826,
+          "p95_ms": 8.476578,
+          "requests": 200,
+          "requests_per_second": 86.67515598103324,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 2,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 152.47303699999998,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 2335.317416,
+          "errors": 0,
+          "p50_ms": 8.332618,
+          "p95_ms": 9.205668,
+          "requests": 200,
+          "requests_per_second": 85.64146296761913,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 3,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 155.85461899999973,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 651.2107689999999,
+          "errors": 0,
+          "p50_ms": 1.692974,
+          "p95_ms": 1.881934,
+          "requests": 200,
+          "requests_per_second": 307.12022822828965,
+          "response_bytes_max": 54449,
+          "response_bytes_min": 54449,
+          "run": 1,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 19.178578000000243,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 652.057401,
+          "errors": 0,
+          "p50_ms": 1.656516,
+          "p95_ms": 1.889809,
+          "requests": 200,
+          "requests_per_second": 306.7214630081317,
+          "response_bytes_max": 54449,
+          "response_bytes_min": 54449,
+          "run": 2,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 19.2165779999998,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 641.536638,
+          "errors": 0,
+          "p50_ms": 1.627181,
+          "p95_ms": 1.8364749999999999,
+          "requests": 200,
+          "requests_per_second": 311.7514856571605,
+          "response_bytes_max": 54449,
+          "response_bytes_min": 54449,
+          "run": 3,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 18.47122000000013,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 771.820883,
+          "errors": 0,
+          "p50_ms": 2.1628950000000002,
+          "p95_ms": 2.870276,
+          "requests": 200,
+          "requests_per_second": 259.1274794517318,
+          "response_bytes_max": 54476,
+          "response_bytes_min": 54476,
+          "run": 1,
+          "scenario": "activity_missing",
+          "sql": {
+            "calls": 1600,
+            "execution_ms": 43.57336499999974,
+            "rows": 41000
+          }
+        },
+        {
+          "elapsed_ms": 750.194308,
+          "errors": 0,
+          "p50_ms": 2.1376440000000003,
+          "p95_ms": 2.581065,
+          "requests": 200,
+          "requests_per_second": 266.59759727209234,
+          "response_bytes_max": 54476,
+          "response_bytes_min": 54476,
+          "run": 2,
+          "scenario": "activity_missing",
+          "sql": {
+            "calls": 1600,
+            "execution_ms": 40.86952800000017,
+            "rows": 41000
+          }
+        },
+        {
+          "elapsed_ms": 751.319443,
+          "errors": 0,
+          "p50_ms": 2.121686,
+          "p95_ms": 2.6478159999999997,
+          "requests": 200,
+          "requests_per_second": 266.1983552580577,
+          "response_bytes_max": 54476,
+          "response_bytes_min": 54476,
+          "run": 3,
+          "scenario": "activity_missing",
+          "sql": {
+            "calls": 1600,
+            "execution_ms": 41.69159700000023,
+            "rows": 41000
+          }
+        },
+        {
+          "elapsed_ms": 764.547899,
+          "errors": 0,
+          "p50_ms": 2.134144,
+          "p95_ms": 2.842777,
+          "requests": 200,
+          "requests_per_second": 261.59250487980216,
+          "response_bytes_max": 54836,
+          "response_bytes_min": 54836,
+          "run": 1,
+          "scenario": "activity_stale",
+          "sql": {
+            "calls": 1600,
+            "execution_ms": 44.07731499999977,
+            "rows": 41000
+          }
+        },
+        {
+          "elapsed_ms": 757.26279,
+          "errors": 0,
+          "p50_ms": 2.189229,
+          "p95_ms": 2.663357,
+          "requests": 200,
+          "requests_per_second": 264.10910801519776,
+          "response_bytes_max": 54836,
+          "response_bytes_min": 54836,
+          "run": 2,
+          "scenario": "activity_stale",
+          "sql": {
+            "calls": 1600,
+            "execution_ms": 42.26842300000021,
+            "rows": 41000
+          }
+        },
+        {
+          "elapsed_ms": 766.14883,
+          "errors": 0,
+          "p50_ms": 2.145894,
+          "p95_ms": 3.049153,
+          "requests": 200,
+          "requests_per_second": 261.0458858235155,
+          "response_bytes_max": 54836,
+          "response_bytes_min": 54836,
+          "run": 3,
+          "scenario": "activity_stale",
+          "sql": {
+            "calls": 1600,
+            "execution_ms": 43.540169000000105,
+            "rows": 41000
+          }
+        },
+        {
+          "elapsed_ms": 601.6774350000001,
+          "errors": 0,
+          "p50_ms": 1.435513,
+          "p95_ms": 1.77235,
+          "requests": 200,
+          "requests_per_second": 332.40402309586364,
+          "response_bytes_max": 54590,
+          "response_bytes_min": 54590,
+          "run": 1,
+          "scenario": "activity_empty",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 15.062608000000182,
+            "rows": 600
+          }
+        },
+        {
+          "elapsed_ms": 651.961942,
+          "errors": 0,
+          "p50_ms": 1.597598,
+          "p95_ms": 2.263188,
+          "requests": 200,
+          "requests_per_second": 306.76637256841593,
+          "response_bytes_max": 54590,
+          "response_bytes_min": 54590,
+          "run": 2,
+          "scenario": "activity_empty",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 19.38281300000017,
+            "rows": 600
+          }
+        },
+        {
+          "elapsed_ms": 589.425238,
+          "errors": 0,
+          "p50_ms": 1.32922,
+          "p95_ms": 1.700515,
+          "requests": 200,
+          "requests_per_second": 339.31360095578395,
+          "response_bytes_max": 54590,
+          "response_bytes_min": 54590,
+          "run": 3,
+          "scenario": "activity_empty",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 14.724850999999944,
+            "rows": 600
+          }
+        },
+        {
+          "elapsed_ms": 182.862731,
+          "errors": 0,
+          "p50_ms": 0.912509,
+          "p95_ms": 0.971759,
+          "requests": 200,
+          "requests_per_second": 1093.716575850549,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 1,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 6.0167670000003,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 209.339528,
+          "errors": 0,
+          "p50_ms": 0.999801,
+          "p95_ms": 1.3488040000000001,
+          "requests": 200,
+          "requests_per_second": 955.3857406232424,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 2,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 7.687861999999768,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 204.200341,
+          "errors": 0,
+          "p50_ms": 0.9985890000000001,
+          "p95_ms": 1.272973,
+          "requests": 200,
+          "requests_per_second": 979.4302938994601,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 3,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 7.4897050000001855,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 18032.416989,
+          "errors": 0,
+          "p50_ms": 41.927488,
+          "p95_ms": 45.883932,
+          "requests": 200,
+          "requests_per_second": 11.091136597051992,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 1,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 760.6513850000006,
+            "rows": 60200
+          }
+        },
+        {
+          "elapsed_ms": 17948.185765000002,
+          "errors": 0,
+          "p50_ms": 41.840457,
+          "p95_ms": 45.483897,
+          "requests": 200,
+          "requests_per_second": 11.14318754099434,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 2,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 758.5414419999997,
+            "rows": 60200
+          }
+        },
+        {
+          "elapsed_ms": 17805.292680000002,
+          "errors": 0,
+          "p50_ms": 41.623608,
+          "p95_ms": 44.629664999999996,
+          "requests": 200,
+          "requests_per_second": 11.232615132726927,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 3,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 732.3765350000012,
+            "rows": 60200
+          }
+        }
+      ],
+      "unmeasured": [
+        "decode/build/serialization stage times",
+        "peak memory",
+        "process CPU"
+      ],
+      "warmups": 10
+    },
+    "runtime": [
+      {
+        "image": "sha256:25c947409f02b4c156f3af83fb9a92019b40938202326610e3a609c6abb86d39",
+        "limits": {
+          "memory": 1073741824,
+          "nano_cpus": 2000000000
+        }
+      },
+      {
+        "image": "sha256:a470461db3d4079fb4cb545328a6ef7c7d1ffc33e6981f5d3e2cfda1634d297e",
+        "limits": {
+          "memory": 1073741824,
+          "nano_cpus": 2000000000
+        }
+      }
+    ],
+    "database_bytes": 21477043,
+    "postgres_version": "17.11 (Debian 17.11-1.pgdg13+2)"
+  },
+  "candidate": {
+    "api_revision": "37b83271ddbd0facaaeba2fd368923c748c23b43",
+    "runner_revision": "7c28f98dae022ea038985e3c072cb164bdc97595",
+    "runner_dirty": false,
+    "runner_source_sha256": "601371da487be573f822aa67d477f43dd040a1832665c4c98b3ae31866a39d32",
+    "architecture": "aarch64",
+    "seed_seconds": 11,
+    "fixture": {
+      "activities": 1000,
+      "activities_per_owner": 100,
+      "chart_points_per_activity": 101,
+      "efforts": 1980,
+      "empty_activity": 1001,
+      "input_bytes": 55526779,
+      "input_sha256": "b6d72a4d4094ee953bbd1b55ab3a66e1b9dbcfc8c1fe9c781340df0fba145b99",
+      "logical_clock": "2026-09-01T00:00:00Z",
+      "missing_activity": 1002,
+      "note": "synthetic short recordings; actual worker analytics builders; no worker throughput claim",
+      "owners": 10,
+      "ready_activity": 1100,
+      "route_points_per_activity": 201,
+      "seed": 8,
+      "segment": 1,
+      "segments": 10,
+      "stale_activity": 1003,
+      "storage_budget_bytes": 134217728,
+      "version": 2
+    },
+    "measurements": {
+      "availability": [
+        {
+          "efforts": null,
+          "id": 1001,
+          "state": "missing"
+        },
+        {
+          "efforts": [
+            {
+              "duration_seconds": 250,
+              "effort_index": 1,
+              "end_route_point_index": 50,
+              "overall_rank": null,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": null,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 0
+            },
+            {
+              "duration_seconds": 250,
+              "effort_index": 2,
+              "end_route_point_index": 150,
+              "overall_rank": null,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": null,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 100
+            }
+          ],
+          "id": 1002,
+          "state": "missing"
+        },
+        {
+          "efforts": [
+            {
+              "duration_seconds": 300,
+              "effort_index": 1,
+              "end_route_point_index": 50,
+              "overall_rank": 119,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": 119,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 0
+            },
+            {
+              "duration_seconds": 300,
+              "effort_index": 2,
+              "end_route_point_index": 150,
+              "overall_rank": 120,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": 120,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 100
+            }
+          ],
+          "id": 1003,
+          "state": "updating"
+        },
+        {
+          "efforts": [
+            {
+              "duration_seconds": 150,
+              "effort_index": 1,
+              "end_route_point_index": 50,
+              "overall_rank": 39,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": 39,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 0
+            },
+            {
+              "duration_seconds": 150,
+              "effort_index": 2,
+              "end_route_point_index": 150,
+              "overall_rank": 40,
+              "personal_best_duration_seconds": 150,
+              "personal_rank": 40,
+              "segment_id": 1,
+              "segment_title": "Owner 1 repeated climb",
+              "start_route_point_index": 100
+            }
+          ],
+          "id": 1100,
+          "state": "ready"
+        }
+      ],
+      "cache_state": "first request separate; warmups before each scenario; database and OS caches not reset",
+      "concurrency": 1,
+      "first_request": [
+        {
+          "bytes": 104319,
+          "elapsed_ms": 9.328051,
+          "scenario": "activity_list"
+        },
+        {
+          "bytes": 54479,
+          "elapsed_ms": 2.5141579999999997,
+          "scenario": "activity_detail"
+        },
+        {
+          "bytes": 54516,
+          "elapsed_ms": 1.779704,
+          "scenario": "activity_missing"
+        },
+        {
+          "bytes": 54869,
+          "elapsed_ms": 2.328638,
+          "scenario": "activity_stale"
+        },
+        {
+          "bytes": 54622,
+          "elapsed_ms": 2.187155,
+          "scenario": "activity_empty"
+        },
+        {
+          "bytes": 290,
+          "elapsed_ms": 1.218605,
+          "scenario": "segment_summary"
+        },
+        {
+          "bytes": 1659182,
+          "elapsed_ms": 39.781037,
+          "scenario": "segment_comparison"
+        }
+      ],
+      "grown_history": {
+        "cache_state": "first request separate; warmups before each scenario; database and OS caches not reset",
+        "concurrency": 1,
+        "first_request": [
+          {
+            "bytes": 54479,
+            "elapsed_ms": 5.074714999999999,
+            "scenario": "activity_detail"
+          },
+          {
+            "bytes": 54516,
+            "elapsed_ms": 2.577147,
+            "scenario": "activity_missing"
+          },
+          {
+            "bytes": 54869,
+            "elapsed_ms": 2.521525,
+            "scenario": "activity_stale"
+          }
+        ],
+        "request_timeout_seconds": 5,
+        "requests_per_run": 200,
+        "runs": [
+          {
+            "elapsed_ms": 641.085276,
+            "errors": 0,
+            "p50_ms": 1.644824,
+            "p95_ms": 1.873269,
+            "requests": 200,
+            "requests_per_second": 311.97097716529055,
+            "response_bytes_max": 54479,
+            "response_bytes_min": 54479,
+            "run": 1,
+            "scenario": "activity_detail",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 19.434880999999223,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 701.124562,
+            "errors": 0,
+            "p50_ms": 1.87102,
+            "p95_ms": 2.3551179999999996,
+            "requests": 200,
+            "requests_per_second": 285.25601703281933,
+            "response_bytes_max": 54479,
+            "response_bytes_min": 54479,
+            "run": 2,
+            "scenario": "activity_detail",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 23.988698000000113,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 647.4327519999999,
+            "errors": 0,
+            "p50_ms": 1.620367,
+            "p95_ms": 2.175836,
+            "requests": 200,
+            "requests_per_second": 308.91239187726484,
+            "response_bytes_max": 54479,
+            "response_bytes_min": 54479,
+            "run": 3,
+            "scenario": "activity_detail",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 20.159445000001142,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 703.543759,
+            "errors": 0,
+            "p50_ms": 1.81694,
+            "p95_ms": 2.622102,
+            "requests": 200,
+            "requests_per_second": 284.27513916728526,
+            "response_bytes_max": 54516,
+            "response_bytes_min": 54516,
+            "run": 1,
+            "scenario": "activity_missing",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 24.792559000000438,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 652.729621,
+            "errors": 0,
+            "p50_ms": 1.653865,
+            "p95_ms": 2.17167,
+            "requests": 200,
+            "requests_per_second": 306.4055829021432,
+            "response_bytes_max": 54516,
+            "response_bytes_min": 54516,
+            "run": 2,
+            "scenario": "activity_missing",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 20.79277699999784,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 722.337576,
+            "errors": 0,
+            "p50_ms": 2.01397,
+            "p95_ms": 2.4684860000000004,
+            "requests": 200,
+            "requests_per_second": 276.878853662183,
+            "response_bytes_max": 54516,
+            "response_bytes_min": 54516,
+            "run": 3,
+            "scenario": "activity_missing",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 26.92869300000075,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 736.012098,
+            "errors": 0,
+            "p50_ms": 2.057426,
+            "p95_ms": 2.8208,
+            "requests": 200,
+            "requests_per_second": 271.7346637962464,
+            "response_bytes_max": 54869,
+            "response_bytes_min": 54869,
+            "run": 1,
+            "scenario": "activity_stale",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 27.48827699999947,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 697.568345,
+            "errors": 0,
+            "p50_ms": 1.775066,
+            "p95_ms": 2.486818,
+            "requests": 200,
+            "requests_per_second": 286.71025775976113,
+            "response_bytes_max": 54869,
+            "response_bytes_min": 54869,
+            "run": 2,
+            "scenario": "activity_stale",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 24.362233000001652,
+              "rows": 1400
+            }
+          },
+          {
+            "elapsed_ms": 640.317736,
+            "errors": 0,
+            "p50_ms": 1.663115,
+            "p95_ms": 1.812398,
+            "requests": 200,
+            "requests_per_second": 312.3449324539716,
+            "response_bytes_max": 54869,
+            "response_bytes_min": 54869,
+            "run": 3,
+            "scenario": "activity_stale",
+            "sql": {
+              "calls": 1400,
+              "execution_ms": 19.108815999999933,
+              "rows": 1400
+            }
+          }
+        ],
+        "segment_efforts": 1926,
+        "unmeasured": [
+          "decode/build/serialization stage times",
+          "peak memory",
+          "process CPU"
+        ],
+        "warmups": 10
+      },
+      "request_timeout_seconds": 5,
+      "requests_per_run": 200,
+      "runs": [
+        {
+          "elapsed_ms": 2278.6041309999996,
+          "errors": 0,
+          "p50_ms": 8.158316000000001,
+          "p95_ms": 8.707709,
+          "requests": 200,
+          "requests_per_second": 87.77303493794115,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 1,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 148.58336099999997,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 2408.261467,
+          "errors": 0,
+          "p50_ms": 8.844568,
+          "p95_ms": 9.627058000000002,
+          "requests": 200,
+          "requests_per_second": 83.04746089266727,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 2,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 165.20058500000005,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 2384.399402,
+          "errors": 0,
+          "p50_ms": 8.596931,
+          "p95_ms": 9.656761999999999,
+          "requests": 200,
+          "requests_per_second": 83.87856490495798,
+          "response_bytes_max": 104319,
+          "response_bytes_min": 104319,
+          "run": 3,
+          "scenario": "activity_list",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 161.89270799999963,
+            "rows": 8600
+          }
+        },
+        {
+          "elapsed_ms": 741.844783,
+          "errors": 0,
+          "p50_ms": 2.0376320000000003,
+          "p95_ms": 2.901695,
+          "requests": 200,
+          "requests_per_second": 269.5981754986609,
+          "response_bytes_max": 54479,
+          "response_bytes_min": 54479,
+          "run": 1,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 28.39505700000018,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 636.0436390000001,
+          "errors": 0,
+          "p50_ms": 1.6481359999999998,
+          "p95_ms": 1.80141,
+          "requests": 200,
+          "requests_per_second": 314.44383331062596,
+          "response_bytes_max": 54479,
+          "response_bytes_min": 54479,
+          "run": 2,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 20.977808999999525,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 628.267318,
+          "errors": 0,
+          "p50_ms": 1.62893,
+          "p95_ms": 1.761956,
+          "requests": 200,
+          "requests_per_second": 318.3358329646553,
+          "response_bytes_max": 54479,
+          "response_bytes_min": 54479,
+          "run": 3,
+          "scenario": "activity_detail",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 18.5789470000002,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 664.2795970000001,
+          "errors": 0,
+          "p50_ms": 1.7123789999999999,
+          "p95_ms": 2.290435,
+          "requests": 200,
+          "requests_per_second": 301.07804138985165,
+          "response_bytes_max": 54516,
+          "response_bytes_min": 54516,
+          "run": 1,
+          "scenario": "activity_missing",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 22.245066999999835,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 735.460713,
+          "errors": 0,
+          "p50_ms": 2.0538380000000003,
+          "p95_ms": 2.5997310000000002,
+          "requests": 200,
+          "requests_per_second": 271.9383870066762,
+          "response_bytes_max": 54516,
+          "response_bytes_min": 54516,
+          "run": 2,
+          "scenario": "activity_missing",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 29.651106000000254,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 690.843922,
+          "errors": 0,
+          "p50_ms": 1.81545,
+          "p95_ms": 2.464913,
+          "requests": 200,
+          "requests_per_second": 289.5009909343894,
+          "response_bytes_max": 54516,
+          "response_bytes_min": 54516,
+          "run": 3,
+          "scenario": "activity_missing",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 24.781124999999747,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 650.149286,
+          "errors": 0,
+          "p50_ms": 1.613182,
+          "p95_ms": 2.174699,
+          "requests": 200,
+          "requests_per_second": 307.62165598994443,
+          "response_bytes_max": 54869,
+          "response_bytes_min": 54869,
+          "run": 1,
+          "scenario": "activity_stale",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 22.35714300000018,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 664.948475,
+          "errors": 0,
+          "p50_ms": 1.676841,
+          "p95_ms": 2.3558429999999997,
+          "requests": 200,
+          "requests_per_second": 300.7751841223487,
+          "response_bytes_max": 54869,
+          "response_bytes_min": 54869,
+          "run": 2,
+          "scenario": "activity_stale",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 21.938941000000113,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 800.23847,
+          "errors": 0,
+          "p50_ms": 2.3536770000000002,
+          "p95_ms": 2.801332,
+          "requests": 200,
+          "requests_per_second": 249.92550033241966,
+          "response_bytes_max": 54869,
+          "response_bytes_min": 54869,
+          "run": 3,
+          "scenario": "activity_stale",
+          "sql": {
+            "calls": 1400,
+            "execution_ms": 34.15723499999967,
+            "rows": 1400
+          }
+        },
+        {
+          "elapsed_ms": 617.6237570000001,
+          "errors": 0,
+          "p50_ms": 1.4922799999999998,
+          "p95_ms": 1.854445,
+          "requests": 200,
+          "requests_per_second": 323.82174055522927,
+          "response_bytes_max": 54622,
+          "response_bytes_min": 54622,
+          "run": 1,
+          "scenario": "activity_empty",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 16.09899499999983,
+            "rows": 600
+          }
+        },
+        {
+          "elapsed_ms": 603.950475,
+          "errors": 0,
+          "p50_ms": 1.4501600000000001,
+          "p95_ms": 1.841488,
+          "requests": 200,
+          "requests_per_second": 331.1529807141885,
+          "response_bytes_max": 54622,
+          "response_bytes_min": 54622,
+          "run": 2,
+          "scenario": "activity_empty",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 15.083442000000105,
+            "rows": 600
+          }
+        },
+        {
+          "elapsed_ms": 588.875693,
+          "errors": 0,
+          "p50_ms": 1.42008,
+          "p95_ms": 1.556689,
+          "requests": 200,
+          "requests_per_second": 339.6302519825691,
+          "response_bytes_max": 54622,
+          "response_bytes_min": 54622,
+          "run": 3,
+          "scenario": "activity_empty",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 14.087843999999677,
+            "rows": 600
+          }
+        },
+        {
+          "elapsed_ms": 169.547109,
+          "errors": 0,
+          "p50_ms": 0.8420660000000001,
+          "p95_ms": 0.9433039999999999,
+          "requests": 200,
+          "requests_per_second": 1179.6131540054746,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 1,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 5.544259000000238,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 167.778487,
+          "errors": 0,
+          "p50_ms": 0.827484,
+          "p95_ms": 0.921224,
+          "requests": 200,
+          "requests_per_second": 1192.0479411642327,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 2,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 5.645950999999286,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 175.83768999999998,
+          "errors": 0,
+          "p50_ms": 0.847691,
+          "p95_ms": 0.966385,
+          "requests": 200,
+          "requests_per_second": 1137.4125763367342,
+          "response_bytes_max": 290,
+          "response_bytes_min": 290,
+          "run": 3,
+          "scenario": "segment_summary",
+          "sql": {
+            "calls": 1000,
+            "execution_ms": 5.846280000000206,
+            "rows": 1000
+          }
+        },
+        {
+          "elapsed_ms": 17306.272426,
+          "errors": 0,
+          "p50_ms": 39.849528,
+          "p95_ms": 43.568735999999994,
+          "requests": 200,
+          "requests_per_second": 11.556503623479943,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 1,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 726.3528430000003,
+            "rows": 60200
+          }
+        },
+        {
+          "elapsed_ms": 17196.745062,
+          "errors": 0,
+          "p50_ms": 39.587187,
+          "p95_ms": 43.213733,
+          "requests": 200,
+          "requests_per_second": 11.630107865118271,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 2,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 721.2559330000013,
+            "rows": 60200
+          }
+        },
+        {
+          "elapsed_ms": 17550.79445,
+          "errors": 0,
+          "p50_ms": 40.87149,
+          "p95_ms": 44.061269,
+          "requests": 200,
+          "requests_per_second": 11.395495546926652,
+          "response_bytes_max": 1659182,
+          "response_bytes_min": 1659182,
+          "run": 3,
+          "scenario": "segment_comparison",
+          "sql": {
+            "calls": 1200,
+            "execution_ms": 757.9567599999991,
+            "rows": 60200
+          }
+        }
+      ],
+      "unmeasured": [
+        "decode/build/serialization stage times",
+        "peak memory",
+        "process CPU"
+      ],
+      "warmups": 10
+    },
+    "runtime": [
+      {
+        "image": "sha256:0009b1511a48206fe57b01695d92dfb113cd9decbf943eac3af178f3a512a50e",
+        "limits": {
+          "memory": 1073741824,
+          "nano_cpus": 2000000000
+        }
+      },
+      {
+        "image": "sha256:a470461db3d4079fb4cb545328a6ef7c7d1ffc33e6981f5d3e2cfda1634d297e",
+        "limits": {
+          "memory": 1073741824,
+          "nano_cpus": 2000000000
+        }
+      }
+    ],
+    "database_bytes": 21485235,
+    "postgres_version": "17.11 (Debian 17.11-1.pgdg13+2)"
+  }
+}

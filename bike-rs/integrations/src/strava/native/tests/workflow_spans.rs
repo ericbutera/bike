@@ -128,10 +128,7 @@ async fn rebuild_queries_remain_named_when_no_output_is_needed() {
         &"segments.rebuild".into()
     );
     let activity = MockDatabase::new(DatabaseBackend::Postgres)
-        .append_exec_results([MockExecResult {
-            rows_affected: 1,
-            last_insert_id: 0,
-        }])
+        .append_exec_results([bike_core::test_support::written(), bike_core::test_support::written()])
         .append_query_results([vec![bike_core::test_support::activity_id_row()]])
         .append_query_results([Vec::<bike_core::entities::segment_efforts::Model>::new()])
         .into_connection();

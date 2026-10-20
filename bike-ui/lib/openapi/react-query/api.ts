@@ -1537,6 +1537,8 @@ export interface components {
        */
       route_points?: components["schemas"]["ActivityRoutePoint"][];
       segment_efforts?: components["schemas"]["ActivitySegmentEffort"][];
+      segment_ranks_state?:
+        null | components["schemas"]["ActivitySegmentRanksState"];
       /** @example manual_upload */
       source: string;
       /** @example ride */
@@ -1671,6 +1673,8 @@ export interface components {
        */
       start_route_point_index: number;
     };
+    /** @enum {string} */
+    ActivitySegmentRanksState: "ready" | "missing" | "updating";
     /**
      * @description Activity sports supported by the activity list filter.
      * @example road_ride
@@ -2603,6 +2607,8 @@ export interface components {
          */
         route_points?: components["schemas"]["ActivityRoutePoint"][];
         segment_efforts?: components["schemas"]["ActivitySegmentEffort"][];
+        segment_ranks_state?:
+          null | components["schemas"]["ActivitySegmentRanksState"];
         /** @example manual_upload */
         source: string;
         /** @example ride */
@@ -8921,6 +8927,9 @@ export const activityActionValues: ReadonlyArray<
 export const activityRideFocusValues: ReadonlyArray<
   FlattenedDeepRequired<components>["schemas"]["ActivityRideFocus"]
 > = ["xc_endurance", "mixed_xc", "dh_session", "other"];
+export const activitySegmentRanksStateValues: ReadonlyArray<
+  FlattenedDeepRequired<components>["schemas"]["ActivitySegmentRanksState"]
+> = ["ready", "missing", "updating"];
 export const activitySportValues: ReadonlyArray<
   FlattenedDeepRequired<components>["schemas"]["ActivitySport"]
 > = [
