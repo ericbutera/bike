@@ -55,6 +55,11 @@
 - [ ] Decide how detected climbs should be named and related to matched segments;
       see [climb identification](specs/activity-details.md#climb-identification).
 
+## Segments
+
+- [x] Support individual GPX downloads from segment detail; see the
+      [download contract](specs/segment-processing.md#segment-downloads).
+
 ## Other backlog
 
 - [ ] Repair checksumless legacy import metadata without replacing retained files.

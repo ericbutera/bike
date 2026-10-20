@@ -16,6 +16,7 @@ import {
 } from "../../lib/activityFormatting";
 import type { Segment, SegmentMode } from "../../lib/queries";
 import { formatGradePercent } from "../../lib/segmentDetail";
+import { downloadSegmentGpx } from "../../lib/segmentGpx";
 import { AppCard } from "../ui/Card";
 import type {
   SegmentPerformanceSummary,
@@ -199,6 +200,15 @@ export default function SegmentDetailHeader({
                     </button>
                   </li>
                 ) : null}
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => downloadSegmentGpx(segment)}
+                    disabled={(segment.route_points?.length ?? 0) < 2}
+                  >
+                    Download segment
+                  </button>
+                </li>
                 <li>
                   <button
                     type="button"

@@ -132,6 +132,14 @@ The segment detail page may load route points and effort details because the rid
 
 Upload and builder responses should avoid expanding all efforts immediately after creation. The created segment plus queued processing state is enough for user feedback.
 
+## Segment Downloads
+
+- The actions menu on `/segments/:id` places **Download segment** immediately above **Delete segment**.
+- Download exports the segment’s current stored route as a GPX 1.1 track, for both uploaded and builder-created segments.
+- The file is named `segment-<id>.gpx` and includes the current segment title, ordered coordinates, and available elevations.
+- Export contains only the segment route; it does not include efforts, rider telemetry, or the rest of a source activity.
+- Download is disabled when fewer than two route points are available.
+
 ## Duplicate Detection
 
 Duplicate detection should preserve geometric duplicate behavior, but it should avoid loading every route blob where possible. Filtering by user and compact distance bucket before reading route JSON is acceptable. A stored dedupe key remains a possible future cleanup if this path becomes too expensive.

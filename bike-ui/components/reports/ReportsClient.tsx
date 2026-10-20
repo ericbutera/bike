@@ -5,6 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { downloadFile } from "../../lib/downloadFile";
 import {
   formatElevation,
   formatElevationRate,
@@ -2119,12 +2120,7 @@ function downloadCsv(filename: string, rows: CsvRow[]) {
     ),
   ].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadFile(filename, blob);
 }
 
 function csvCell(value: string | number) {

@@ -30,6 +30,7 @@ vi.mock("recharts", async (importOriginal) => {
 });
 
 const mocks = vi.hoisted(() => ({
+  downloadSegmentGpx: vi.fn(),
   useCurrentUser: vi.fn(),
   useSegment: vi.fn(),
   useSegmentComparison: vi.fn(),
@@ -37,6 +38,10 @@ const mocks = vi.hoisted(() => ({
   useDeleteSegment: vi.fn(),
   renderMapLibreRouteMap: vi.fn(),
   routerPush: vi.fn(),
+}));
+
+vi.mock("../../lib/segmentGpx", () => ({
+  downloadSegmentGpx: mocks.downloadSegmentGpx,
 }));
 
 vi.mock("../../lib/auth", () => ({
@@ -233,6 +238,44 @@ describe("SegmentDetailPanel", () => {
       </RequireAuth>,
     );
   }
+
+  it.each(["manual_segment_import", "activity_segment_builder"])(
+    "downloads a %s segment from the actions menu above Delete segment",
+    async (source) => {
+      const user = userEvent.setup();
+      const segment = { ...makeSegment(), source };
+      mocks.useSegment.mockReturnValue({ data: segment, isLoading: false });
+      renderSegmentDetailPanel();
+
+      await user.click(
+        screen.getByRole("button", { name: "Open segment actions" }),
+      );
+      const download = screen.getByRole("button", { name: "Download segment" });
+      const deleteButton = screen.getByRole("button", {
+        name: "Delete segment",
+      });
+      expect(download.closest("li")?.nextElementSibling).toBe(
+        deleteButton.closest("li"),
+      );
+      await user.click(download);
+      expect(mocks.downloadSegmentGpx).toHaveBeenCalledExactlyOnceWith(segment);
+    },
+  );
+
+  it.each([[], [makeSegment().route_points[0]], undefined])(
+    "disables download when the segment route is unavailable",
+    (route_points) => {
+      mocks.useSegment.mockReturnValue({
+        data: { ...makeSegment(), route_points },
+        isLoading: false,
+      });
+      renderSegmentDetailPanel();
+      expect(
+        screen.getByRole("button", { name: "Download segment" }),
+      ).toBeDisabled();
+      expect(mocks.downloadSegmentGpx).not.toHaveBeenCalled();
+    },
+  );
 
   it("renders the comparison UI for a segment", () => {
     renderSegmentDetailPanel();
