@@ -61,6 +61,17 @@ Docker checkout and shared caches. Publish completed work before removing its
 checkout; preserve active uncommitted source. Git/GitHub may use host authentication,
 but that exception does not authorize host worktrees or host hook execution.
 
+Before editing, state the outcome, affected components, exclusions, and
+completion checks in one short paragraph. Fill all four corresponding PR
+template sections with concrete bullets before publishing or updating a PR.
+
+Keep PRs at or below 20 changed files and 7,000 changed lines (additions plus
+deletions, measured against the PR base). These are soft scope limits. Before
+exceeding either, revisit why the changes are necessary and whether the mission
+still makes sense. Narrow or split the work where practical. If exceeding a
+limit remains justified, explain why and obtain the user's permission before
+proceeding beyond it. Do not split mechanically to conceal one oversized task.
+
 Create PRs for work. Keep PR descriptions & remote code updated for review when you've completed work.
 
 Requests to create, update, fix, or finish a PR authorize the commits,
