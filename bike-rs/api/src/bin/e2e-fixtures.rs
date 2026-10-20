@@ -110,14 +110,22 @@ async fn prepare_heatmaps(db: &sea_orm::DatabaseConnection) -> Result<(), sea_or
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let project = std::env::var("BIKE_E2E_PROJECT")?;
-    if !project.starts_with("bike-e2e-") {
-        return Err("Fixture loading requires a disposable E2E project".into());
-    }
+    let staging = fixture_mode(
+        std::env::var("BIKE_E2E_PROJECT").ok().as_deref(),
+        std::env::var("BIKE_FIXTURE_TARGET").ok().as_deref(),
+        std::env::var("APP_ENV").ok().as_deref(),
+    )?;
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input)?;
-    let dataset = serde_json::from_str(&input)?;
+    let dataset: Dataset = serde_json::from_str(&input)?;
     let db = bike_core::db::connect_database(&std::env::var("DATABASE_URL")?).await?;
+    if staging && staging_already_seeded(&db, &dataset).await? {
+        if dataset.prepare_heatmaps {
+            prepare_heatmaps(&db).await?;
+        }
+        println!("Existing staging fixtures preserved");
+        return Ok(());
+    }
     seed(&db, dataset).await?;
     Ok(())
 }
@@ -131,5 +139,92 @@ mod tests {
     fn owning_models_reject_stale_fixture_fields_and_invalid_values() {
         assert!(users::ActiveModel::from_json(json!({"removed_column": 1})).is_err());
         assert!(users::ActiveModel::from_json(json!({"disabled": "yes"})).is_err());
+    }
+}
+
+fn fixture_mode(project: Option<&str>, target: Option<&str>, app_env: Option<&str>) -> Result<bool, &'static str> {
+    match target {
+        Some("staging") if app_env == Some("staging") => Ok(true),
+        Some(_) => Err("Staging fixtures require BIKE_FIXTURE_TARGET=staging and APP_ENV=staging"),
+        None if project.is_some_and(|value| value.starts_with("bike-e2e-")) => Ok(false),
+        None => Err("Fixture loading requires a disposable E2E project or the staging target"),
+    }
+}
+
+fn require_staging_database(name: &str) -> Result<(), sea_orm::DbErr> {
+    if name != "bike_staging" {
+        return Err(sea_orm::DbErr::Custom(
+            "Staging fixtures require database bike_staging".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn staging_already_seeded(db: &sea_orm::DatabaseConnection, dataset: &Dataset) -> Result<bool, sea_orm::DbErr> {
+    use sea_orm::{ConnectionTrait, DatabaseBackend, QueryOrder, Statement};
+    let row = db
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT current_database() AS database_name",
+        ))
+        .await?
+        .ok_or_else(|| sea_orm::DbErr::Custom("Cannot verify fixture database".into()))?;
+    require_staging_database(&row.try_get::<String>("", "database_name")?)?;
+    let owner = dataset.records.iter().find(|record| {
+        record.entity == "users" && record.values.get("id").and_then(serde_json::Value::as_i64) == Some(1)
+    });
+    let email = owner
+        .and_then(|record| record.values.get("email"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| sea_orm::DbErr::Custom("Staging dataset requires its fixture owner".into()))?;
+    match users::Entity::find().order_by_asc(users::Column::Id).one(db).await? {
+        None => Ok(false),
+        Some(user) if user.id == 1 && user.email == email => Ok(true),
+        Some(_) => Err(sea_orm::DbErr::Custom(
+            "Refusing to seed a nonempty database with a different fixture owner".into(),
+        )),
+    }
+}
+
+#[cfg(test)]
+mod staging_tests {
+    use super::*;
+    use sea_orm::{DatabaseBackend, MockDatabase, Value};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn staging_requires_explicit_environment_and_database() {
+        assert_eq!(fixture_mode(None, Some("staging"), Some("staging")), Ok(true));
+        assert_eq!(fixture_mode(Some("bike-e2e-test"), None, None), Ok(false));
+        assert!(fixture_mode(None, Some("staging"), Some("production")).is_err());
+        assert!(fixture_mode(None, None, Some("staging")).is_err());
+        assert!(require_staging_database("bike_staging").is_ok());
+        assert!(require_staging_database("bike").is_err());
+    }
+
+    async fn seeded(users: Vec<users::Model>) -> Result<bool, sea_orm::DbErr> {
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([vec![BTreeMap::from([("database_name", Value::from("bike_staging"))])]])
+            .append_query_results([users])
+            .into_connection();
+        let dataset = serde_json::from_value(serde_json::json!({"records":[{
+            "entity":"users", "operation":"insert", "values":{"id":1,"email":"reviewer@example.test"}
+        }]}))
+        .unwrap();
+        staging_already_seeded(&db, &dataset).await
+    }
+
+    #[tokio::test]
+    async fn empty_staging_seeds_and_matching_existing_data_is_preserved() {
+        assert!(!seeded(vec![]).await.unwrap());
+        let mut owner = bike_core::test_support::customer();
+        owner.id = 1;
+        owner.email = "reviewer@example.test".into();
+        assert!(seeded(vec![owner]).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn unrelated_existing_data_is_rejected() {
+        assert!(seeded(vec![bike_core::test_support::customer()]).await.is_err());
     }
 }

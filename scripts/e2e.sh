@@ -22,11 +22,12 @@ runner_storage=(
 if [[ -n "${BIKE_DOCKER_STORAGE_ROOT:-}" ]]; then
   export BIKE_E2E_MAP_CACHE="$artifacts/map-cache"
   export BIKE_E2E_UI_CACHE="$artifacts/ui-cache"
-  mkdir -p "$BIKE_E2E_MAP_CACHE" "$BIKE_E2E_UI_CACHE" "$artifacts/tmp"
+  mkdir -p "$BIKE_E2E_MAP_CACHE" "$BIKE_E2E_UI_CACHE" "$artifacts/tmp" "$artifacts/workspace"
   chmod 1777 "$artifacts/tmp"
   runner_storage=(
     --mount "type=bind,source=$BIKE_E2E_MAP_CACHE,target=/data/cache"
     --mount "type=bind,source=$BIKE_E2E_UI_CACHE,target=/data/ui-cache"
+    --mount "type=bind,source=$artifacts/workspace,target=/workspace"
     --mount "type=bind,source=$artifacts,target=/workspace/bike-ui/.artifacts/playwright"
     --mount "type=bind,source=$artifacts/tmp,target=/tmp"
   )
@@ -34,7 +35,7 @@ fi
 
 compose() {
   docker compose --project-name "$project" \
-    --file compose.runtime.yaml --file compose.e2e.yaml "$@"
+    --file compose.yaml --file compose.e2e.yaml --profile worker "$@"
 }
 
 cleanup() {
@@ -65,6 +66,9 @@ cleanup() {
       printf 'E2E resources survived cleanup: %s\n' "$remaining" >&2
       result=1
     fi
+  fi
+  if [[ -n "${BIKE_DOCKER_STORAGE_ROOT:-}" ]]; then
+    rm -rf -- "$artifacts/workspace" "$artifacts/tmp" "$artifacts/map-cache" "$artifacts/ui-cache" || result=1
   fi
   if [[ "$result" == 0 && -n "${CI:-}" ]]; then
     cp "$release_digests" .artifacts/e2e-images.env || result=1
@@ -101,19 +105,16 @@ trap 'exit 143' TERM
 docker info --format '{{json .}}' >"$artifacts/engine.json"
 printf '%s\n' "$(git rev-parse HEAD)" >"$artifacts/revision.txt"
 git status --porcelain >"$artifacts/worktree-status.txt"
-select_image BIKE_API_IMAGE "${BIKE_API_IMAGE:-bike-api:review}"
+select_image BIKE_BACKEND_IMAGE "${BIKE_BACKEND_IMAGE:-bike-backend:review}"
 select_image BIKE_UI_IMAGE "${BIKE_UI_IMAGE:-bike-ui:review}"
 select_image BIKE_RENDERER_IMAGE "${BIKE_RENDERER_IMAGE:-bike-map-renderer:review}"
-select_image BIKE_E2E_IMAGE "${BIKE_E2E_IMAGE:-bike-e2e:review}"
+select_image BIKE_E2E_TOOLS_IMAGE "${BIKE_E2E_TOOLS_IMAGE:-bike-e2e-tools:review}"
 select_image BIKE_POSTGRES_IMAGE "${BIKE_POSTGRES_IMAGE:?Run through mise}"
 if [[ -n "${CI:-}" ]]; then
   : >.artifacts/e2e-images.env
-  # Native checks and builds validate these release components; browser tests
-  # Workers are exercised by the owning worker persistence checks.
-  select_image BIKE_WORKER_IMAGE "${BIKE_WORKER_IMAGE:?CI must select the worker image}"
+  # Publish these identities only after combined backend and browser acceptance.
   printf 'BIKE_TESTED_REVISION=%s\n' "${CI_COMMIT_SHA:?}" >"$release_digests"
-  record_digest BIKE_TESTED_API_DIGEST "$BIKE_API_IMAGE"
-  record_digest BIKE_TESTED_WORKER_DIGEST "$BIKE_WORKER_IMAGE"
+  record_digest BIKE_TESTED_BACKEND_DIGEST "$BIKE_BACKEND_IMAGE"
   record_digest BIKE_TESTED_UI_DIGEST "$BIKE_UI_IMAGE"
   record_digest BIKE_TESTED_MAP_DIGEST "$BIKE_RENDERER_IMAGE"
 fi
@@ -121,7 +122,7 @@ fi
 # Mark ownership before creation so partial-startup failures also get cleanup.
 runtime_created=true
 compose config --quiet
-compose create --no-build postgres migration bike-rs ui bike-maps
+compose create --no-build postgres migration bike-rs ui bike-maps temporal-worker
 
 engine=()
 if [[ "${DOCKER_HOST:-unix://}" == tcp://* ]]; then
@@ -146,9 +147,10 @@ docker create --name "$runner" --init --shm-size=1g \
   "${runner_storage[@]}" \
   --env BIKE_E2E_MAP_CACHE --env BIKE_E2E_UI_CACHE \
   --env XDG_CACHE_HOME=/tmp/xdg --env NPM_CONFIG_CACHE=/tmp/npm \
+  --env NPM_CONFIG_UPDATE_NOTIFIER=false --env PNPM_CONFIG_UPDATE_NOTIFIER=false \
   --env BIKE_E2E_PROJECT --env BIKE_JWT_SECRET \
-  --env BIKE_API_IMAGE --env BIKE_UI_IMAGE \
-  --env BIKE_RENDERER_IMAGE --env BIKE_E2E_IMAGE --env BIKE_POSTGRES_IMAGE \
+  --env BIKE_BACKEND_IMAGE --env BIKE_UI_IMAGE \
+  --env BIKE_RENDERER_IMAGE --env BIKE_E2E_TOOLS_IMAGE --env BIKE_POSTGRES_IMAGE \
   --env BIKE_TEMPORAL_TOOLS_IMAGE \
   --env BIKE_UI_URL=http://ui.e2e.test:3000 \
   --env BIKE_API_URL=http://api.e2e.test:3000/api \
@@ -156,9 +158,16 @@ docker create --name "$runner" --init --shm-size=1g \
   --env BIKE_TEST_EXPECT_AUTHENTICATED=true \
   --env HEATMAP_REQUIRE_ENABLED=1 --env HEATMAP_PREVIEW_FILTERS='sport=road_ride' \
   --env CI --env PLAYWRIGHT_VISUAL --env PLAYWRIGHT_THEMES \
-  "$BIKE_E2E_IMAGE" "$@" >"$artifacts/runner.id"
+  "$BIKE_E2E_TOOLS_IMAGE" "$@" >"$artifacts/runner.id"
 if [[ "${DOCKER_HOST:-unix://}" == tcp://* ]]; then
   docker cp "${DOCKER_CERT_PATH:?Authenticated remote engine requires client certificates}/." "$runner:/docker-certs"
 fi
+# Copy current tracked source, including worktree edits, without an archive image.
+tar -cf - bike-ui/package.json bike-ui/pnpm-lock.yaml bike-ui/pnpm-workspace.yaml \
+  bike-ui/playwright.config.mjs bike-ui/tests/e2e bike-ui/public/map-styles \
+  contracts/openapi/openapi.json bike-rs/api/tests/fixtures/platform \
+  compose.yaml compose.e2e.yaml docker/backend.env docker/api.env \
+  scripts/e2e-state.sh scripts/e2e-reset.sql \
+  scripts/e2e-browser.sh scripts/fixture-sequences.sql | docker cp - "$runner:/workspace"
 docker start --attach "$runner" &
 wait "$!"

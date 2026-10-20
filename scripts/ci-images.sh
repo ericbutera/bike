@@ -46,6 +46,7 @@ if ! jq --exit-status 'all(.target[]; any(.output[]; .push == "true"))' \
   printf 'Image publication plan must push every target\n' >&2
   exit 1
 fi
+mise run storage:ci
 mise run images:push
 jq --exit-status --raw-output --slurpfile builds .artifacts/image-builds.json \
   '.target | to_entries[] | .key as $target | .value.tags[] |

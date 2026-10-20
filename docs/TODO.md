@@ -62,6 +62,8 @@
 
 ## Other backlog
 
+- [ ] Rebuild CI around plain Cargo and simple Docker builds using the review slices in [CI refactor](ci-refactor.md); defer performance tuning.
+- [ ] Activate the [image storage safeguards](specs/image-storage.md) locally and on CI: bounded retention, byte-based GC, and fail-closed build admission. Filesystem isolation for a strict loaded-image quota remains separate.
 - [ ] Repair checksumless legacy import metadata without replacing retained files.
 - [ ] Remove recording/provider bodies from SQL error diagnostics; retain useful
       operation names and IDs.

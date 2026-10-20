@@ -156,8 +156,71 @@ The session is removed on exit. Host Git/GitHub commands remain supported.
   `bike-ui/next-env.d.ts` inside Docker. Next.js updates those Docker files
   instead of the tracked type-reference file in the host checkout.
 - Local image builds use the `bike-local` remote builder and the
-  `bike-buildkit` service in `compose.storage.yaml`. Its BuildKit state shares
+  `buildkit` service in `compose.dev.yaml`. Its BuildKit state shares
   the quota; runtime images loaded into Docker remain outside the volume.
 - Keep editor host builds and automatic dependency downloads disabled. During
   cache migration use ordinary copies (`cp --reflink=never`) so OrbStack's
   allocation-based quota accounts for the migrated data.
+
+## CI rewrite entry points
+
+Run these inside the checks container:
+
+```sh
+mise run ci:rust
+mise run ci:ui:unit
+mise run ci:renderer
+mise run test:postgres
+mise run e2e:prepare
+mise run e2e
+```
+
+- `compose.yaml` is the shared service definition. Mise defaults `COMPOSE_FILE`
+  to `compose.yaml:compose.dev.yaml`. The latter owns local ports, persistent
+  volume identities, Temporal setup, tracing and the optional BuildKit service.
+  Shared backend defaults live in `docker/backend.env`; API-only defaults live
+  in `docker/api.env`. Compose overlays keep development and test differences
+  explicit. Image and tool versions remain in mise.
+- `mise run e2e` verifies backend commands and worker startup, then stops/removes
+  the worker before seeding browser fixtures in the same running environment.
+- For machine overrides, set `COMPOSE_FILE` in ignored `.mise.local.toml` to
+  `compose.yaml:compose.dev.yaml:compose.local.yaml`. Migrate an old explicit
+  runtime/Temporal file list to these names; preserve its source/data overrides.
+- Start BuildKit, when needed, with
+  `mise exec -- docker compose --profile tooling up -d buildkit`. Its existing
+  container name and quota-disk storage remain unchanged. Do not recreate or
+  delete the shared storage volume or persistent application volumes.
+- Standalone tooling still starts from the host Docker CLI without any exported
+  image pins: `BIKE_WORKTREE=<checkout> docker compose -p <task> -f compose.checks.yaml up -d checks`.
+  This fourth Compose file is retained to keep bootstrap simple; profiles in
+  the development file would still interpolate its required image variables.
+- E2E explicitly selects `compose.yaml` and `compose.e2e.yaml`, so development
+  overrides, ports and persistent volumes cannot leak into its project.
+- `e2e:prepare` builds backend, UI, maps and a local Playwright tools adapter.
+  Only the first three are published in CI. Tests are copied from the current
+  checkout at runtime and install their locked dependencies.
+- Verify the shared filesystem quota before local builds as described above.
+  A missing or unverifiable quota is a hard stop. No clean-cache purge or
+  separately published tooling image is required.
+- CI runs one `bike` workflow. The former `e2e` workflow/status is retired.
+  Check repository rules before cutover and replace any obsolete required
+  status under explicit authorization; never silently disable required checks.
+- The companion infrastructure change must be merged before the backend-image
+  cutover reaches main. Merge and production acceptance remain separate from
+  implementation; verify digests, migrations, readiness and public API/UI after
+  an authorized release. Keep a prior release and its matching infrastructure
+  revision for rollback.
+
+Local image builds run the [image storage capacity gate](specs/image-storage.md)
+and prune only unused Bike-labelled images older than 24 hours. `mise run
+storage:local` runs that maintenance explicitly. Images referenced by containers
+are preserved; inspect stopped containers before removing anything manually.
+The image-store gate is separate from the shared 200 GiB filesystem quota.
+
+## Fixture staging
+
+The [staging fixture contract](specs/staging-fixtures.md) defines the exported
+sample data and database guards. Use the Pulumi repository’s
+`preview:bike:staging` and `deploy:bike:staging` tasks with the digests from a
+successful acceptance run. Staging uses normal SSO and preserves its data
+between deployments.

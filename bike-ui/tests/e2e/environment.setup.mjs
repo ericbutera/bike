@@ -6,7 +6,7 @@ import {
 } from "./helpers/environment.mjs";
 
 setup(
-  "migrate and snapshot Playwright scenario data without a worker",
+  "verify backend commands, then snapshot browser fixtures without a worker",
   async ({ request }, testInfo) => {
     setup.setTimeout(120_000);
     await prepareBaseline(request, testInfo);

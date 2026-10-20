@@ -3,7 +3,6 @@ variable "RUST_IMAGE" { default = null }
 variable "RUNTIME_IMAGE" { default = null }
 variable "MISE_IMAGE" { default = null }
 variable "PROTOC_VERSION" { default = null }
-variable "CARGO_CHEF_REVISION" { default = null }
 variable "NODE_IMAGE" { default = null }
 variable "NODE_ALPINE_IMAGE" { default = null }
 variable "NPM_VERSION" { default = null }
@@ -20,17 +19,17 @@ function "image" {
 }
 
 group "default" {
-  targets = ["api", "worker", "ui", "maps", "e2e"]
+  targets = ["backend", "ui", "maps"]
 }
-group "rust" { targets = ["api", "worker"] }
 target "checks" {
+  inherits = ["_owned"]
   dockerfile = "Dockerfile.checks"
   args = { MISE_IMAGE = MISE_IMAGE, RUST_IMAGE = RUST_IMAGE, DOCKER_CLI_IMAGE = DOCKER_CLI_IMAGE }
   tags = [image("checks")]
 }
-group "e2e-runtime" { targets = ["api", "ui", "maps", "e2e"] }
 
 target "_rust" {
+  inherits = ["_owned"]
   context = "bike-rs"
   dockerfile = "Dockerfile"
   args = {
@@ -38,20 +37,15 @@ target "_rust" {
     RUNTIME_IMAGE = RUNTIME_IMAGE
     MISE_IMAGE = MISE_IMAGE
     PROTOC_VERSION = PROTOC_VERSION
-    CARGO_CHEF_REVISION = CARGO_CHEF_REVISION
   }
 }
-target "api" {
+target "backend" {
   inherits = ["_rust"]
-  target = "api"
-  tags = [image("api")]
-}
-target "worker" {
-  inherits = ["_rust"]
-  target = "worker"
-  tags = [image("worker")]
+  target = "backend"
+  tags = [image("backend")]
 }
 target "_node" {
+  inherits = ["_owned"]
   args = { NPM_VERSION = NPM_VERSION, PNPM_VERSION = PNPM_VERSION }
 }
 target "ui" {
@@ -67,9 +61,13 @@ target "maps" {
   args = { NODE_IMAGE = NODE_IMAGE, GO_IMAGE = GO_IMAGE, RUNTIME_IMAGE = RUNTIME_IMAGE }
   tags = [image("maps")]
 }
-target "e2e" {
+target "e2e-tools" {
   inherits = ["_node"]
   dockerfile = "bike-ui/Dockerfile.e2e"
   args = { NODE_IMAGE = NODE_IMAGE, PLAYWRIGHT_IMAGE = PLAYWRIGHT_IMAGE, DOCKER_CLI_IMAGE = DOCKER_CLI_IMAGE }
-  tags = [image("e2e")]
+  tags = [image("e2e-tools")]
+}
+
+target "_owned" {
+  labels = { "dev.bike.storage" = "disposable-image" }
 }

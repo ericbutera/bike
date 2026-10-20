@@ -7,39 +7,15 @@ ARG PROTOC_VERSION
 RUN mise use --global protoc@"${PROTOC_VERSION:?PROTOC_VERSION must be supplied by mise}" \
     && cp -a "$(mise where protoc@"${PROTOC_VERSION}")" /opt/protoc
 
-FROM ${RUST_IMAGE:-scratch} AS chef
-ARG CARGO_CHEF_REVISION
+FROM ${RUST_IMAGE:-scratch} AS builder
 WORKDIR /app
-RUN --mount=type=cache,id=bike-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=bike-cargo-git,target=/usr/local/cargo/git \
-    cargo install --git https://github.com/LukeMathWalker/cargo-chef --rev "${CARGO_CHEF_REVISION:?CARGO_CHEF_REVISION must be supplied by mise}" --locked cargo-chef
-
-FROM chef AS planner
-COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
-
-FROM chef AS builder
-ARG TARGETPLATFORM
+ENV RUSTFLAGS="-D warnings"
 COPY --from=protobuf /opt/protoc/bin/protoc /usr/local/bin/protoc
 COPY --from=protobuf /opt/protoc/include /usr/local/include
-COPY --from=planner /app/recipe.json recipe.json
-COPY --from=planner /app/vendor vendor
-# cargo-chef's recipe covers workspace members. The standard generated SDK is
-# excluded from workspace linting, so preserve its package before cooking.
-COPY --from=planner /app/strava-sdk strava-sdk
-RUN --mount=type=cache,id=bike-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=bike-cargo-git,target=/usr/local/cargo/git \
-    --mount=type=cache,id=bike-rust-target-${TARGETPLATFORM},target=/app/target,sharing=locked \
-    cargo chef cook --locked --release --recipe-path recipe.json
 COPY . .
-# Bake's API and worker targets share this single compilation. Copy binaries out
-# of the mutable target cache before exporting either runtime image.
-RUN --mount=type=cache,id=bike-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=bike-cargo-git,target=/usr/local/cargo/git \
-    --mount=type=cache,id=bike-rust-target-${TARGETPLATFORM},target=/app/target,sharing=locked \
-    cargo build --locked --release --bin api --bin temporal-worker --bin migration --bin recover-generated-imports --bin e2e-fixtures \
-    && mkdir /out \
-    && cp target/release/api target/release/temporal-worker target/release/migration target/release/recover-generated-imports target/release/e2e-fixtures /out/
+RUN cargo build --locked --release \
+    --bin api --bin temporal-worker --bin migration \
+    --bin recover-generated-imports --bin e2e-fixtures
 
 FROM ${RUNTIME_IMAGE:-scratch} AS runtime
 WORKDIR /app
@@ -47,14 +23,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     && install -d -o nobody -g nogroup /cache
 USER nobody
 
-FROM runtime AS worker
-COPY --from=builder /out/temporal-worker /app/temporal-worker
-CMD ["/app/temporal-worker"]
-
-FROM runtime AS api
-COPY --from=builder /out/api /app/api
-COPY --from=builder /out/migration /app/migration
-COPY --from=builder /out/recover-generated-imports /app/recover-generated-imports
-COPY --from=builder /out/e2e-fixtures /app/e2e-fixtures
+FROM runtime AS backend
+COPY --from=builder /app/target/release/api /app/api
+COPY --from=builder /app/target/release/temporal-worker /app/temporal-worker
+COPY --from=builder /app/target/release/migration /app/migration
+COPY --from=builder /app/target/release/recover-generated-imports /app/recover-generated-imports
+COPY --from=builder /app/target/release/e2e-fixtures /app/e2e-fixtures
 EXPOSE 3000
 CMD ["/app/api"]

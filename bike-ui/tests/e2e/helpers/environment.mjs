@@ -38,9 +38,11 @@ function composeArgs(...args) {
     "--project-name",
     process.env.BIKE_E2E_PROJECT,
     "--file",
-    "/workspace/compose.runtime.yaml",
+    "/workspace/compose.yaml",
     "--file",
     "/workspace/compose.e2e.yaml",
+    "--profile",
+    "worker",
     ...args,
   ];
 }
@@ -64,7 +66,7 @@ async function runtimeIdentity() {
     }))
     .sort((first, second) => first.service.localeCompare(second.service));
   expect(containers.map((container) => container.service)).not.toContain(
-    "worker",
+    "temporal-worker",
   );
   for (const service of ["postgres", "temporal", "bike-rs", "ui", "bike-maps"])
     expect(
@@ -79,6 +81,8 @@ async function waitForServices(request) {
   for (const url of [
     "http://api.e2e.test:3000/api/health",
     "http://ui.e2e.test:3000",
+    "http://temporal-worker:9091/metrics",
+    "http://temporal-worker:9092/metrics",
   ]) {
     await expect
       .poll(
@@ -93,6 +97,18 @@ async function waitForServices(request) {
       )
       .toBe(200);
   }
+  await expect
+    .poll(
+      async () => {
+        const { stdout } = await execute(
+          "docker",
+          composeArgs("logs", "--no-color", "temporal-worker"),
+        );
+        return stdout;
+      },
+      { message: "Temporal worker registered", timeout: 60_000 },
+    )
+    .toContain("Temporal worker started for Strava and Bike");
   await expect
     .poll(
       async () => {
@@ -112,6 +128,12 @@ export async function prepareBaseline(request, testInfo) {
   attemptStarts.set(testInfo, new Date().toISOString());
   const started = performance.now();
   await environmentCommand("prepare");
+  await waitForServices(request);
+  await environmentCommand("stop-worker");
+  await writeFile(
+    identityFile,
+    JSON.stringify(await runtimeIdentity(), null, 2),
+  );
   await environmentCommand("seed", JSON.stringify(baselineData()));
   await environmentCommand("snapshot", "baseline");
   // Each named variant is built once by Playwright and snapshotted from the
@@ -121,11 +143,6 @@ export async function prepareBaseline(request, testInfo) {
     await environmentCommand("seed", JSON.stringify(scenarioData(scenario)));
     await environmentCommand("snapshot", scenario);
   }
-  await waitForServices(request);
-  await writeFile(
-    identityFile,
-    JSON.stringify(await runtimeIdentity(), null, 2),
-  );
   await testInfo.attach("baseline-timing", {
     body: JSON.stringify({ setupMs: performance.now() - started }),
     contentType: "application/json",

@@ -37,10 +37,13 @@ PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
 - Each run resolves its image inputs once and owns a unique Compose project,
   network, PostgreSQL volume, uploads, renderer styles, and cache. It exposes no
   host ports and shares no development data or source mounts.
-- `compose.runtime.yaml` owns the shared release-service definitions.
+- `compose.yaml` owns the shared release-service definitions.
   `compose.dev.yaml` retains development builds, mounts, ports, and persistence;
   `compose.e2e.yaml` contains only test differences. Production remains in Pulumi.
-- Services start once. Playwright defines baseline/scenario data in
+- Services start once. Setup verifies migrations, recovery helpers, API readiness,
+  worker startup and both worker metrics endpoints in that same environment.
+  It stops the worker, checks its clean exit, preserves backend logs, and removes
+  the worker before loading browser data. Playwright defines baseline/scenario data in
   [`helpers/seeds.mjs`](helpers/seeds.mjs); the prepared API image's fixture CLI
   validates records through current SeaORM models. Migrations and scenario
   seeding happen once per run; native `pg_dump` captures fresh data snapshots.
@@ -50,13 +53,13 @@ PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
   sessions and the existing flag-update API keep authentication/caches coherent.
   Snapshot hashes, container IDs/start times/restart counts, and database object
   IDs are checked after every attempt. One Playwright worker owns the database.
-- The default browser gate excludes the job worker. Browser tests verify real
+- The fixture-driven browser phase excludes the job worker. Browser tests verify real
   queue submission and seeded persisted results; they never wait for job
   execution. Heatmap fixtures reuse the owning projection builder during seeding.
   A future worker E2E suite must be independently selected and opt-in.
-- Execution installs no packages and compiles no application code. To select
-  existing release images, set `BIKE_API_IMAGE`,
-  `BIKE_UI_IMAGE`, `BIKE_RENDERER_IMAGE`, and `BIKE_E2E_IMAGE` explicitly.
+- Execution installs locked browser dependencies and compiles no application code. To select
+  existing release images, set `BIKE_BACKEND_IMAGE`,
+  `BIKE_UI_IMAGE`, `BIKE_RENDERER_IMAGE`, and `BIKE_E2E_TOOLS_IMAGE` explicitly.
   Defaults are the `:review` images produced by `e2e:prepare`; PostgreSQL is pinned
   by mise. Local images are local evidence, not production release verification.
 - The revised default passed 74 tests locally in 3.4 minutes on Linux arm64.
@@ -125,9 +128,18 @@ models, rather than committed SQL datasets or database dumps.
 
 ## CI and artifacts
 
-- Woodpecker runs checks, then all release/browser/engine image builds, then
+- The local Playwright adapter contains pinned tools only. Each run copies tests,
+  configuration, fixtures, Compose files and their explicit env files from the
+  current checkout, then uses
+  `pnpm install --frozen-lockfile`. It is not a published application image.
+- `mise run e2e` owns backend startup/helper checks and browser acceptance in
+  one environment. Worker checks finish before fixture seeding; the browser
+  phase still does not execute ingestion workflows. `backend.log` retains the
+  API and worker startup/shutdown evidence even after the worker is removed.
+
+- Woodpecker uses one workflow for checks, three application images, then
   `mise run ci:e2e`, which calls the same `mise run e2e` lifecycle. It uses a
-  job-local Docker daemon with TLS client certificates on the disposable
+  job-local Docker daemon with a private Unix socket on the disposable
   workspace. The Bike-only permission is owned by the separately maintained
   infrastructure configuration.
 - PR tests receive no deployment secrets. Main deployment depends on E2E success
@@ -141,7 +153,7 @@ models, rather than committed SQL datasets or database dumps.
 - CI retains those files on the existing cache PVC at
   `/cache/bike/e2e/<pipeline-number>/<project>/`, printed in the job log; the
   ephemeral checkout is not the only copy. Runs older than seven days are
-  removed by the owning CI task. Docker TLS certificates are not copied there.
+  retained for existing cache maintenance. Engine state is not copied there.
 
 Direct UI Playwright tasks run inside the pinned browser container and require
 an explicitly prepared environment and scenario. Prefer `mise run e2e` for

@@ -10,8 +10,6 @@ npm_version = "12.2.0"
 pnpm_version = "12.10.1"
 rust_version = "1.99.0"
 protoc_version = "36.2"
-# Upstream cargo-chef PR #369 fixes Cargo 1.99's generated target-edition warnings.
-cargo_chef_revision = "449576bbc2645200936adb9dece80810c9a335f8"
 go_version = "1.27.1"
 postgres_image = "postgres:17.11-trixie@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b"
 tracing_image = "cr.jaegertracing.io/jaegertracing/jaeger:2.22.0"
@@ -56,6 +54,7 @@ golangci-lint = "2.14.0"
 "aqua:woodpecker-ci/woodpecker/woodpecker-cli" = "3.19.0"
 "aqua:docker/buildx" = "{{vars.buildx_version}}"
 "aqua:docker/cli" = "{{vars.docker_version}}"
+"aqua:docker/compose" = "5.1.1"
 python = "{{vars.python_version}}"
 uv = "0.12.23"
 "pipx:diff-cover" = { version = "10.6.0", uvx_args = "--python {{vars.python_version}}" }
@@ -64,6 +63,7 @@ jq = "1.8.2"
 "aqua:mikefarah/yq" = "4.54.1"
 
 [env]
+COMPOSE_FILE = "{{env.COMPOSE_FILE | default(value=config_root ~ '/compose.yaml:' ~ config_root ~ '/compose.dev.yaml')}}"
 _.path = { path = ["{% if tools['npm:npm'] is defined %}{{tools['npm:npm'].path}}/node_modules/.bin{% endif %}"], tools = true }
 MISE_IMAGE = "{{vars.mise_image}}"
 NODE_VERSION = "{{vars.node_version}}"
@@ -79,7 +79,6 @@ GOLANGCI_LINT_CACHE = "{{env.BIKE_GO_CACHE | default(value=config_root ~ '/.cach
 RUNTIME_IMAGE = "{{vars.runtime_image}}"
 RUST_IMAGE = "{{vars.rust_image}}"
 PROTOC_VERSION = "{{vars.protoc_version}}"
-CARGO_CHEF_REVISION = "{{vars.cargo_chef_revision}}"
 NODE_IMAGE = "{{vars.node_image}}"
 NODE_ALPINE_IMAGE = "{{vars.node_alpine_image}}"
 GO_IMAGE = "{{vars.go_image}}"
@@ -104,7 +103,7 @@ COVERAGE_GITHUB_SSH_HOST_KEY = "{{vars.github_ssh_host_key}}"
 
 [tasks."renderer:build"]
 description = "Build the renderer image using mise version pins"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load maps"
+run = ["bash scripts/storage-local.sh", "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load maps", "bash scripts/storage-local.sh --check"]
 
 [tasks."strava:sdk"]
 description = "Generate the standard Rust SDK from the pinned Strava vendor contract"
@@ -120,27 +119,19 @@ run = "mise --cd bike-rs run test"
 
 [tasks."pins:sync"]
 description = "Regenerate package metadata and CI images from mise pins"
-run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/e2e.yaml"]
+run = ['npm --prefix bike-ui pkg set "packageManager=pnpm@${PNPM_VERSION?}"', "mise --cd bike-ui exec -- pnpm install --lockfile-only", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- yq --inplace '(.services[] | select(.name == \"docker\").image) = strenv(DOCKER_DIND_IMAGE)' .woodpecker/bike.yaml"]
 
 [tasks."pins:check"]
 description = "Verify generated package-manager metadata agrees with mise"
 run = "sh scripts/check-package-manager.sh"
 
-[tasks."api:image"]
-description = "Build the release API and migration tools using mise pins"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load api"
-
-[tasks."worker:image"]
-description = "Build the release worker using mise pins"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load worker"
-
-[tasks."rust:images"]
-description = "Build API and worker together from their shared compilation stage"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load rust"
+[tasks."backend:image"]
+description = "Build the shared backend release image"
+run = ["bash scripts/storage-local.sh", "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load backend", "bash scripts/storage-local.sh --check"]
 
 [tasks."images:build"]
 description = "Build and load release images using the shared Bake targets"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load"
+run = ["bash scripts/storage-local.sh", "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load", "bash scripts/storage-local.sh --check"]
 
 [tasks."images:push"]
 description = "Build and push immutable release images using the shared Bake targets"
@@ -156,7 +147,7 @@ run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --call=check 
 
 [tasks."ui:image"]
 description = "Build the release UI using mise pins"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load ui"
+run = ["bash scripts/storage-local.sh", "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load ui", "bash scripts/storage-local.sh --check"]
 
 
 [tasks."images:check"]
@@ -165,7 +156,7 @@ run = '''
 set -eu
 docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg MISE_IMAGE --build-arg RUST_IMAGE --build-arg DOCKER_CLI_IMAGE --file Dockerfile.checks .
 for dockerfile in bike-rs/Dockerfile bike-rs/Dockerfile.dev; do
-  docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg RUST_IMAGE --build-arg RUNTIME_IMAGE --build-arg MISE_IMAGE --build-arg PROTOC_VERSION --build-arg CARGO_CHEF_REVISION --build-arg WATCHEXEC_VERSION --file "$dockerfile" bike-rs
+  docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg RUST_IMAGE --build-arg RUNTIME_IMAGE --build-arg MISE_IMAGE --build-arg PROTOC_VERSION --build-arg WATCHEXEC_VERSION --file "$dockerfile" bike-rs
 done
 for dockerfile in bike-ui/Dockerfile bike-ui/Dockerfile.dev; do
   docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-arg NODE_ALPINE_IMAGE --build-arg NPM_VERSION --build-arg PNPM_VERSION --file "$dockerfile" bike-ui
@@ -176,11 +167,11 @@ docker build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --build-ar
 
 [tasks."compose:config"]
 description = "Validate the shared Bike services Compose stack"
-run = "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose config"
+run = "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose config --quiet"
 
 [tasks."compose:up"]
 description = "Start Bike Rust, the shared UI, PostgreSQL, and map renderer"
-run = "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose up -d --build"
+run = ["bash scripts/storage-local.sh", "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-bike} docker compose up -d --build", "bash scripts/storage-local.sh --check"]
 
 [tasks."compose:down"]
 description = "Stop the shared Bike services Compose stack"
@@ -196,12 +187,7 @@ run = ["mise --cd bike-ui run check", "mise --cd bike-ui run build"]
 
 [tasks.coverage]
 description = "Generate every service's unit coverage in Docker"
-run = "mise run checks:docker coverage:unit"
-
-[tasks."checks:docker"]
-description = "Run an owning mise task in Docker with shared Linux caches"
-usage = 'arg "<task>" help="Owning mise task to run in Docker"'
-run = 'bash scripts/checks-docker.sh'
+run = "mise run coverage:unit"
 
 [tasks."coverage:unit"]
 description = "Generate service unit coverage without integration or E2E tests"
@@ -231,10 +217,6 @@ description = "Verify the coverage gate with isolated Git and LCOV fixtures"
 depends = ["coverage:tools"]
 run = ["mise install go go:github.com/jandelgado/gcov2lcov", "mise exec pipx:diff-cover jq go go:github.com/jandelgado/gcov2lcov -- bash scripts/coverage-test.sh"]
 
-[tasks."coverage:cache:test"]
-description = "Verify compiled Rust dependency reuse and fresh coverage across CI runs"
-run = ["mise install rust aqua:taiki-e/cargo-llvm-cov", "mise exec rust aqua:taiki-e/cargo-llvm-cov -- bash scripts/coverage-rust-cache-test.sh"]
-
 [tasks."coverage:site"]
 description = "Assemble browsable reports and overall coverage history"
 run = ["mise install jq", "mise exec jq -- bash scripts/coverage-site.sh"]
@@ -242,14 +224,6 @@ run = ["mise install jq", "mise exec jq -- bash scripts/coverage-site.sh"]
 [tasks."coverage:publish"]
 description = "Publish generated reports to the free GitHub Pages site"
 run = ["mise install jq", "mise exec jq -- bash scripts/coverage-publish.sh"]
-
-[tasks."ci:coverage:retain"]
-description = "Retain combined coverage for publication after browser tests"
-run = "bash scripts/coverage-transfer.sh save"
-
-[tasks."ci:coverage:restore"]
-description = "Restore validated reports in the browser workflow before publication"
-run = "bash scripts/coverage-transfer.sh restore"
 
 [tasks."ci:coverage"]
 description = "Require 80% changed-line coverage for each service in CI"
@@ -298,31 +272,15 @@ done
 
 [tasks."ci:images"]
 description = "Connect to persistent BuildKit and publish this revision's Bake targets"
-run = ["mise install aqua:docker/buildx jq", "bash scripts/ci-images.sh"]
+run = ["mise install aqua:docker/buildx jq", "mise exec aqua:docker/buildx jq -- bash scripts/ci-images.sh"]
 
 [tasks."ci:check"]
 description = "Validate the workflow using the native Woodpecker CLI"
-run = ["woodpecker-cli lint --strict .woodpecker", "mise install aqua:mikefarah/yq", "mise exec aqua:mikefarah/yq -- bash scripts/check-ci.sh"]
-
-[tasks."ci:rust:prepare"]
-description = "Restore completed Rust verification or prepare shared coverage before parallel tests"
-run = "bash scripts/ci-rust.sh prepare"
+run = ["woodpecker-cli lint --strict .woodpecker", "mise install aqua:mikefarah/yq", "mise run ci:test"]
 
 [tasks."ci:rust"]
-description = "Reuse verified identical backend inputs or run the shared Rust checks"
-run = "bash scripts/ci-rust.sh unit"
-
-[tasks."rust:ci:unit"]
-description = "Run shared Rust lint and collect unit coverage prepared by CI"
-run = ["mise run lint:rs", "mise --cd bike-rs run test:ci"]
-
-[tasks."ci:rust:report"]
-description = "Join parallel Rust measurements and publish completed verification"
-run = "bash scripts/ci-rust.sh report"
-
-[tasks."ci:rust:cache:test"]
-description = "Verify cross-PR Rust check reuse, invalidation, failures, and coverage transfer"
-run = ["mise install node jq", "mise exec node jq -- bash scripts/ci-rust-test.sh"]
+description = "Run native Rust lint, unit coverage, integration tests and doctests"
+run = ["mise install rust protoc aqua:taiki-e/cargo-llvm-cov", "mise run lint:rs", "mise --cd bike-rs run coverage:unit", "mise --cd bike-rs run test:non-unit"]
 
 [tasks."ci:ui:unit"]
 description = "Install UI tooling and run lint, type, unit, format, and audit checks"
@@ -335,11 +293,7 @@ run = ["mise install node npm:npm npm:prettier go golangci-lint protoc go:google
 
 [tasks."ci:runtime"]
 description = "Check owning CI and shell orchestration before image builds"
-run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run images:plan", "mise run coverage:test", "mise run ci:rust:cache:test"]
-
-[tasks."ci:rust:cache:regression"]
-description = "Verify Cargo dependency reuse when Rust CI tooling changes"
-run = "mise run coverage:cache:test"
+run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run runtime:check", "mise run images:plan", "mise run coverage:test", "mise run storage:test"]
 
 [tasks."ci:deploy"]
 description = "Clone Bike infrastructure once and apply the single Pulumi project"
@@ -414,21 +368,21 @@ description = "Check renderer and shared JavaScript"
 run = ["mise run renderer:deps", "map-renderer/node_modules/.bin/eslint --config map-renderer/eslint.config.mjs map-renderer --max-warnings=0", "mise run format:check"]
 
 [tasks."e2e:build"]
-description = "Build the standalone browser test image"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load e2e"
+description = "Build the local Playwright tools adapter"
+run = ["bash scripts/storage-local.sh", "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load e2e-tools", "bash scripts/storage-local.sh --check"]
 
 [tasks."e2e:prepare"]
 description = "Prepare cached release images and the browser image from this worktree"
-run = "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load e2e-runtime"
+run = ["bash scripts/storage-local.sh", "docker-cli-plugin-docker-buildx bake --file docker-bake.hcl --load backend ui maps e2e-tools", "bash scripts/storage-local.sh --check"]
 
 [tasks.e2e]
-description = "Run the required browser suite in a disposable image-based environment"
+description = "Accept backend commands and browser behavior in one disposable environment"
 usage = 'arg "[spec]" default=""'
 run = 'bash scripts/e2e.sh ${usage_spec:+"$usage_spec"}'
 
 [tasks."e2e:config"]
 description = "Validate the disposable runtime with native Compose"
-run = "docker compose --project-name bike-e2e-config --file compose.runtime.yaml --file compose.e2e.yaml config --quiet"
+run = "docker compose --project-name bike-e2e-config --file compose.yaml --file compose.e2e.yaml --profile worker config --quiet"
 
 [tasks."runtime:check"]
 description = "Validate shared development and disposable runtime configuration"
@@ -436,4 +390,32 @@ run = ["mise run compose:config", "mise run e2e:config"]
 
 [tasks."ci:e2e"]
 description = "Test this revision's prepared registry images on the job-local engine"
-run = "bash scripts/ci-e2e.sh"
+run = ["mise install aqua:docker/cli aqua:docker/buildx jq", "mise exec aqua:docker/cli aqua:docker/buildx jq -- bash scripts/ci-e2e.sh"]
+
+[tasks."test:postgres"]
+description = "Run all explicit database suites against disposable PostgreSQL"
+run = ["mise install aqua:docker/cli rust protoc jq", "mise exec aqua:docker/cli rust protoc jq -- bash scripts/test-postgres.sh"]
+
+[tasks."ci:test"]
+description = "Verify release gating and credential restrictions with unsafe workflow fixtures"
+run = "mise exec aqua:mikefarah/yq -- bash scripts/check-ci-test.sh"
+
+[tasks."ci:docker:prepare"]
+description = "Install the pinned Docker CLI and Compose plugin for native CI steps"
+run = ["mise install aqua:docker/cli aqua:docker/compose", 'mkdir -p "${DOCKER_CONFIG:?}/cli-plugins"', 'ln -sf "$(mise which docker-cli-plugin-docker-compose)" "$DOCKER_CONFIG/cli-plugins/docker-compose"']
+
+[tasks."storage:local"]
+description = "Prune old unused Bike images and require local build headroom"
+run = "bash scripts/storage-local.sh"
+
+[tasks."storage:ci"]
+description = "Require fresh server storage measurements and build headroom"
+run = ["mise install jq", "mise exec jq -- bash scripts/storage-ci.sh"]
+
+[tasks."storage:test"]
+description = "Exercise image storage capacity and safe-cleanup fixtures"
+run = "bash scripts/storage-test.sh"
+
+[tasks."staging:fixtures"]
+description = "Export browser fixtures for the staging SSO account"
+run = 'node bike-ui/tests/e2e/helpers/seeds.mjs --staging "${BIKE_STAGING_OWNER_EMAIL:?}" > "${BIKE_STAGING_FIXTURE_FILE:?}"'

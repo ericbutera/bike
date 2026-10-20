@@ -1,0 +1,14 @@
+[worker.oci]
+  networkMode = "bridge"
+  gc = true
+  [[worker.oci.gcpolicy]]
+    all = true
+    keepDuration = "168h"
+    reservedSpace = "4GiB"
+    maxUsedSpace = "40GiB"
+    minFreeSpace = "64GiB"
+  [[worker.oci.gcpolicy]]
+    all = true
+    reservedSpace = "4GiB"
+    maxUsedSpace = "40GiB"
+    minFreeSpace = "64GiB"
