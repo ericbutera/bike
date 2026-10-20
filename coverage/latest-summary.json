@@ -1,8 +1,8 @@
 {
-  "commit": "a03e1c07113ecc2e4812611fd836e62b3a72a67d",
-  "created_at": "2026-10-19T22:34:16Z",
-  "base_revision": "4b881f7d7baed580a876d4f305bfd5fedaaf2303",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/619",
+  "commit": "2c6f12d080920d05f203f4f09a0756cadb705078",
+  "created_at": "2026-10-20T15:43:47Z",
+  "base_revision": "cdb31e09a5c810f3b019a04508350ca85c8b7e62",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/629",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
@@ -87,13 +87,13 @@
       "name": "Bike UI",
       "language": "Next.js",
       "source": "bike-ui",
-      "lines": 5827,
-      "covered": 3962,
-      "percent": 67.99,
+      "lines": 5855,
+      "covered": 4003,
+      "percent": 68.36,
       "changed": {
-        "lines": 0,
-        "covered": 0,
-        "percent": 100.0
+        "lines": 38,
+        "covered": 36,
+        "percent": 94.74
       }
     },
     "map-renderer": {
