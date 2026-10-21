@@ -102,10 +102,15 @@
 - `compose.yaml` owns shared services, `compose.dev.yaml` owns development
   differences, Temporal setup and BuildKit, and `compose.e2e.yaml` owns isolated
   test overrides. Keep ignored `compose.local.yaml` for machine settings.
-  Explicit `docker/backend.env` and `docker/api.env` files own shared backend
-  and API-only defaults. Development/E2E overrides remain visible in Compose;
-  mise remains the source of tool and image pins. Copy the env files alongside
-  Compose files into the acceptance runner.
+  Service environment settings live in explicit `docker/*.env` files, never
+  inline Compose environment maps, except checks paths derived from its native
+  worktree anchor. Shared settings have one owning file;
+  development/E2E env files contain only intentional differences. API and
+  worker share database, Temporal and backend defaults; API and maps share
+  renderer authentication/tracing settings. Checks reuse the development cache
+  file and override only checks-specific paths. Keep credentials scoped to
+  services that need them. Mise remains the source of tool and image pins.
+  Copy all env files alongside Compose files into the acceptance runner.
 - Retain the small standalone `compose.checks.yaml` so checks can bootstrap
   without host mise or exported image pins. Compose profiles cannot prevent
   interpolation of required variables in unrelated services.

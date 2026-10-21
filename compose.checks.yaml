@@ -8,52 +8,14 @@ services:
     command: [sleep, infinity]
     working_dir: &worktree ${BIKE_DOCKER_STORAGE_ROOT:-/var/lib/docker/volumes/bike-build-storage/_data}/worktrees/${BIKE_WORKTREE:-bike}
     environment:
-      MISE_DATA_DIR: /cache/mise
-      MISE_CACHE_DIR: /cache/mise-cache
-      MISE_STATE_DIR: /cache/mise-state
       MISE_TRUSTED_CONFIG_PATHS: *worktree
-      MISE_YES: "1"
-      MISE_TASK_RUN_AUTO_INSTALL: "true"
-      BIKE_CHECKS_CONTAINER: "1"
       BIKE_SOURCE_ROOT: *worktree
       BIKE_CONFIG_ROOT: *worktree
       BIKE_DOCKER_HOST_WORKSPACE: *worktree
       BIKE_DOCKER_STORAGE_ROOT: ${BIKE_DOCKER_STORAGE_ROOT:-/var/lib/docker/volumes/bike-build-storage/_data}
       BIKE_DOCKER_HOST_ARTIFACTS: ${BIKE_DOCKER_STORAGE_ROOT:-/var/lib/docker/volumes/bike-build-storage/_data}/worktrees/${BIKE_WORKTREE:-bike}/.artifacts
       BIKE_DOCKER_HOST_TMP: ${BIKE_DOCKER_STORAGE_ROOT:-/var/lib/docker/volumes/bike-build-storage/_data}/tmp/checks
-      CARGO_HOME: /cache/cargo
-      CARGO_TARGET_DIR: /cache/target/checks
-      CARGO_LLVM_COV_TARGET_DIR: /cache/target/checks/llvm-cov-target
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "1"
-      CARGO_PROFILE_TEST_DEBUG: "1"
-      RUSTFLAGS: -D warnings
-      RUSTDOCFLAGS: -D warnings
-      RUSTUP_HOME: /cache/rustup
-      XDG_CACHE_HOME: /cache/xdg
-      NPM_CONFIG_CACHE: /cache/node-packages/npm
-      NPM_CONFIG_UPDATE_NOTIFIER: "false"
-      PNPM_CONFIG_UPDATE_NOTIFIER: "false"
-      PNPM_CONFIG_STORE_DIR: /cache/node-packages/pnpm-store
-      PNPM_CONFIG_CACHE_DIR: /cache/node-packages/pnpm-metadata
-      UV_CACHE_DIR: /cache/uv
-      PREK_HOME: /cache/prek
-      BIKE_NODE_PACKAGE_CACHE: /cache/node-packages
-      BIKE_GO_CACHE: /cache/go
-      GOCACHE: /cache/go/go-build
-      GOMODCACHE: /cache/go/go-mod
-      TMPDIR: /tmp
-      BUILDX_CONFIG: /cache/docker-buildx
-      BUILDX_BUILDER: bike-local
-      GH_PROMPT_DISABLED: "1"
-      GIT_TERMINAL_PROMPT: "0"
-      GIT_CONFIG_COUNT: "3"
-      GIT_CONFIG_KEY_0: safe.directory
       GIT_CONFIG_VALUE_0: *worktree
-      GIT_CONFIG_KEY_1: credential.helper
-      GIT_CONFIG_VALUE_1: ""
-      GIT_CONFIG_KEY_2: credential.https://github.com.helper
-      GIT_CONFIG_VALUE_2: '!gh auth git-credential'
     volumes:
       # Matching engine/client paths let nested Docker commands use this disk.
       - build_storage:${BIKE_DOCKER_STORAGE_ROOT:-/var/lib/docker/volumes/bike-build-storage/_data}
@@ -64,23 +26,26 @@ services:
       - type: volume
         source: build_storage
         target: /root/.docker
-        volume: {nocopy: true, subpath: docker}
+        volume: { nocopy: true, subpath: docker }
       - type: volume
         source: build_storage
         target: ${BIKE_DOCKER_STORAGE_ROOT:-/var/lib/docker/volumes/bike-build-storage/_data}/worktrees/${BIKE_WORKTREE:-bike}/bike-ui/node_modules
-        volume: {nocopy: true, subpath: checks/ui-node_modules}
+        volume: { nocopy: true, subpath: checks/ui-node_modules }
       - type: volume
         source: build_storage
         target: ${BIKE_DOCKER_STORAGE_ROOT:-/var/lib/docker/volumes/bike-build-storage/_data}/worktrees/${BIKE_WORKTREE:-bike}/map-renderer/node_modules
-        volume: {nocopy: true, subpath: renderer/node_modules}
+        volume: { nocopy: true, subpath: renderer/node_modules }
       - type: volume
         source: build_storage
         target: ${BIKE_DOCKER_STORAGE_ROOT:-/var/lib/docker/volumes/bike-build-storage/_data}/worktrees/${BIKE_WORKTREE:-bike}/bike-ui/.next
-        volume: {nocopy: true, subpath: checks/next}
+        volume: { nocopy: true, subpath: checks/next }
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/checks}
+        volume: { nocopy: true, subpath: tmp/checks }
+    env_file:
+      - ./docker/dev-cache.env
+      - ./docker/checks.env
 volumes:
   build_storage:
     external: true
