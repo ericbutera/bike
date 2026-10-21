@@ -6,6 +6,8 @@ trap 'rm -rf -- "$fixture"' EXIT
 bash scripts/check-ci.sh
 export BIKE_CI_CONFIG="$fixture/workflow.yaml"
 for mutation in \
+  '(.steps[] | select(.name == "deploy").depends_on) = ["stop-engine"]' \
+  '(.steps[] | select(.name == "deploy").depends_on) = ["test-images"]' \
   '(.services[] | select(.name == "docker").ports) = []' \
   '(.steps[] | select(.name == "build-images").depends_on) = ["test-rust"]' \
   '(.steps[] | select(.name == "deploy").when[0].event) = ["pull_request"]' \

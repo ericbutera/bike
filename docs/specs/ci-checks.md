@@ -4,7 +4,7 @@
 
 - One Woodpecker workflow runs on PRs, main pushes and manual requests:
   checkout → checks and coverage → application images → image acceptance →
-  coverage publication → main-only deployment. Every step calls owning mise
+  main-only deployment. Every step calls owning mise
   tasks. Failed or skipped prerequisites must prevent release actions.
 - Rust formatting, locked Clippy, unit coverage, integration tests and doctests
   run directly on every build. Explicit PostgreSQL suites run against disposable
@@ -44,8 +44,9 @@
   Missing, empty or foreign-source reports fail the 80% changed-line gate.
   Never restore reports from a previously successful revision.
 - Preserve first-parent coverage activation and rewritten-history comparison.
-  Publish coverage from the same workflow workspace after image acceptance;
-  publication credentials and deployment credentials are unavailable to PRs.
+  Coverage reports remain generated locally in the workflow; GitHub Pages
+  publication is disabled pending a replacement. Deployment credentials are
+  unavailable to PRs.
 - Keep the workflow concurrency at one while native Cargo and coverage output
   share `/cache/bike/target/shared`. Rust, UI and renderer checks may run in
   parallel. Test/coverage output is distinct from release-build output.

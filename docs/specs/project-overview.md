@@ -73,11 +73,9 @@ Manual Garmin export import is a first-class ingestion path. Official Garmin clo
 
 ## Generated coverage reports
 
-- Coverage reports are generated artifacts published on `gh-pages`; application
-  source history remains on `main`.
-- Each report commit uses its source revision's author name and email for both
-  author and committer. Publishing credentials grant access without defining a
-  separate contributor named `coverage`.
+- Coverage reports are generated artifacts; application source history remains
+  on `main`. See [CI checks](ci-checks.md#checks-and-coverage) for generation
+  and publication policy.
 
 ## Product Risks
 

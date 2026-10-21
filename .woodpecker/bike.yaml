@@ -152,25 +152,10 @@ steps:
     commands:
       - bash scripts/ci-engine-stop.sh
 
-  - name: publish-coverage
-    failure: fail
-    image: *checks_image
-    depends_on: [test-images, stop-engine]
-    when:
-      - event: [push, manual]
-        branch: main
-    environment:
-      <<: *mise_environment
-      COVERAGE_PUBLISH_KEY:
-        from_secret: coverage_publish_key
-    volumes: *mise_cache
-    commands:
-      - mise run coverage:publish
-
   - name: deploy
     failure: fail
     image: *checks_image
-    depends_on: [publish-coverage]
+    depends_on: [test-images, stop-engine]
     when:
       - event: [push, manual]
         branch: main

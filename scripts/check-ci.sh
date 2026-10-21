@@ -15,12 +15,9 @@ test "$(read_yaml '.steps[] | select(.name == "check-coverage").depends_on | sor
 test "$(read_yaml '.steps[] | select(.name == "build-images").depends_on | sort | join(",")')" = check-coverage,test-postgres,test-tooling
 test "$(read_yaml '.steps[] | select(.name == "test-images").depends_on | join(",")')" = build-images
 test "$(read_yaml '.steps[] | select(.name == "stop-engine").when[0].status | sort | join(",")')" = failure,success
-test "$(read_yaml '.steps[] | select(.name == "publish-coverage").depends_on | sort | join(",")')" = stop-engine,test-images
-test "$(read_yaml '.steps[] | select(.name == "deploy").depends_on | join(",")')" = publish-coverage
-for stage in publish-coverage deploy; do
-  test "$(stage="$stage" read_yaml '.steps[] | select(.name == strenv(stage)).when[0].event | sort | join(",")')" = manual,push
-  test "$(stage="$stage" read_yaml '.steps[] | select(.name == strenv(stage)).when[0].branch')" = main
-done
+test "$(read_yaml '.steps[] | select(.name == "deploy").depends_on | sort | join(",")')" = stop-engine,test-images
+test "$(read_yaml '.steps[] | select(.name == "deploy").when[0].event | sort | join(",")')" = manual,push
+test "$(read_yaml '.steps[] | select(.name == "deploy").when[0].branch')" = main
 test "$(read_yaml '[.steps[] | select(.failure != "fail")] | length')" = 0
 go_cache="$(read_yaml '.steps[] | select(.name == "test-rust").environment.BIKE_GO_CACHE')"
 test "$go_cache" != null
