@@ -102,14 +102,14 @@ steps:
     environment: *mise_environment
     volumes: *mise_cache
     commands:
-      - mise run test:postgres
+      - mise run coverage:postgres
       - mise run strava:sdk:check
       - mise run contracts:check
 
   - name: check-coverage
     failure: fail
     image: *checks_image
-    depends_on: [test-rust, test-ui, test-maps]
+    depends_on: [test-rust, test-ui, test-maps, test-postgres]
     environment: *mise_environment
     volumes: *mise_cache
     commands:

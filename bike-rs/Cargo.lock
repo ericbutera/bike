@@ -170,6 +170,7 @@ dependencies = [
  "hmac",
  "integrations",
  "log",
+ "migration",
  "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",

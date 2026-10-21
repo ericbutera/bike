@@ -161,3 +161,19 @@ if [ "${usage_refresh_recording:-false}" = "true" ]; then set -- "$@" --refresh-
 if [ -n "${usage_register_manifest:-}" ]; then set -- "$@" --register-manifest "$usage_register_manifest"; fi
 cargo run -p integrations --bin recover-generated-imports -- "$@"
 '''
+
+[tasks."test:segments:postgres"]
+env = { LOCAL_ADMIN_ENABLED = "false" }
+description = "Verify staging segment fixtures through application endpoints in disposable PostgreSQL"
+run = '''
+: "${BIKE_SEGMENT_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
+cargo test -p api --bin e2e-fixtures --locked postgres_tests -- --ignored
+'''
+
+[tasks."coverage:segments:postgres"]
+description = "Collect the staging fixture database test without clearing unit measurements"
+env = { LOCAL_ADMIN_ENABLED = "false", RUSTFLAGS = "-D warnings", CARGO_LLVM_COV_DENY_WARNINGS = "1" }
+run = '''
+: "${BIKE_SEGMENT_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
+mise exec rust protoc aqua:taiki-e/cargo-llvm-cov -- cargo llvm-cov test --locked --no-report -p api --bin e2e-fixtures postgres_tests -- --ignored
+'''

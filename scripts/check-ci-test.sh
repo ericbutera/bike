@@ -8,6 +8,8 @@ export BIKE_CI_CONFIG="$fixture/workflow.yaml"
 for mutation in \
   '(.services[] | select(.name == "docker").ports) = []' \
   '(.steps[] | select(.name == "build-images").depends_on) = ["test-rust"]' \
+  '(.steps[] | select(.name == "check-coverage").depends_on) = ["test-rust", "test-ui", "test-maps"]' \
+  '(.steps[] | select(.name == "test-postgres").commands[0]) = "mise run test:postgres"' \
   '(.steps[] | select(.name == "deploy").when[0].event) = ["pull_request"]' \
   '(.steps[] | select(.name == "test-images").failure) = "ignore"' \
   '(.steps[] | select(.name == "stop-engine").when[0].status) = ["success"]'; do

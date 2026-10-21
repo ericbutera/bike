@@ -1,5 +1,7 @@
 // Playwright owns readable scenario data. The fixture CLI validates every
 // record against Bike's current SeaORM model, retaining database defaults.
+import { competitionRiders, competitionRides } from "./segment-competition.mjs";
+
 const created = "2025-01-01T00:00:00Z";
 const firstFinish = "2025-06-01T12:02:00Z";
 const secondFinish = "2025-06-02T12:01:40Z";
@@ -396,13 +398,24 @@ export function sessionData(token) {
   };
 }
 
+export function competitionData() {
+  return {
+    users: competitionRiders
+      .filter((id) => id !== 1)
+      .map((id) =>
+        user(id, `competition-${id}@bike.local`, `Fixture Rider ${id}`),
+      ),
+    rides: competitionRides(),
+  };
+}
+
 // Staging uses the same scenario records and the operator's normal SSO identity.
 export function stagingData(ownerEmail, makeKey) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
     throw new Error("Staging requires the operator's login email");
   }
-  const data = baselineData();
-  for (const record of data.records) {
+  const data = { ...baselineData(), competition: competitionData() };
+  for (const record of [...data.records, ...data.competition.users]) {
     if (record.entity !== "users") continue;
     record.values.api_key = makeKey(record.values.id);
     if (record.values.id === 1) {

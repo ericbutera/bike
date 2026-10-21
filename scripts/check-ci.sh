@@ -11,7 +11,8 @@ test "$(read_yaml '.concurrency')" = 1
 for stage in test-rust test-ui test-maps test-tooling; do
   test "$(stage="$stage" read_yaml '.steps[] | select(.name == strenv(stage)).depends_on | join(",")')" = prepare
 done
-test "$(read_yaml '.steps[] | select(.name == "check-coverage").depends_on | sort | join(",")')" = test-maps,test-rust,test-ui
+test "$(read_yaml '.steps[] | select(.name == "check-coverage").depends_on | sort | join(",")')" = test-maps,test-postgres,test-rust,test-ui
+test "$(read_yaml '.steps[] | select(.name == "test-postgres").commands[0]')" = 'mise run coverage:postgres'
 test "$(read_yaml '.steps[] | select(.name == "build-images").depends_on | sort | join(",")')" = check-coverage,test-postgres,test-tooling
 test "$(read_yaml '.steps[] | select(.name == "test-images").depends_on | join(",")')" = build-images
 test "$(read_yaml '.steps[] | select(.name == "stop-engine").when[0].status | sort | join(",")')" = failure,success
