@@ -8,7 +8,7 @@ services:
     env_file: ./docker/dev-cache.env
     image: bike-dev-api
     build: &api_build
-      labels: {dev.bike.storage: disposable-image}
+      labels: { dev.bike.storage: disposable-image }
       context: ./bike-rs
       dockerfile: Dockerfile.dev
       target: api
@@ -24,23 +24,13 @@ services:
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/migration}
+        volume: { nocopy: true, subpath: tmp/migration }
   bike-rs:
-    env_file: ./docker/dev-cache.env
+    env_file:
+      - ./docker/dev-cache.env
+      - ./docker/api.dev.env
     image: bike-dev-api
     build: *api_build
-    environment:
-      RUST_LOG: info,sea_orm=trace,sqlx=warn,tower_http=trace
-      CORS_ALLOWED_ORIGINS: http://localhost:${BIKE_RUST_UI_PORT:-3001}
-      FRONTEND_URL: http://localhost:${BIKE_RUST_UI_PORT:-3001}
-      API_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}
-      LOCAL_ADMIN_ENABLED: ${LOCAL_ADMIN_ENABLED:-true}
-      OAUTH_PROVIDERS: dev
-      OAUTH_DEV_ENABLED: "true"
-      OAUTH_DEV_EMAIL: developer@bike.local
-      OAUTH_DEV_NAME: Local Developer
-      OAUTH_DEV_SUBJECT: bike-local-dev
-      MAP_IMAGE_CACHE_DIR: /cache/map-images
     ports:
       - "${BIKE_RUST_API_PORT:-3000}:3000"
     volumes:
@@ -50,21 +40,20 @@ services:
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/api}
+        volume: { nocopy: true, subpath: tmp/api }
   ui:
-    env_file: ./docker/dev-cache.env
+    env_file:
+      - ./docker/dev-cache.env
+      - ./docker/ui.dev.env
     image: bike-dev-ui
     build:
-      labels: {dev.bike.storage: disposable-image}
+      labels: { dev.bike.storage: disposable-image }
       context: ./bike-ui
       dockerfile: Dockerfile.dev
       args:
         NODE_ALPINE_IMAGE: ${NODE_ALPINE_IMAGE:?Run Compose through mise}
         NPM_VERSION: ${NPM_VERSION:?Run Compose through mise}
         PNPM_VERSION: ${PNPM_VERSION:?Run Compose through mise}
-    environment:
-      API_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}/api
-      CDN_URL: http://localhost:${BIKE_RUST_API_PORT:-3000}/uploads
     ports:
       - "${BIKE_RUST_UI_PORT:-3001}:3000"
     volumes:
@@ -73,19 +62,19 @@ services:
       - type: volume
         source: build_storage
         target: /app/node_modules
-        volume: {nocopy: true, subpath: ui/node_modules}
+        volume: { nocopy: true, subpath: ui/node_modules }
       - type: volume
         source: build_storage
         target: /app/.next
-        volume: {nocopy: true, subpath: ui/next}
+        volume: { nocopy: true, subpath: ui/next }
       - type: volume
         source: build_storage
         target: /app/.artifacts
-        volume: {nocopy: true, subpath: artifacts/ui}
+        volume: { nocopy: true, subpath: artifacts/ui }
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/ui}
+        volume: { nocopy: true, subpath: tmp/ui }
     develop:
       watch:
         - action: sync
@@ -100,7 +89,7 @@ services:
             - .scratch/
             - .pnpm-store/
             - next-env.d.ts
-            - '*.tsbuildinfo'
+            - "*.tsbuildinfo"
             - .env*
             - .mise.local.toml
   bike-maps:
@@ -110,9 +99,9 @@ services:
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/maps}
+        volume: { nocopy: true, subpath: tmp/maps }
     build:
-      labels: {dev.bike.storage: disposable-image}
+      labels: { dev.bike.storage: disposable-image }
       context: .
       dockerfile: map-renderer/Dockerfile
       args:
@@ -132,7 +121,7 @@ services:
     restart: unless-stopped
     image: bike-dev-worker
     build:
-      labels: {dev.bike.storage: disposable-image}
+      labels: { dev.bike.storage: disposable-image }
       context: ./bike-rs
       dockerfile: Dockerfile.dev
       target: worker
@@ -152,7 +141,7 @@ services:
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/worker}
+        volume: { nocopy: true, subpath: tmp/worker }
     stop_grace_period: 1m
     depends_on:
       temporal-namespace:
@@ -163,51 +152,66 @@ services:
   temporal-databases:
     image: ${BIKE_POSTGRES_IMAGE:?Run Compose through mise}
     entrypoint: [psql]
-    command: [--host=postgres, --username=postgres, --dbname=postgres, --set=ON_ERROR_STOP=1, --file=/setup/databases.sql]
-    environment:
-      PGPASSWORD: postgres
+    command:
+      [
+        --host=postgres,
+        --username=postgres,
+        --dbname=postgres,
+        --set=ON_ERROR_STOP=1,
+        --file=/setup/databases.sql,
+      ]
     volumes:
       - ./docker/temporal/databases.sql:/setup/databases.sql:ro
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/databases}
+        volume: { nocopy: true, subpath: tmp/databases }
     depends_on:
       postgres:
         condition: service_healthy
+    env_file: ./docker/postgres.env
   temporal-schema:
     image: ${BIKE_TEMPORAL_TOOLS_IMAGE:?Run Compose through mise}
     entrypoint: [sh, /setup/schema.sh]
-    environment:
-      SQL_HOST: postgres
-      SQL_PORT: 5432
-      SQL_USER: postgres
-      SQL_PASSWORD: postgres
-      SQL_PLUGIN: postgres12
     volumes:
       - ./scripts/temporal-schema.sh:/setup/schema.sh:ro
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/schema}
+        volume: { nocopy: true, subpath: tmp/schema }
     depends_on:
       temporal-databases:
         condition: service_completed_successfully
+    env_file: ./docker/postgres.env
   temporal:
     image: ${BIKE_TEMPORAL_SERVER_IMAGE:?Run Compose through mise}
-    command: [temporal-server, --config-file, /etc/temporal/config/server.yaml, --allow-no-auth, start]
+    command:
+      [
+        temporal-server,
+        --config-file,
+        /etc/temporal/config/server.yaml,
+        --allow-no-auth,
+        start,
+      ]
     volumes:
       - ./docker/temporal/server.yaml:/etc/temporal/config/server.yaml:ro
       - ./docker/temporal/dynamicconfig.yaml:/etc/temporal/config/dynamicconfig.yaml:ro
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/temporal}
+        volume: { nocopy: true, subpath: tmp/temporal }
     ports:
       - "127.0.0.1:${BIKE_TEMPORAL_PORT:-7233}:7233"
     stop_grace_period: 1m
     healthcheck:
-      test: [CMD, wget, --quiet, --output-document=/dev/null, 'http://127.0.0.1:7243/api/v1/system-info']
+      test:
+        [
+          CMD,
+          wget,
+          --quiet,
+          --output-document=/dev/null,
+          "http://127.0.0.1:7243/api/v1/system-info",
+        ]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -218,45 +222,44 @@ services:
   temporal-namespace:
     image: ${BIKE_TEMPORAL_TOOLS_IMAGE:?Run Compose through mise}
     entrypoint: [sh, /setup/namespace.sh]
-    environment:
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: bike
     volumes:
       - ./scripts/temporal-namespace.sh:/setup/namespace.sh:ro
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/namespace}
+        volume: { nocopy: true, subpath: tmp/namespace }
     depends_on:
       temporal:
         condition: service_healthy
+    env_file: ./docker/temporal.env
   temporal-ui:
     image: ${BIKE_TEMPORAL_UI_IMAGE:?Run Compose through mise}
-    environment:
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_DEFAULT_NAMESPACE: bike
-      TEMPORAL_UI_PORT: 8080
     volumes:
       - type: volume
         source: build_storage
         target: /tmp
-        volume: {nocopy: true, subpath: tmp/temporal-ui}
+        volume: { nocopy: true, subpath: tmp/temporal-ui }
     ports:
       - "127.0.0.1:${BIKE_TEMPORAL_UI_PORT:-8080}:8080"
     healthcheck:
-      test: [CMD, wget, --quiet, --spider, 'http://127.0.0.1:8080/']
+      test: [CMD, wget, --quiet, --spider, "http://127.0.0.1:8080/"]
       interval: 2s
       timeout: 3s
       retries: 30
     depends_on:
       temporal-namespace:
         condition: service_completed_successfully
+    env_file: ./docker/temporal.env
   buildkit:
     image: ${BIKE_BUILDKIT_IMAGE:?Run Compose through mise}
     container_name: bike-buildkit
     privileged: true
     restart: unless-stopped
-    command: [--oci-worker-snapshotter=overlayfs, --config=/etc/buildkit/buildkitd.toml]
+    command:
+      [
+        --oci-worker-snapshotter=overlayfs,
+        --config=/etc/buildkit/buildkitd.toml,
+      ]
     volumes:
       - build_storage:/cache
       - ./docker/buildkitd.toml:/etc/buildkit/buildkitd.toml:ro

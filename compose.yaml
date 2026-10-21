@@ -2,12 +2,6 @@
 services:
   postgres:
     image: ${BIKE_POSTGRES_IMAGE:?Run Compose through mise}
-    environment:
-      POSTGRES_DB: bike
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_INITDB_ARGS: --auth-local=scram-sha-256 --auth-host=scram-sha-256
-      PGPASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,18 +11,21 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    env_file: ./docker/postgres.env
   migration:
     image: ${BIKE_BACKEND_IMAGE:-bike-backend:review}
     command: [/app/migration, up]
-    environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/bike
     depends_on:
       postgres:
         condition: service_healthy
+    env_file: ./docker/database.env
   bike-rs:
     image: ${BIKE_BACKEND_IMAGE:-bike-backend:review}
     env_file:
+      - ./docker/database.env
+      - ./docker/temporal.env
       - ./docker/backend.env
+      - ./docker/maps.env
       - ./docker/api.env
     volumes:
       - uploads:/app/uploads
@@ -38,27 +35,21 @@ services:
         condition: service_completed_successfully
   ui:
     image: ${BIKE_UI_IMAGE:-bike-ui:review}
-    environment:
-      API_URL: ${BIKE_BROWSER_API_URL:-http://localhost:3000/api}
-      TEMPORAL_UI_URL: ${BIKE_TEMPORAL_UI_URL:-http://localhost:8080}
-      CDN_URL: ${BIKE_BROWSER_CDN_URL:-http://localhost:3000/uploads}
-      INTERNAL_API_URL: http://bike-rs:3000/api
     depends_on:
       bike-rs:
         condition: service_started
+    env_file: ./docker/ui.env
   bike-maps:
     image: ${BIKE_RENDERER_IMAGE:-bike-map-renderer:review}
-    environment:
-      MAP_SERVICE_TOKEN: ${MAP_SERVICE_TOKEN:-}
-      OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-none}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    env_file: ./docker/maps.env
   temporal-worker:
     profiles: [worker]
     image: ${BIKE_BACKEND_IMAGE:-bike-backend:review}
     command: [/app/temporal-worker]
-    env_file: ./docker/backend.env
-    environment:
-      TEMPORAL_TASK_QUEUE: bike-strava
+    env_file:
+      - ./docker/database.env
+      - ./docker/temporal.env
+      - ./docker/backend.env
     volumes:
       - uploads:/app/uploads
     stop_grace_period: 1m
@@ -70,9 +61,20 @@ services:
   temporal:
     image: ${BIKE_TEMPORAL_TOOLS_IMAGE:?Run Compose through mise}
     entrypoint: [temporal]
-    command: [server, start-dev, --ip, 0.0.0.0, --namespace, bike, --search-attribute, BikeUserId=Keyword]
+    command:
+      [
+        server,
+        start-dev,
+        --ip,
+        0.0.0.0,
+        --namespace,
+        bike,
+        --search-attribute,
+        BikeUserId=Keyword,
+      ]
     healthcheck:
-      test: [CMD, temporal, --address, 'localhost:7233', operator, cluster, health]
+      test:
+        [CMD, temporal, --address, "localhost:7233", operator, cluster, health]
       interval: 2s
       timeout: 3s
       retries: 30
