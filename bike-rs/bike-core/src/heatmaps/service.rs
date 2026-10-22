@@ -302,3 +302,199 @@ fn render(
     let etag = format!("\"{:x}\"", Sha256::digest(&png));
     Ok(TileImage { png: png.into(), etag })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{activity_sport::ActivitySport, test_support};
+    use sea_orm::Value;
+    use std::collections::BTreeMap;
+
+    type Row = BTreeMap<&'static str, Value>;
+
+    fn enabled(value: bool) -> Vec<Row> {
+        vec![BTreeMap::from([("enabled", value.into())])]
+    }
+
+    fn revision(value: i64) -> Vec<Row> {
+        vec![BTreeMap::from([("revision", value.into())])]
+    }
+
+    fn query() -> HeatmapQuery {
+        HeatmapQuery {
+            revision: Some("1".into()),
+            ..Default::default()
+        }
+    }
+
+    fn tile() -> Tile {
+        Tile { z: 0, x: 0, y: 0 }
+    }
+
+    fn rendered_tile() -> Vec<Vec<Row>> {
+        vec![
+            enabled(true),
+            revision(1),
+            vec![],
+            revision(1),
+            enabled(true),
+            revision(1),
+        ]
+    }
+
+    fn cached_tile() -> Vec<Vec<Row>> {
+        vec![enabled(true), revision(1), enabled(true), revision(1)]
+    }
+
+    fn database(results: Vec<Vec<Row>>) -> DatabaseConnection {
+        test_support::postgres_mock()
+            .append_query_results(results)
+            .into_connection()
+    }
+
+    #[tokio::test]
+    async fn disabled_heatmaps_reject_metadata_zones_and_tiles() {
+        let db = database(vec![enabled(false), enabled(false), enabled(false)]);
+        let service = HeatmapService::default();
+        assert!(matches!(
+            service.metadata(&db, 7, query()).await,
+            Err(HeatmapError::Disabled)
+        ));
+        assert!(matches!(
+            service.zones(&db, 7, query()).await,
+            Err(HeatmapError::Disabled)
+        ));
+        assert!(matches!(
+            service.tile(&db, 7, query(), tile()).await,
+            Err(HeatmapError::Disabled)
+        ));
+        assert_eq!(db.into_transaction_log().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn stale_revisions_reject_zones_and_tiles_before_loading_geometry() {
+        let db = database(vec![enabled(true), revision(2), enabled(true), revision(2)]);
+        let service = HeatmapService::default();
+        assert!(matches!(service.zones(&db, 7, query()).await, Err(HeatmapError::Stale)));
+        assert!(matches!(
+            service.tile(&db, 7, query(), tile()).await,
+            Err(HeatmapError::Stale)
+        ));
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(!log.contains("heatmap_chunks"));
+    }
+
+    #[tokio::test]
+    async fn cached_tiles_recheck_disable_and_revision_changes_before_returning() {
+        for disabled in [false, true] {
+            let mut results = rendered_tile();
+            results.extend([enabled(true), revision(1), enabled(!disabled)]);
+            if !disabled {
+                results.push(revision(2));
+            }
+            let db = database(results);
+            let service = HeatmapService::default();
+            service.tile(&db, 7, query(), tile()).await.unwrap();
+            let result = service.tile(&db, 7, query(), tile()).await;
+            if disabled {
+                assert!(matches!(result, Err(HeatmapError::Disabled)));
+            } else {
+                assert!(matches!(result, Err(HeatmapError::Stale)));
+            }
+            let reads = db
+                .into_transaction_log()
+                .iter()
+                .flat_map(|transaction| transaction.statements())
+                .filter(|statement| statement.sql.contains("JOIN \"heatmap_chunks\""))
+                .count();
+            assert_eq!(reads, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn cache_entries_are_shared_only_for_the_same_user_and_filters() {
+        let mut results = rendered_tile();
+        results.extend(cached_tile());
+        results.extend(rendered_tile());
+        results.extend(rendered_tile());
+        let db = database(results);
+        let service = HeatmapService::default();
+        let first = service.tile(&db, 7, query(), tile()).await.unwrap();
+        let cached = service.tile(&db, 7, query(), tile()).await.unwrap();
+        let other_user = service.tile(&db, 8, query(), tile()).await.unwrap();
+        let filtered = service
+            .tile(
+                &db,
+                7,
+                HeatmapQuery {
+                    sport: Some(ActivitySport::RoadRide),
+                    ..query()
+                },
+                tile(),
+            )
+            .await
+            .unwrap();
+        assert!(Arc::ptr_eq(&first.png, &cached.png));
+        assert!(!Arc::ptr_eq(&first.png, &other_user.png));
+        assert!(!Arc::ptr_eq(&first.png, &filtered.png));
+        assert_eq!(service.cache.lock().await.tiles.len(), 3);
+    }
+
+    fn chunk(index: i32, y: f64) -> Row {
+        BTreeMap::from([
+            ("activity_id", 42.into()),
+            ("chunk_index", index.into()),
+            ("points", geometry::encode(&[[0.2, y], [0.8, y]]).into()),
+        ])
+    }
+
+    #[tokio::test]
+    async fn tile_render_includes_the_final_chunk_after_a_full_page() {
+        let db = database(vec![
+            enabled(true),
+            revision(1),
+            (0..64).map(|index| chunk(index, 0.25)).collect(),
+            vec![chunk(64, 0.75)],
+            vec![],
+            revision(1),
+            enabled(true),
+            revision(1),
+        ]);
+        let image = HeatmapService::default().tile(&db, 7, query(), tile()).await.unwrap();
+        let mut reader = png::Decoder::new(image.png.as_ref()).read_info().unwrap();
+        let mut rgba = vec![0; reader.output_buffer_size()];
+        reader.next_frame(&mut rgba).unwrap();
+        for y in [128, 384] {
+            assert!(rgba[(y * TILE_SIZE + 256) * 4 + 3] > 0, "missing page at y={y}");
+        }
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(log.contains("Int(Some(63))"));
+        assert!(log.contains("Int(Some(64))"));
+    }
+
+    #[tokio::test]
+    async fn empty_and_reversed_periods_reject_metadata_zones_and_tiles_before_reading_data() {
+        for seconds in [0, -1] {
+            let db = database(vec![enabled(true), enabled(true), enabled(true)]);
+            let service = HeatmapService::default();
+            let invalid = HeatmapQuery {
+                from: Some(test_support::timestamp()),
+                to: Some(test_support::timestamp() + chrono::Duration::seconds(seconds)),
+                ..query()
+            };
+            assert!(matches!(
+                service.metadata(&db, 7, invalid.clone()).await,
+                Err(HeatmapError::Invalid(_))
+            ));
+            assert!(matches!(
+                service.zones(&db, 7, invalid.clone()).await,
+                Err(HeatmapError::Invalid(_))
+            ));
+            assert!(matches!(
+                service.tile(&db, 7, invalid, tile()).await,
+                Err(HeatmapError::Invalid(_))
+            ));
+            assert_eq!(db.into_transaction_log().len(), 3);
+        }
+    }
+}

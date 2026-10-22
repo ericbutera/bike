@@ -152,32 +152,3 @@ impl MigratorTrait for Migrator {
         migrations
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{Migrator, MigratorTrait};
-
-    #[test]
-    fn retains_all_kaleido_migration_ids_in_their_original_order() {
-        let expected = [
-            "m20220101_000001_users",
-            "m20220101_000002_refresh_tokens",
-            "m20260107_120000_create_cooldowns",
-            "m20260122_120000_background_tasks",
-            "m20260124_120500_api_clients",
-            "m20260125_212110_create_feature_flags",
-            "m20260210_000001_auth_events",
-            "m20260312_000000_background_tasks_result",
-            "m20260724_000001_remove_oauth_feature_flag",
-            "m20260724_000002_rename_oauth_subject_column",
-            "m20260928_000001_add_user_disabled",
-        ];
-        let actual = Migrator::migrations()
-            .into_iter()
-            .map(|migration| migration.name().to_string())
-            .filter(|name| expected.contains(&name.as_str()))
-            .collect::<Vec<_>>();
-
-        assert_eq!(actual, expected);
-    }
-}

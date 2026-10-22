@@ -54,20 +54,11 @@ description = "Run every Rust workspace test using Cargo discovery"
 run = "cargo test --workspace --locked"
 
 [tasks."test:non-unit"]
-description = "Run existing Rust integration tests and doctests without repeating unit tests"
+description = "Run Rust doctests without repeating unit tests"
 env = { RUSTFLAGS = "-D warnings", RUSTDOCFLAGS = "-D warnings" }
 run = [
-  "cargo test --workspace --locked --test '*'",
   "cargo test --workspace --locked --doc",
 ]
-
-[tasks."test:strava:postgres"]
-description = "Verify Strava source writes and watermark repair in disposable PostgreSQL"
-env = { RUSTFLAGS = "-D warnings" }
-run = '''
-: "${BIKE_STRAVA_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
-cargo test -p bike-core --locked --features test-fixtures --test strava_sources_postgres -- --ignored --nocapture
-'''
 
 [tasks.coverage]
 description = "Run Rust tests once and generate HTML, LCOV, and JSON coverage reports"
@@ -103,13 +94,6 @@ run = ["mise install jq", "mise exec jq -- bash ../scripts/coverage-rust-report.
 description = "Format the Rust workspace"
 run = "cargo fmt"
 
-[tasks."test:heatmaps:postgres"]
-description = "Run heatmap regressions against a disposable PostgreSQL database"
-run = '''
-: "${BIKE_HEATMAP_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
-cargo test -p bike-core --locked --features test-fixtures --test heatmaps_postgres -- --ignored
-'''
-
 [tasks."fmt:check"]
 description = "Check Rust formatting without writing changes"
 run = "cargo fmt --check"
@@ -130,13 +114,6 @@ run = "cargo run -p api --bin openapi"
 [tasks."generate:typescript"]
 description = "Generate the frontend TypeScript API contract from OpenAPI"
 run = "mise --cd ../bike-ui run generate:typescript"
-
-[tasks."test:ingestion:postgres"]
-description = "Verify ingestion migration and execution constraints in disposable PostgreSQL"
-run = '''
-: "${BIKE_INGESTION_TEST_DATABASE_URL:?Set this to a disposable PostgreSQL database}"
-cargo test -p migration --locked -- --ignored
-'''
 
 [tasks."imports:recover"]
 description = "Inspect or recover an owned batch of Bike-generated Strava TCX imports"

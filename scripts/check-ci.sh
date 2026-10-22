@@ -6,13 +6,16 @@ workflow="${BIKE_CI_CONFIG:-.woodpecker/bike.yaml}"
 export YQ_MERGE_ANCHOR_TO_SPEC=true
 read_yaml() { yq --yaml-fix-merge-anchor-to-spec "$1" "$workflow"; }
 test "$(read_yaml '.services[] | select(.name == "docker").image')" = "$DOCKER_DIND_IMAGE"
-test "$(read_yaml '.services[] | select(.name == "docker").ports | join(",")')" = 5432
 test "$(read_yaml '.concurrency')" = 1
+test "$(read_yaml '[.steps[] | select(.name == "test-postgres")] | length')" = 0
+for command in "mise run strava:sdk:check" "mise run contracts:check"; do
+  test "$(command="$command" read_yaml '[.steps[] | select(.name == "test-tooling").commands[] | select(. == strenv(command))] | length')" = 1
+done
 for stage in test-rust test-ui test-maps test-tooling; do
   test "$(stage="$stage" read_yaml '.steps[] | select(.name == strenv(stage)).depends_on | join(",")')" = prepare
 done
 test "$(read_yaml '.steps[] | select(.name == "check-coverage").depends_on | sort | join(",")')" = test-maps,test-rust,test-ui
-test "$(read_yaml '.steps[] | select(.name == "build-images").depends_on | sort | join(",")')" = check-coverage,test-postgres,test-tooling
+test "$(read_yaml '.steps[] | select(.name == "build-images").depends_on | sort | join(",")')" = check-coverage,test-tooling
 test "$(read_yaml '.steps[] | select(.name == "test-images").depends_on | join(",")')" = build-images
 test "$(read_yaml '.steps[] | select(.name == "stop-engine").when[0].status | sort | join(",")')" = failure,success
 test "$(read_yaml '.steps[] | select(.name == "publish-coverage").depends_on | sort | join(",")')" = stop-engine,test-images

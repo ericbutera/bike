@@ -137,15 +137,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn non_cycling_gps_routes_are_skipped_and_never_publish_heatmap_chunks() {
+    async fn ineligible_gps_routes_are_skipped_and_never_publish_heatmap_chunks() {
         use crate::{entities::activities, test_support as fixtures};
         use sea_orm::Value;
         use std::collections::BTreeMap;
         let derived = fixtures::parsed_reprocess_activity().derived_data;
         assert!(!geometry::prepare(&derived.route_points).is_empty());
-        for sport in ["hike", "walk", "run", "swim", "workout", "pickleball"] {
+        for (sport, format) in [
+            ("hike", "fit"),
+            ("walk", "fit"),
+            ("run", "fit"),
+            ("swim", "fit"),
+            ("workout", "fit"),
+            ("pickleball", "fit"),
+            ("ride", "unavailable"),
+        ] {
             let activity = activities::Model {
                 sport: sport.into(),
+                format: Some(format.into()),
                 derived_data_json: Some(crate::activity_data::serialize_derived_activity_data(&derived)),
                 ..fixtures::activity()
             };
@@ -174,6 +183,11 @@ mod tests {
             ("VirtualRide", "strava_sync", "Morning ride", true),
             ("road_ride", "strava_sync", "Zwift morning ride", true),
             ("indoor trainer ride", "manual_upload", "Morning ride", true),
+            ("Ride", "archive_url_import", "Morning ride", false),
+            ("ride", "trainer_road", "Morning ride", true),
+            ("ride", "trainer-day", "Morning ride", true),
+            ("ride", "Zwift export", "Morning ride", true),
+            ("ride", "virtual-import", "Morning ride", true),
             ("road_ride", "strava_sync", "Morning ride", false),
         ] {
             let mut derived =

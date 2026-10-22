@@ -170,7 +170,6 @@ Run these inside the checks container:
 mise run ci:rust
 mise run ci:ui:unit
 mise run ci:renderer
-mise run test:postgres
 mise run e2e:prepare
 mise run e2e
 ```

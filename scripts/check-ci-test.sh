@@ -6,7 +6,8 @@ trap 'rm -rf -- "$fixture"' EXIT
 bash scripts/check-ci.sh
 export BIKE_CI_CONFIG="$fixture/workflow.yaml"
 for mutation in \
-  '(.services[] | select(.name == "docker").ports) = []' \
+  '(.steps[] | select(.name == "test-tooling").commands) -= ["mise run strava:sdk:check"]' \
+  '(.steps[] | select(.name == "test-tooling").commands) -= ["mise run contracts:check"]' \
   '(.steps[] | select(.name == "build-images").depends_on) = ["test-rust"]' \
   '(.steps[] | select(.name == "deploy").when[0].event) = ["pull_request"]' \
   '(.steps[] | select(.name == "test-images").failure) = "ignore"' \

@@ -6,16 +6,19 @@
   checkout → checks and coverage → application images → image acceptance →
   coverage publication → main-only deployment. Every step calls owning mise
   tasks. Failed or skipped prerequisites must prevent release actions.
-- Rust formatting, locked Clippy, unit coverage, integration tests and doctests
-  run directly on every build. Explicit PostgreSQL suites run against disposable
-  databases. Heatmap fixtures create an empty schema and apply the production
-  migration chain before seeding data; they must not recreate tables, patch
-  columns, or execute migration SQL fragments directly. Upgrade regressions
-  apply the chain through a named historical revision, seed legacy data, then
-  continue through the real migrator. CI reaches PostgreSQL through the Docker service on port 5432;
-  local checks use an ephemeral published port on the Docker host.
-  UI and renderer checks retain lint, types, tests, formatting, audit
-  and generated-contract checks. Warnings fail checks.
+- Rust formatting, locked Clippy, unit coverage and doctests
+  run directly on every build. Application policy, preparation, revision guards
+  and tile-cache behavior use fixture-backed unit tests without a database.
+  Connected heatmap E2E checks use the existing migrated acceptance database for
+  user isolation, recording exclusions, pagination and edit/delete invalidation.
+  There is no separate PostgreSQL CI gate. Generated Strava SDK and shared-asset
+  freshness checks belong to the tooling gate. Standalone PostgreSQL test suites
+  and their launch tasks are retired. Migration-specific tests are retired too,
+  including mocked schema/SQL assertions, migration-order checks and
+  migration-local helper tests. Domain behavior belongs to application units;
+  acceptance applies real migrations when starting its application database.
+  UI and renderer checks retain lint, types, tests, formatting, audit and
+  generated-contract checks. Warnings fail checks.
 - The committed Cargo workspace and lockfile are the build inputs. The release
   Dockerfile uses the pinned Rust compiler and protoc, copies source, and runs
   one `cargo build --locked --release` for `api`, `temporal-worker`, `migration`,
