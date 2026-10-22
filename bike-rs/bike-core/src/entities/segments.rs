@@ -172,6 +172,17 @@ impl Model {
             .all(db)
             .await
     }
+    pub async fn ids_page(db: &impl ConnectionTrait, after_id: i32, limit: u64) -> Result<Vec<i32>, DbErr> {
+        Entity::find()
+            .select_only()
+            .column(Column::Id)
+            .filter(Column::Id.gt(after_id))
+            .order_by_asc(Column::Id)
+            .limit(limit)
+            .into_tuple()
+            .all(db)
+            .await
+    }
     pub async fn all_ids(db: &impl ConnectionTrait) -> Result<Vec<i32>, DbErr> {
         Entity::find()
             .select_only()

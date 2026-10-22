@@ -14,6 +14,7 @@ pub mod heatmap_user_states;
 pub mod integration_events;
 pub mod provider_rate_limit_buckets;
 pub mod segment_efforts;
+pub mod segment_personal_achievements;
 pub mod segment_summaries;
 pub mod segment_user_summaries;
 pub mod segments;
