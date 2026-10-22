@@ -1,8 +1,8 @@
 {
-  "commit": "c24d560434e982570276ebe2064e08cdf78ad800",
-  "created_at": "2026-10-22T17:24:50Z",
-  "base_revision": "fec1a1d73f413e294b6d46fb9602c31651faeea0",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/680",
+  "commit": "a530c81618ed97838a4d44ff83c6632044788ac4",
+  "created_at": "2026-10-22T18:55:57Z",
+  "base_revision": "c24d560434e982570276ebe2064e08cdf78ad800",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/686",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
@@ -13,9 +13,9 @@
       "covered": 4321,
       "percent": 70.55845852384063,
       "changed": {
-        "lines": 37,
-        "covered": 36,
-        "percent": 97.3
+        "lines": 0,
+        "covered": 0,
+        "percent": 100.0
       }
     },
     "worker": {
@@ -23,8 +23,8 @@
       "language": "Rust",
       "source": "bike-rs/worker",
       "lines": 303,
-      "covered": 225,
-      "percent": 74.25742574257426,
+      "covered": 226,
+      "percent": 74.58745874587459,
       "changed": {
         "lines": 0,
         "covered": 0,
@@ -65,8 +65,8 @@
       "covered": 19656,
       "percent": 75.50706822372464,
       "changed": {
-        "lines": 171,
-        "covered": 171,
+        "lines": 0,
+        "covered": 0,
         "percent": 100.0
       }
     },
