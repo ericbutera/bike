@@ -162,7 +162,7 @@ async fn cpu_work_has_named_spans_without_logging_activity_bodies() {
             format: "fit",
             artifact_kind: "original",
             source_quality: "original",
-            bytes: include_bytes!("../../tests/fixtures/recording/outdoor.fit"),
+            bytes: crate::test_support::recordings::OUTDOOR_FIT,
         })
         .unwrap();
     })

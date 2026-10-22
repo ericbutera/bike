@@ -164,3 +164,78 @@ impl BackfillUserXcTraining {
         .await
     }
 }
+
+/// Explicit rollout backfill; only missing or older climb outputs are selected.
+#[workflow]
+#[derive(Default)]
+pub struct BackfillActivityClimbs;
+
+#[workflow_methods]
+impl BackfillActivityClimbs {
+    #[run(name = "backfill_activity_climbs")]
+    pub async fn run(ctx: &mut WorkflowContext<Self>, mut after_id: i32) -> WorkflowResult<()> {
+        let tasks = options::run(
+            ctx,
+            BatchActivities::pending_climbs,
+            after_id,
+            options::activity(Priority::Background, "climb-backfill".into()),
+        )
+        .await?;
+        let full = tasks.len() == 16;
+        for task in tasks {
+            let completed_id = task.activity_id;
+            let user_id = task.user_id;
+            options::run(
+                ctx,
+                DerivedActivities::rebuild_activity_climbs,
+                task,
+                options::activity(Priority::Background, format!("user-{user_id}")),
+            )
+            .await?;
+            after_id = completed_id;
+        }
+        if full {
+            return ctx
+                .continue_as_new(after_id, Default::default())
+                .map(|never| match never {});
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bike_core::test_support as fixtures;
+    use workflow_test_support::WorkflowMock;
+
+    #[test]
+    fn climb_backfill_awaits_each_stage_and_continues_after_a_full_page() {
+        let tasks: Vec<_> = (1..=16)
+            .map(|activity_id| ActivityTask {
+                activity_id,
+                priority: Priority::Background,
+                ..fixtures::activity_task()
+            })
+            .collect();
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillActivityClimbs>(0);
+        mock.activity("pending_climbs", &0_i32, &tasks);
+        for task in &tasks {
+            mock.activity("rebuild_activity_climbs", task, &());
+        }
+        let cursor = mock.continued_input::<i32>();
+        assert_eq!(cursor, 16);
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillActivityClimbs>(cursor);
+        mock.activity("pending_climbs", &cursor, &Vec::<ActivityTask>::new());
+        mock.result::<()>();
+    }
+
+    #[test]
+    fn failed_climb_stops_backfill_before_advancing_to_the_next_activity() {
+        let task = fixtures::activity_task();
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillActivityClimbs>(0);
+        mock.activity("pending_climbs", &0_i32, &vec![task.clone(), task]);
+        mock.fail_activity("rebuild_activity_climbs", "climb failed");
+        mock.assert_failure_message("climb failed");
+    }
+}

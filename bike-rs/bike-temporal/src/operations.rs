@@ -66,6 +66,10 @@ impl DerivedOperations for BikeOperations {
         Ok(())
     }
 
+    async fn rebuild_activity_climbs(&self, task: ActivityTask) -> Result<(), WorkflowError> {
+        bike_core::activity_climbs::rebuild(&self.db, &self.objects, task).await
+    }
+
     async fn rebuild_fitness_freshness(&self, task: FitnessChange) -> Result<(), WorkflowError> {
         bike_core::analytics::rebuild_fitness_freshness_cache(&self.db, task.user_id).await?;
         Ok(())
@@ -92,5 +96,44 @@ impl DerivedOperations for BikeOperations {
             preparation::prepare_activity(&self.db, pending).await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod climb_tests {
+    use super::*;
+    use crate::activities::{BatchActivities, DerivedActivities};
+    use bike_core::{object_store::ObjectOwner, test_support as fixtures};
+    use sea_orm::Value;
+    use std::{collections::BTreeMap, sync::Arc};
+    use temporalio_sdk::testing::ActivityEnvironment;
+
+    #[tokio::test]
+    async fn backfill_and_import_activity_handlers_share_the_persisted_climb_operation() {
+        let activity = fixtures::activity();
+        let pending: BTreeMap<String, Value> = [
+            ("activity_id".into(), activity.id.into()),
+            ("user_id".into(), activity.user_id.into()),
+        ]
+        .into();
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![pending]])
+            .append_query_results([vec![activity.clone()]])
+            .append_query_results([Vec::<bike_core::entities::activity_climbs::output::Model>::new()])
+            .append_query_results([vec![activity]])
+            .append_exec_results([fixtures::written(), fixtures::written()])
+            .into_connection();
+        let (objects, _) = fixtures::object_storage(ObjectOwner::ActivityImports);
+        let operations = Arc::new(BikeOperations::new(db, objects));
+        let environment = ActivityEnvironment::builder_with_default()
+            .register_activities(BatchActivities::new(operations.clone()))
+            .register_activities(DerivedActivities::new(operations))
+            .build();
+        let tasks = environment.run(BatchActivities::pending_climbs, 0).await.unwrap();
+        assert_eq!(tasks.len(), 1);
+        environment
+            .run(DerivedActivities::rebuild_activity_climbs, tasks[0].clone())
+            .await
+            .unwrap();
     }
 }

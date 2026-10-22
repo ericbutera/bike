@@ -29,6 +29,10 @@
 
 ## Activities
 
+- [x] Generate and persist ordered activity climbs in the upload/reprocessing DAG;
+      include a one-off Temporal backfill for missing climb outputs. See the
+      [stage rollout contract](specs/background-work.md#activity-climbs-and-stage-backfills).
+
 - [x] Show accessible sport icons before feed titles, with original mountain/fat
       bike artwork and baseline-aligned location/date metadata; see the
       [activity-list specification](specs/activity-list.md).

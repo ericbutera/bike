@@ -5,22 +5,10 @@ use crate::heatmaps::geometry;
 #[test]
 fn fit_derivation_keeps_virtual_evidence_and_real_routes() {
     for (bytes, excluded) in [
-        (
-            include_bytes!("../../../tests/fixtures/recording/virtual.fit").as_slice(),
-            true,
-        ),
-        (
-            include_bytes!("../../../tests/fixtures/recording/virtual-generic.fit").as_slice(),
-            true,
-        ),
-        (
-            include_bytes!("../../../tests/fixtures/recording/indoor.fit").as_slice(),
-            true,
-        ),
-        (
-            include_bytes!("../../../tests/fixtures/recording/outdoor.fit").as_slice(),
-            false,
-        ),
+        (crate::test_support::recordings::VIRTUAL_FIT, true),
+        (crate::test_support::recordings::VIRTUAL_GENERIC_FIT, true),
+        (crate::test_support::recordings::INDOOR_FIT, true),
+        (crate::test_support::recordings::OUTDOOR_FIT, false),
     ] {
         let derived = derive_activity_detail_data("archive.fit", "fit", bytes).unwrap();
         assert_eq!(derived.recording.excluded(), excluded);
@@ -46,12 +34,8 @@ fn gpx_recorder_and_tcx_creator_are_independent_of_generic_ride_type() {
 
 #[test]
 fn imported_fit_with_exact_two_minute_gap_keeps_real_segments_without_joining_them() {
-    let derived = derive_activity_detail_data(
-        "gps-gap.fit",
-        "fit",
-        include_bytes!("../../../tests/fixtures/recording/gps-gap.fit"),
-    )
-    .unwrap();
+    let derived =
+        derive_activity_detail_data("gps-gap.fit", "fit", crate::test_support::recordings::GPS_GAP_FIT).unwrap();
     assert!(!derived.recording.excluded());
     assert_eq!(
         derived.route_points[8].elapsed_seconds - derived.route_points[7].elapsed_seconds,

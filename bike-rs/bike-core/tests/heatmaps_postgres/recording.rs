@@ -9,12 +9,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryF
 
 fn outdoor_route() -> serde_json::Value {
     serde_json::to_value(serialize_derived_activity_data(
-        &derive_activity_detail_data(
-            "synthetic.fit",
-            "fit",
-            include_bytes!("../fixtures/recording/outdoor.fit"),
-        )
-        .unwrap(),
+        &derive_activity_detail_data("synthetic.fit", "fit", bike_core::test_support::recordings::OUTDOOR_FIT).unwrap(),
     ))
     .unwrap()
 }
@@ -111,12 +106,8 @@ async fn retained_context_blocks_tiles_zones_bounds_and_ready_counts_even_with_s
 #[ignore = "Set BIKE_HEATMAP_TEST_DATABASE_URL to a disposable PostgreSQL database"]
 async fn backfill_recovers_legacy_virtual_copy_and_preserves_real_activity() {
     let (db, schema) = fixture().await;
-    let original = derive_activity_detail_data(
-        "virtual.fit",
-        "fit",
-        include_bytes!("../fixtures/recording/virtual.fit"),
-    )
-    .unwrap();
+    let original =
+        derive_activity_detail_data("virtual.fit", "fit", bike_core::test_support::recordings::VIRTUAL_FIT).unwrap();
     let mut copy = original.clone();
     copy.recording = Default::default();
     set_route(

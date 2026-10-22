@@ -4,8 +4,8 @@ use crate::{
     entities::{activities, activity_import_artifacts, activity_imports, activity_training_analyses},
 };
 
-pub const REPROCESS_SOURCE: &[u8] = include_bytes!("../../tests/fixtures/recording/outdoor.tcx");
-pub const REPROCESS_RECORDING_SOURCE: &[u8] = include_bytes!("../../tests/fixtures/recording/virtual-generic.fit");
+pub const REPROCESS_SOURCE: &[u8] = super::recordings::OUTDOOR_TCX;
+pub const REPROCESS_RECORDING_SOURCE: &[u8] = super::recordings::VIRTUAL_GENERIC_FIT;
 
 pub fn reprocess_activity() -> activities::Model {
     activities::Model {

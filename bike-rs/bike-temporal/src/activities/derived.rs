@@ -13,6 +13,7 @@ pub trait DerivedOperations: Send + Sync {
     async fn rebuild_activity_segments(&self, task: ActivityTask) -> Result<Vec<i32>, WorkflowError>;
     async fn rebuild_activity_achievements(&self, task: ActivityTask) -> Result<(), WorkflowError>;
     async fn rebuild_activity_training(&self, task: ActivityTask) -> Result<(), WorkflowError>;
+    async fn rebuild_activity_climbs(&self, task: ActivityTask) -> Result<(), WorkflowError>;
     async fn rebuild_fitness_freshness(&self, task: FitnessChange) -> Result<(), WorkflowError>;
     async fn rebuild_segment_analytics(&self, task: SegmentChange) -> Result<(), WorkflowError>;
     async fn prepare_heatmap(&self, task: ActivityTask) -> Result<(), WorkflowError>;
@@ -59,6 +60,17 @@ impl DerivedActivities {
         task: ActivityTask,
     ) -> Result<(), ActivityError> {
         domain_task(async move { self.operations.rebuild_activity_training(task).await })
+            .await
+            .map_err(domain_error)
+    }
+
+    #[activity(name = "rebuild_activity_climbs")]
+    pub async fn rebuild_activity_climbs(
+        self: Arc<Self>,
+        _ctx: ActivityContext,
+        task: ActivityTask,
+    ) -> Result<(), ActivityError> {
+        domain_task(async move { self.operations.rebuild_activity_climbs(task).await })
             .await
             .map_err(domain_error)
     }

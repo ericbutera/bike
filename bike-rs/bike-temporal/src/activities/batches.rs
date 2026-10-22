@@ -15,6 +15,7 @@ pub trait BatchOperations: Send + Sync {
     async fn archive_page(&self, cursor: ArchiveCursor) -> Result<ArchivePage, WorkflowError>;
     async fn finish_archive(&self, job_id: i32) -> Result<(), WorkflowError>;
     async fn pending_heatmaps(&self, after_id: i32) -> Result<Vec<ActivityTask>, WorkflowError>;
+    async fn pending_climbs(&self, after_id: i32) -> Result<Vec<ActivityTask>, WorkflowError>;
 }
 
 pub struct BatchActivities {
@@ -94,6 +95,17 @@ impl BatchActivities {
             .await
             .map_err(domain_error)
     }
+    #[activity(name = "pending_climbs")]
+    pub async fn pending_climbs(
+        self: Arc<Self>,
+        _ctx: ActivityContext,
+        after_id: i32,
+    ) -> Result<Vec<ActivityTask>, ActivityError> {
+        domain_task(async move { self.operations.pending_climbs(after_id).await })
+            .await
+            .map_err(domain_error)
+    }
+
     #[activity(name = "pending_heatmaps")]
     pub async fn pending_heatmaps(
         self: Arc<Self>,

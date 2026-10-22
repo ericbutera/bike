@@ -65,7 +65,7 @@ mod tests {
                 format: "fit",
                 artifact_kind: kind,
                 source_quality: quality,
-                bytes: include_bytes!("../tests/fixtures/recording/outdoor.fit"),
+                bytes: crate::test_support::recordings::OUTDOOR_FIT,
             })
             .unwrap_err()
             .to_string()
@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn manually_reuploaded_retired_bytes_are_rejected_despite_original_labels() {
-        let bytes = include_bytes!("../tests/fixtures/recording/retired-copy.tcx");
+        let bytes = crate::test_support::recordings::RETIRED_COPY_TCX;
         assert!(is_retired_generated_tcx(bytes));
         let error = parse_activity_artifact(ActivityParserArtifact {
             original_filename: "reuploaded.tcx",
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn genuine_cycling_tcx_still_parses_and_contributes_geometry() {
-        let bytes = include_bytes!("../tests/fixtures/recording/outdoor.tcx");
+        let bytes = crate::test_support::recordings::OUTDOOR_TCX;
         assert!(!is_retired_generated_tcx(bytes));
         let parsed = parse_activity_artifact(ActivityParserArtifact {
             original_filename: "original.tcx",

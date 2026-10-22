@@ -69,6 +69,7 @@ mod m20261016_000001_native_import_correlation;
 mod m20261016_000002_activity_event_history;
 mod m20261017_000001_retire_sql_worker;
 mod m20261017_000002_strava_provider_watermark;
+mod m20261021_000001_activity_climbs;
 
 pub struct Migrator;
 
@@ -79,6 +80,7 @@ impl MigratorTrait for Migrator {
         migrations.sort_by_key(|m| m.name().to_string());
 
         let mut locals: Vec<Box<dyn MigrationTrait>> = vec![
+            Box::new(m20261021_000001_activity_climbs::Migration),
             Box::new(m20261017_000001_retire_sql_worker::Migration),
             Box::new(m20261017_000002_strava_provider_watermark::Migration),
             Box::new(m20261016_000001_native_import_correlation::Migration),
