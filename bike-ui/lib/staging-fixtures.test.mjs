@@ -9,7 +9,10 @@ describe("staging fixture export", () => {
       () => `staged-key-${++nextKey}`,
     );
     const baseline = baselineData();
-    const users = data.records.filter((record) => record.entity === "users");
+    const users = [
+      ...data.records.filter((record) => record.entity === "users"),
+      ...data.competition.users,
+    ];
     expect(users[0].values).toMatchObject({
       id: 1,
       email: "reviewer@example.test",
@@ -21,6 +24,8 @@ describe("staging fixture export", () => {
     expect(data.records.filter((record) => record.entity !== "users")).toEqual(
       baseline.records.filter((record) => record.entity !== "users"),
     );
+    expect(users).toHaveLength(17);
+    expect(data.competition.rides).toHaveLength(46);
     expect(data.prepare_heatmaps).toBe(true);
     expect(baseline.records[0].values.email).toBe("developer@bike.local");
   });

@@ -9,6 +9,13 @@ use bike_core::heatmaps::{preparation::prepare_activity, projection::PendingProj
 use sea_orm::{ActiveModelTrait, DatabaseTransaction, EntityTrait, IntoActiveModel, TransactionTrait, TryIntoModel};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
+#[path = "e2e-fixtures/competition.rs"]
+mod competition;
+#[cfg(test)]
+#[path = "../../tests/segment_competition/screens.rs"]
+mod postgres_tests;
+#[path = "e2e-fixtures/recording.rs"]
+mod recording;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -16,6 +23,8 @@ struct Dataset {
     records: Vec<Record>,
     #[serde(default)]
     prepare_heatmaps: bool,
+    #[serde(default)]
+    competition: Option<competition::Competition>,
 }
 
 #[derive(Deserialize)]
@@ -76,11 +85,6 @@ async fn seed(db: &sea_orm::DatabaseConnection, dataset: Dataset) -> Result<(), 
         store_record(&tx, record).await?;
     }
     tx.commit().await?;
-    if dataset.prepare_heatmaps {
-        // Reuse the owning projection builder to create persisted result data;
-        // browser tests do not run a worker or wait for asynchronous jobs.
-        prepare_heatmaps(db).await?;
-    }
     Ok(())
 }
 
@@ -117,16 +121,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input)?;
-    let dataset: Dataset = serde_json::from_str(&input)?;
+    let mut dataset: Dataset = serde_json::from_str(&input)?;
+    let competition = dataset.competition.take();
+    let heatmaps = dataset.prepare_heatmaps;
     let db = bike_core::db::connect_database(&std::env::var("DATABASE_URL")?).await?;
     if staging && staging_already_seeded(&db, &dataset).await? {
-        if dataset.prepare_heatmaps {
-            prepare_heatmaps(&db).await?;
-        }
         println!("Existing staging fixtures preserved");
-        return Ok(());
+    } else {
+        seed(&db, dataset).await?;
     }
-    seed(&db, dataset).await?;
+    if let Some(competition) = competition {
+        competition::seed(&db, competition).await?;
+    }
+    if heatmaps {
+        prepare_heatmaps(&db).await?;
+    }
     Ok(())
 }
 

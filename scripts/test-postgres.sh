@@ -41,6 +41,12 @@ url="postgres://postgres:postgres@$host:$port/bike"
 export BIKE_STRAVA_TEST_DATABASE_URL="$url"
 export BIKE_HEATMAP_TEST_DATABASE_URL="$url"
 export BIKE_INGESTION_TEST_DATABASE_URL="$url"
+export BIKE_SEGMENT_TEST_DATABASE_URL="$url"
 mise --cd bike-rs run test:strava:postgres
 mise --cd bike-rs run test:heatmaps:postgres
 mise --cd bike-rs run test:ingestion:postgres
+if [[ "${BIKE_COLLECT_POSTGRES_COVERAGE:-}" == 1 ]]; then
+  mise --cd bike-rs run coverage:segments:postgres
+else
+  mise --cd bike-rs run test:segments:postgres
+fi

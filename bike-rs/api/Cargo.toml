@@ -59,6 +59,7 @@ sha2 = "0.10"
 hex = "0.4"
 
 [dev-dependencies]
+migration = { path = "../migration" }
 bike-core = { path = "../bike-core", features = ["test-fixtures"] }
 tonic = { version = "0.14.6", features = ["transport"] }
 tempfile = "3.27.0"

@@ -394,7 +394,7 @@ run = ["mise install aqua:docker/cli aqua:docker/buildx jq", "mise exec aqua:doc
 
 [tasks."test:postgres"]
 description = "Run all explicit database suites against disposable PostgreSQL"
-run = ["mise install aqua:docker/cli rust protoc jq", "mise exec aqua:docker/cli rust protoc jq -- bash scripts/test-postgres.sh"]
+run = ["mise install aqua:docker/cli rust protoc jq node", "mise exec aqua:docker/cli rust protoc jq node -- bash scripts/test-postgres.sh"]
 
 [tasks."ci:test"]
 description = "Verify release gating and credential restrictions with unsafe workflow fixtures"
@@ -419,3 +419,8 @@ run = "bash scripts/storage-test.sh"
 [tasks."staging:fixtures"]
 description = "Export browser fixtures for the staging SSO account"
 run = 'node bike-ui/tests/e2e/helpers/seeds.mjs --staging "${BIKE_STAGING_OWNER_EMAIL:?}" > "${BIKE_STAGING_FIXTURE_FILE:?}"'
+
+[tasks."coverage:postgres"]
+description = "Collect database fixture coverage alongside existing unit measurements"
+env = { BIKE_COLLECT_POSTGRES_COVERAGE = "1" }
+run = ["mise run test:postgres", "mise --cd bike-rs run coverage:report"]
