@@ -82,6 +82,21 @@ freshly verified remote head. Honor explicit instructions such as "do not
 commit", "commit locally", or "do not push". Merge or deploy only when the
 user authorizes those actions.
 
+### Completion and CI/CD
+
+- After every push, inspect CI/CD for the PR branch's current head commit and
+  stay on the task until all required checks finish successfully.
+- Inspect actual remote results and failed step logs. A process ending,
+  successful push, passing local checks, or open PR does not mean CI/CD passed.
+- Queued, pending, running, missing, cancelled, or failing required checks mean
+  unfinished work. Do not call the work done, complete, ready, or verified, or
+  give a completion handoff while the PR branch is still building or failing.
+- Fix failures within the authorized scope, push corrections, and wait for
+  checks on the new head. A successful run for an earlier commit is insufficient.
+- When the user asks for status or an external blocker prevents progress, report
+  the exact unfinished status and link the relevant run. Do not weaken checks,
+  bypass failures, or merge or deploy without user authorization.
+
 Always use conventional commit format.
 
 types:
@@ -114,7 +129,7 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
 
 ## code standards
 
-- Keep controllers thin: adapt HTTP input/output and call a service. Services compose application workflows and delegate meaningful steps to named helpers.  Put database queries on their owning entity/model modules. Prefer mature, type-safe frameworks and ORMs when they reduce duplicated infrastructure.  Historical migrations are append-only; preserve their order and contents.
+- Keep controllers thin: adapt HTTP input/output and call a service. Services compose application workflows and delegate meaningful steps to named helpers. Put database queries on their owning entity/model modules. Prefer mature, type-safe frameworks and ORMs when they reduce duplicated infrastructure. Historical migrations are append-only; preserve their order and contents.
 - Notices and warnings are hard errors in compiler, linter, test,
   browser-console, and hook output. A zero exit code alone is insufficient.
 - Run the affected project's linters, formatter, type checks, relevant build,
