@@ -383,12 +383,12 @@ export function scenarioData(scenario) {
   };
 }
 
-export function sessionData(token) {
+export function sessionData(token, userId = 1) {
   return {
     records: [
       insert("refresh_tokens", {
         token,
-        user_pid: "00000000-0000-4000-8000-000000000001",
+        user_pid: `00000000-0000-4000-8000-${String(userId).padStart(12, "0")}`,
         expires_at: Math.floor(Date.now() / 1000) + 86400,
         created_at: new Date().toISOString(),
       }),
@@ -421,4 +421,70 @@ if (process.argv[2] === "--staging") {
   const makeKey = (id) =>
     createHmac("sha256", key).update(String(id)).digest("hex");
   process.stdout.write(JSON.stringify(stagingData(process.argv[3], makeKey)));
+}
+
+export function heatmapPolicyData() {
+  const derived = activityData(1109);
+  for (const point of derived.route_points) {
+    point.longitude -= 20;
+    point.latitude += 3;
+  }
+  const variants = [
+    { user_id: 2 },
+    { sport: "run" },
+    { format: "unavailable" },
+    {
+      derived_data_json: { ...derived, recording: { environment: "virtual" } },
+    },
+    { sport: "Virtual Ride" },
+    { source: "trainer_road" },
+    { title: "Zwift excluded recording" },
+  ];
+  return {
+    records: variants.map((options, index) =>
+      ride(
+        1200 + index,
+        null,
+        "Heatmap policy fixture",
+        "synthetic-1109.gpx",
+        `2025-07-0${index + 1}T12:00:00Z`,
+        12,
+        { derived_data_json: derived, ...options },
+      ),
+    ),
+    prepare_heatmaps: true,
+  };
+}
+
+export function heatmapPaginationData() {
+  // 65 disconnected paths in one z14 tile force a full 64-row page plus a tail.
+  // Only the tail paints the lower line, so its pixels prove it was fetched.
+  const route = Array.from({ length: 130 }, (_, index) => {
+    const segment = Math.floor(index / 2);
+    const x = (4000 + (index % 2 === 0 ? 0.2 : 0.8)) / 16384;
+    const y = (6000 + (segment < 64 ? 0.25 : 0.75)) / 16384;
+    return {
+      ...points(12)[0],
+      elapsed_seconds: segment * 240 + (index % 2) * 60,
+      longitude: x * 360 - 180,
+      latitude: (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI,
+    };
+  });
+  return {
+    records: [
+      ride(
+        1200,
+        null,
+        "Heatmap pagination fixture",
+        "synthetic-1109.gpx",
+        "2025-08-01T12:00:00Z",
+        12,
+        {
+          sport: "mountain_bike",
+          derived_data_json: { v: 2, route_points: route, chart_points: [] },
+        },
+      ),
+    ],
+    prepare_heatmaps: true,
+  };
 }

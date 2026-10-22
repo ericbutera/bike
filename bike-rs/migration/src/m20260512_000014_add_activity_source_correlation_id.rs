@@ -106,21 +106,3 @@ fn strava_activity_id_from_filename(filename: &str) -> Option<String> {
         None
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn extracts_strava_activity_id_from_filename() {
-        assert_eq!(
-            strava_activity_id_from_filename("Morning_Mountain_Bike_Ride_18468904796.tcx"),
-            Some("18468904796".to_string())
-        );
-        assert_eq!(
-            strava_activity_id_from_filename("strava_activity_123456789.tcx"),
-            Some("123456789".to_string())
-        );
-        assert_eq!(strava_activity_id_from_filename("ride.fit"), None);
-    }
-}

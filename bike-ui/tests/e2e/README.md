@@ -73,7 +73,7 @@ PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
 Import metadata and manual refresh use React Query fixtures. Workflow graphs,
 attempt inspection, and replay belong to Temporal UI. The connected
 `activity-actions` browser check verifies retained source downloads; Rust units
-and existing PostgreSQL checks own domain execution and migration constraints.
+own domain execution. Standalone SQL/migration test suites are retired.
 
 All connected scenarios use PostgreSQL, the real API/UI/renderer, restored public
 GPX uploads, normal session authentication, and a freshly restored Playwright
@@ -96,7 +96,7 @@ models, rather than committed SQL datasets or database dumps.
 | `manual-processing` | `admin-manual-processing`                                                                                                                         | Dedicated users for admin queue operations                                                                  |
 | `archive-states`    | `archive-import-states`                                                                                                                           | Seeded queued/running/succeeded/failed progress                                                             |
 | `upload-result`     | `activity-import-result`                                                                                                                          | Seeded processed import linked to its visible activity                                                      |
-| `heatmap`           | `heatmap`                                                                                                                                         | Persisted projections seeded through the owning builder; real tile/filter/zoom checks                       |
+| `heatmap`           | `heatmap`, `heatmap-domain`                                                                                                                       | Owning builder; real tiles, filters, zoom, isolation, exclusions, pagination and edit/delete invalidation   |
 | `mocked`            | `auth-happy-path`, `activity-sync-fixture`, `map-rendering`, `heatmap-controls`, `frontend-auth-state`                                            | UI with explicit application API fakes; fresh browser contexts; no claim of database/provider behavior      |
 | `visual` (optional) | `frontend-visual`                                                                                                                                 | Fresh baseline and explicit reviewed screenshot comparison                                                  |
 

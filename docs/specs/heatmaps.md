@@ -211,8 +211,9 @@ current scope. Preview maps keep their separate renderer.
 Verify distinct-activity counts, GPS tolerance, fixed width, seams, sport/date/DST
 filters, and two-owner isolation. Cover import/edit/delete/retry, stale-worker
 races, and indoor/virtual, unknown, and outdoor controls under the applicable
-policy. Keep unit fixtures separate from opt-in PostgreSQL checks. Verify real
-Rust-backed tiles, camera, controls, themes, errors, and mobile/keyboard behavior.
+policy. Cover domain decisions with unit fixtures and persisted behavior with
+connected E2E checks. Verify real Rust-backed tiles, camera, controls, themes,
+errors, and mobile/keyboard behavior.
 
 Performance targets, not measurements: metadata p95 <300 ms, warm tiles <200 ms,
 cold tiles <1 s, useful overlay <2 s excluding basemap fetches, and no filter-driven

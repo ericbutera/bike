@@ -68,7 +68,7 @@ run = "pnpm run test:e2e:all"
 
 [tasks."test:e2e:heatmaps"]
 description = "Verify personal heatmap tiles, filters, and controls"
-run = "pnpm exec playwright test tests/e2e/heatmap.spec.mjs tests/e2e/heatmap-controls.spec.mjs"
+run = "pnpm exec playwright test tests/e2e/heatmap.spec.mjs tests/e2e/heatmap-domain.spec.mjs tests/e2e/heatmap-controls.spec.mjs"
 
 [tasks."test:e2e:install"]
 description = "Install the browser used by UI integration checks"

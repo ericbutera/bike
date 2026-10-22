@@ -279,7 +279,7 @@ description = "Validate the workflow using the native Woodpecker CLI"
 run = ["woodpecker-cli lint --strict .woodpecker", "mise install aqua:mikefarah/yq", "mise run ci:test"]
 
 [tasks."ci:rust"]
-description = "Run native Rust lint, unit coverage, integration tests and doctests"
+description = "Run native Rust lint, unit coverage and doctests"
 run = ["mise install rust protoc aqua:taiki-e/cargo-llvm-cov", "mise run lint:rs", "mise --cd bike-rs run coverage:unit", "mise --cd bike-rs run test:non-unit"]
 
 [tasks."ci:ui:unit"]
@@ -391,10 +391,6 @@ run = ["mise run compose:config", "mise run e2e:config"]
 [tasks."ci:e2e"]
 description = "Test this revision's prepared registry images on the job-local engine"
 run = ["mise install aqua:docker/cli aqua:docker/buildx jq", "mise exec aqua:docker/cli aqua:docker/buildx jq -- bash scripts/ci-e2e.sh"]
-
-[tasks."test:postgres"]
-description = "Run all explicit database suites against disposable PostgreSQL"
-run = ["mise install aqua:docker/cli rust protoc jq", "mise exec aqua:docker/cli rust protoc jq -- bash scripts/test-postgres.sh"]
 
 [tasks."ci:test"]
 description = "Verify release gating and credential restrictions with unsafe workflow fixtures"

@@ -87,11 +87,14 @@ async fn seed(db: &sea_orm::DatabaseConnection, dataset: Dataset) -> Result<(), 
 async fn prepare_heatmaps(db: &sea_orm::DatabaseConnection) -> Result<(), sea_orm::DbErr> {
     for _ in 0..3 {
         let projections = heatmap_projections::Entity::find().all(db).await?;
-        if projections.iter().all(|projection| projection.status == "ready") {
+        if projections
+            .iter()
+            .all(|projection| matches!(projection.status.as_str(), "ready" | "skipped"))
+        {
             return Ok(());
         }
         for projection in projections {
-            if projection.status != "ready" {
+            if !matches!(projection.status.as_str(), "ready" | "skipped") {
                 prepare_activity(
                     db,
                     PendingProjection {
@@ -104,7 +107,7 @@ async fn prepare_heatmaps(db: &sea_orm::DatabaseConnection) -> Result<(), sea_or
         }
     }
     Err(sea_orm::DbErr::Custom(
-        "Fixture heatmap projections did not become ready".into(),
+        "Fixture heatmap projections did not finish preparation".into(),
     ))
 }
 
@@ -226,5 +229,49 @@ mod staging_tests {
     #[tokio::test]
     async fn unrelated_existing_data_is_rejected() {
         assert!(seeded(vec![bike_core::test_support::customer()]).await.is_err());
+    }
+}
+
+#[cfg(test)]
+mod heatmap_tests {
+    use super::*;
+    use bike_core::test_support as fixtures;
+
+    #[tokio::test]
+    async fn excluded_recordings_finish_fixture_preparation_without_reprocessing() {
+        let projections = ["ready", "skipped"].map(|status| heatmap_projections::Model {
+            status: status.into(),
+            ..fixtures::heatmap_projection()
+        });
+        let db = fixtures::postgres_mock()
+            .append_query_results([projections])
+            .into_connection();
+        prepare_heatmaps(&db).await.unwrap();
+        assert_eq!(db.into_transaction_log().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn unavailable_fixtures_finish_as_skipped_after_preparation() {
+        use sea_orm::Value;
+        use std::collections::BTreeMap;
+        let source = activities::Model {
+            format: Some("unavailable".into()),
+            ..fixtures::activity()
+        };
+        let owner = BTreeMap::from([("user_id", Value::from(source.user_id))]);
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![fixtures::heatmap_projection()]])
+            .append_query_results([vec![source]])
+            .append_query_results([vec![owner]])
+            .append_query_results([vec![heatmap_projections::Model {
+                status: "skipped".into(),
+                ..fixtures::heatmap_projection()
+            }]])
+            .append_exec_results((0..3).map(|_| fixtures::written()))
+            .into_connection();
+        prepare_heatmaps(&db).await.unwrap();
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(log.contains("skipped"));
+        assert!(log.contains("COMMIT"));
     }
 }

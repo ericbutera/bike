@@ -18,7 +18,6 @@ services:
   - name: docker
     image: docker:29.4.0-dind@sha256:a6dd5322747a95cd8e3207bd8d415a8fd20ec34e9c00f06dc019cbd912013489
     privileged: true
-    ports: [5432]
     environment:
       BIKE_E2E_ENGINE_STATE_DIR: /woodpecker/src/.artifacts/dind-state
     commands:
@@ -94,15 +93,6 @@ steps:
     volumes: *mise_cache
     commands:
       - mise run ci:runtime
-
-  - name: test-postgres
-    failure: fail
-    image: *checks_image
-    depends_on: [test-rust]
-    environment: *mise_environment
-    volumes: *mise_cache
-    commands:
-      - mise run test:postgres
       - mise run strava:sdk:check
       - mise run contracts:check
 
@@ -118,7 +108,7 @@ steps:
   - name: build-images
     failure: fail
     image: ghcr.io/jdx/mise:2026.10.3-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6
-    depends_on: [check-coverage, test-tooling, test-postgres]
+    depends_on: [check-coverage, test-tooling]
     environment:
       <<: *mise_environment
       BIKE_BUILDKIT_ADDR: tcp://bike-buildkit.woodpecker.svc.cluster.local:1234
