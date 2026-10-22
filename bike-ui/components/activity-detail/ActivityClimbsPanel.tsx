@@ -54,10 +54,11 @@ function elevationChartValue(valueMeters: number, unitSystem: UnitSystem) {
 }
 
 function formatDistanceRange(
-  startDistanceMeters: number,
-  endDistanceMeters: number,
+  startDistanceMeters: number | null,
+  endDistanceMeters: number | null,
   unitSystem: UnitSystem,
 ) {
+  if (startDistanceMeters == null || endDistanceMeters == null) return "--";
   return `${distanceValue(startDistanceMeters, unitSystem)} - ${distanceValue(
     endDistanceMeters,
     unitSystem,
@@ -73,6 +74,8 @@ function formatClimbCategory(category: ActivityClimb["category"]) {
 }
 
 function buildClimbElevationRows(climb: ActivityClimb, unitSystem: UnitSystem) {
+  const startDistanceMeters = climb.startDistanceMeters;
+  if (startDistanceMeters == null) return [];
   return climb.routePoints.flatMap((point) => {
     if (
       point.distance_meters == null ||
@@ -87,9 +90,9 @@ function buildClimbElevationRows(climb: ActivityClimb, unitSystem: UnitSystem) {
       {
         distance:
           unitSystem === "imperial"
-            ? (point.distance_meters - climb.startDistanceMeters) /
+            ? (point.distance_meters - (climb.startDistanceMeters ?? 0)) /
               METERS_PER_MILE
-            : (point.distance_meters - climb.startDistanceMeters) / 1000,
+            : (point.distance_meters - startDistanceMeters) / 1000,
         elevation: elevationChartValue(point.elevation_meters, unitSystem),
       },
     ];

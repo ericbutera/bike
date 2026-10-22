@@ -1,11 +1,14 @@
 use crate::{
     activity_climbs::{Climb, ClimbOutput, DETECTOR_VERSION},
+    activity_data::{deserialize_route_point_series, serialize_route_point_series, StoredRoutePointSeries},
     bike_tasks::{ActivityTask, Priority},
     object_store::ObjectRef,
     workflow_error::WorkflowError,
 };
 use sea_orm::entity::prelude::*;
-use sea_orm::{sea_query::OnConflict, DatabaseBackend, FromQueryResult, QueryFilter, Set, Statement, TransactionTrait};
+use sea_orm::{
+    sea_query::OnConflict, DatabaseBackend, FromQueryResult, QueryFilter, QueryOrder, Set, Statement, TransactionTrait,
+};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "activity_climbs")]
@@ -22,6 +25,10 @@ pub struct Model {
     pub distance_meters: f64,
     pub elevation_gain_meters: f64,
     pub average_grade_percent: Option<f64>,
+    pub elevation_loss_meters: Option<f64>,
+    pub max_grade_percent: Option<f64>,
+    pub category: Option<String>,
+    pub route_points_json: StoredRoutePointSeries,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -41,11 +48,41 @@ impl ActiveModel {
             distance_meters: Set(climb.distance_meters),
             elevation_gain_meters: Set(climb.elevation_gain_meters),
             average_grade_percent: Set(climb.average_grade_percent),
+            elevation_loss_meters: Set(climb.elevation_loss_meters),
+            max_grade_percent: Set(climb.max_grade_percent),
+            category: Set(climb.category.clone()),
+            route_points_json: Set(serialize_route_point_series(&climb.route_points)),
         }
     }
 }
 
 impl Model {
+    pub async fn for_activity(db: &impl ConnectionTrait, activity_id: i32) -> Result<Vec<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::ActivityId.eq(activity_id))
+            .order_by_asc(Column::ClimbNumber)
+            .all(db)
+            .await
+    }
+
+    pub fn into_climb(self) -> Climb {
+        Climb {
+            climb_number: self.climb_number,
+            start_route_point_index: self.start_route_point_index,
+            end_route_point_index: self.end_route_point_index,
+            start_elapsed_seconds: self.start_elapsed_seconds,
+            end_elapsed_seconds: self.end_elapsed_seconds,
+            duration_seconds: self.duration_seconds,
+            distance_meters: self.distance_meters,
+            elevation_gain_meters: self.elevation_gain_meters,
+            average_grade_percent: self.average_grade_percent,
+            elevation_loss_meters: self.elevation_loss_meters,
+            max_grade_percent: self.max_grade_percent,
+            category: self.category,
+            route_points: deserialize_route_point_series(Some(&self.route_points_json)),
+        }
+    }
+
     pub async fn replace_output(
         db: &DatabaseConnection,
         source: &super::activities::Model,

@@ -1,7 +1,6 @@
 import { connectedTest as test, expect } from "./helpers/test.mjs";
 import {
   activityId,
-  expectedClimbCount,
   expectZoneDistribution,
   targets,
 } from "./helpers/targets.mjs";
@@ -21,7 +20,15 @@ test("activity detail exposes the activity surface in Bike", async ({
       }
     });
 
+    const detailResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/activities/${activityId}` &&
+        response.request().method() === "GET",
+    );
     await openActivityDetail(page, target, activityId);
+    const detail = await (await detailResponse).json();
+    expect(detail.climb_output).not.toBeNull();
+    const expectedClimbCount = detail.climb_output.climbs.length;
 
     const header = page
       .getByRole("heading", { level: 1 })
@@ -79,7 +86,19 @@ test("activity detail exposes the activity surface in Bike", async ({
       ).toHaveAttribute("aria-selected", "true");
       await page.getByRole("tab", { name: /^Segments/ }).click();
     } else {
-      await expect(page.getByRole("tab", { name: /^Climbs/ })).toHaveCount(0);
+      const climbs = page.getByRole("tab", { name: "Climbs (0)", exact: true });
+      await expect(climbs).toBeVisible();
+      await climbs.click();
+      await expect(
+        page.getByText("No sustained climbs found.", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(
+          "Climb processing has not completed for this recording.",
+          { exact: true },
+        ),
+      ).toHaveCount(0);
+      await page.getByRole("tab", { name: /^Segments/ }).click();
     }
     await expect(
       page.getByRole("tabpanel", { name: /^Segments/ }),

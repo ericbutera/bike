@@ -48,7 +48,8 @@
 - Show matched segments and detected climbs in one card with **Segments** and
   **Climbs** tabs and plain counts. Display one panel at a time, defaulting to
   Segments when matches exist and Climbs otherwise. Offer only tabs containing
-  data, and hide the entire card when neither has data.
+  segment data. Keep the Climbs tab available even when no climb rows are saved;
+  prefer a populated tab when choosing the default.
 - Keep the existing segment rows and climb details inside their panels.
   Switching tabs preserves expanded segments, selected climbs, and segment
   selections. It does not change route-map layers, camera, or selection.
@@ -184,6 +185,29 @@
   and Escape behavior. Mount the focused map only while its dialog is open.
   Disable the route icon button when fewer than two stored route points are
   available.
+
+## Saved climb data
+
+- The climb worker saves duration, distance, elevation gain/loss, average and
+  maximum grade, category, recording bounds, and prepared route/profile points
+  in `activity_climbs`. Reuse the existing climb operation and backfill.
+- Activity detail and update responses expose the currently saved climbs.
+  Summary/list responses do not load climb output.
+- API reads select saved rows. They do not decode, hash or slice the activity
+  recording, rerun detection, or reject saved rows because processing metadata
+  is old or missing.
+- The UI displays saved metrics and renders prepared geometry/profile points.
+  It only formats units and labels; it does not calculate climb metrics.
+- Missing or empty saved rows show **No sustained climbs found.** Keep the Climbs
+  tab available with its saved count, including zero. Do not create a processing
+  availability state or hide stored results using timestamps, versions or checksums.
+- Existing rows retain their saved metrics while processing catches up. New
+  nullable metrics use the usual missing-value display, and missing prepared
+  geometry omits the map/profile without removing the climb.
+- Processing output version 2 populates the new saved fields through the existing
+  `backfill_activity_climbs` operation. Versions never gate API/UI reads.
+- The same saved climbs supply the list, details, profiles, focused maps and
+  overall route overlays. Preserve units, selection and layer controls.
 
 ## Climb identification
 

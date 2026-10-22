@@ -109,7 +109,7 @@ export type ActivityTrainingAnalysis = {
 
 export type Activity = Pick<
   components["schemas"]["ActivityResponse"],
-  "description" | "gear" | "private_notes"
+  "description" | "gear" | "private_notes" | "climb_output"
 > & {
   activity_import_id?: number | null;
   id: number;

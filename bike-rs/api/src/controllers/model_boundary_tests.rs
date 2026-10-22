@@ -3,7 +3,7 @@ use axum::body::{to_bytes, Body};
 use axum::http::Request;
 use axum::response::Response;
 use axum::Router;
-use bike_core::entities::{activities, activity_training_analyses, segment_efforts};
+use bike_core::entities::{activities, activity_climbs, activity_training_analyses, segment_efforts};
 use bike_core::test_support;
 use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
@@ -76,12 +76,22 @@ async fn owned_activity_update_preserves_fields_and_commits_its_audit() {
             activity_type: "race".into(),
             ..before.clone()
         };
+        let recording = bike_core::activity_data::deserialize_derived_activity_data(after.derived_data_json.as_ref());
+        let output = activity_climbs::output::Model {
+            activity_id: after.id,
+            detector_version: bike_core::activity_climbs::DETECTOR_VERSION,
+            recording_sha256: bike_core::object_store::checksum(&serde_json::to_vec(&recording).unwrap()),
+            object_ref: json!({}),
+            climb_count: 0,
+        };
         let db = MockDatabase::new(DbBackend::Postgres)
             .append_query_results([vec![test_support::customer()]])
             .append_query_results([vec![before.clone()], vec![before]])
             .append_query_results([vec![after.clone()]])
             .append_query_results([Vec::<segment_efforts::Model>::new()])
             .append_query_results([Vec::<activity_training_analyses::Model>::new()])
+            .append_query_results([vec![output]])
+            .append_query_results([Vec::<activity_climbs::Model>::new()])
             .append_exec_results([MockExecResult {
                 rows_affected: 1,
                 ..Default::default()
@@ -98,6 +108,7 @@ async fn owned_activity_update_preserves_fields_and_commits_its_audit() {
             )
             .await;
         if !fail_start {
+            assert_eq!(updated["climb_output"]["climbs"], json!([]));
             assert_eq!(updated["title"], after.title);
             assert_eq!(updated["activity_type"], after.activity_type);
             assert_eq!(updated["source"], after.source);

@@ -3840,6 +3840,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ActivityChartPoint'
+        climb_output:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ClimbOutput'
+            description: Saved climb rows; activity detail returns an empty list when none are stored.
         description:
           type:
           - string
@@ -4534,6 +4539,84 @@ components:
         retained_activity_count: 2
         status: completed
         user_id: 12
+    Climb:
+      type: object
+      required:
+      - climb_number
+      - start_elapsed_seconds
+      - end_elapsed_seconds
+      - duration_seconds
+      - distance_meters
+      - elevation_gain_meters
+      - route_points
+      properties:
+        average_grade_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        category:
+          type:
+          - string
+          - 'null'
+        climb_number:
+          type: integer
+          format: int32
+        distance_meters:
+          type: number
+          format: double
+        duration_seconds:
+          type: integer
+          format: int32
+        elevation_gain_meters:
+          type: number
+          format: double
+        elevation_loss_meters:
+          type:
+          - number
+          - 'null'
+          format: double
+        end_elapsed_seconds:
+          type: integer
+          format: int32
+        end_route_point_index:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        max_grade_percent:
+          type:
+          - number
+          - 'null'
+          format: double
+        route_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityRoutePoint'
+        start_elapsed_seconds:
+          type: integer
+          format: int32
+        start_route_point_index:
+          type:
+          - integer
+          - 'null'
+          format: int32
+    ClimbOutput:
+      type: object
+      required:
+      - detector_version
+      - recording_sha256
+      - climbs
+      properties:
+        climbs:
+          type: array
+          items:
+            $ref: '#/components/schemas/Climb'
+        detector_version:
+          type: integer
+          format: int32
+        recording_sha256:
+          type: string
     ClimbResponse:
       type: object
       required:
@@ -5648,6 +5731,11 @@ components:
                 type: array
                 items:
                   $ref: '#/components/schemas/ActivityChartPoint'
+              climb_output:
+                oneOf:
+                - type: 'null'
+                - $ref: '#/components/schemas/ClimbOutput'
+                  description: Saved climb rows; activity detail returns an empty list when none are stored.
               description:
                 type:
                 - string

@@ -10,6 +10,8 @@ import type { RouteMapProps } from "../RouteMapTypes";
 import { segmentEffort } from "../../tests/fixtures/activitySegments";
 import {
   activityLap,
+  climbOutput,
+  savedClimb,
   climbingRoutePoints as makeClimbingRoutePoints,
 } from "../../tests/fixtures/activities";
 
@@ -98,6 +100,7 @@ vi.mock("../MapLibreRouteMap", () => ({
 
 function makeActivity(
   overrides: Partial<{
+    climb_output: ReturnType<typeof climbOutput> | null;
     id: number;
     title: string;
     sport: string;
@@ -329,6 +332,7 @@ function makeActivity(
         personal_best_duration_seconds: 312,
       },
     ],
+    climb_output: climbOutput([]),
     can_regenerate: true,
     can_download_source_file: true,
     ...overrides,
@@ -401,6 +405,64 @@ function currentSegmentOverlays() {
 }
 
 describe("ActivityDetailPanel", () => {
+  it.each([null, climbOutput([])])(
+    "uses saved output instead of detecting climbs from the route: %s",
+    async (output) => {
+      const user = userEvent.setup();
+      mocks.useActivity.mockReturnValue({
+        data: makeActivity({
+          route_points: makeClimbingRoutePoints(),
+          climb_output: output,
+          segment_efforts: [],
+        }),
+      });
+      render(<ActivityDetailPanel activityId={7} />);
+      expect(
+        screen.queryByRole("button", { name: "Show climb 1 details" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("No sustained climbs found."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("tab", {
+          name: "Climbs (0)",
+        }),
+      ).toBeInTheDocument();
+      act(() => currentMap().overlayLayers?.onChange("climbs", true));
+      expect(currentMap().climbOverlays).toEqual([]);
+      await user.click(screen.getByRole("tab", { name: /Climbs/ }));
+    },
+  );
+
+  it("retains saved metrics when a climb has no route geometry", async () => {
+    const user = userEvent.setup();
+    mocks.useActivity.mockReturnValue({
+      data: makeActivity({
+        segment_efforts: [],
+        climb_output: climbOutput([
+          savedClimb({
+            route_points: [],
+            start_route_point_index: null,
+            end_route_point_index: null,
+            average_grade_percent: null,
+          }),
+        ]),
+      }),
+    });
+    render(<ActivityDetailPanel activityId={7} />);
+    expect(screen.getByText("410 ft")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Show climb 1 details" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "View Climb 1 on map" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("img", { name: "Climb 1 elevation profile" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Activity distance: --")).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(
@@ -649,6 +711,7 @@ describe("ActivityDetailPanel", () => {
     mocks.useActivity.mockReturnValue({
       data: makeActivity({
         route_points: makeClimbingRoutePoints(),
+        climb_output: climbOutput(),
         segment_efforts: [segmentEffort()],
       }),
     });
@@ -666,7 +729,10 @@ describe("ActivityDetailPanel", () => {
   it("shares a card between segments and climbs while retaining detail selections", async () => {
     const user = userEvent.setup();
     mocks.useActivity.mockReturnValue({
-      data: makeActivity({ route_points: makeClimbingRoutePoints() }),
+      data: makeActivity({
+        route_points: makeClimbingRoutePoints(),
+        climb_output: climbOutput(),
+      }),
     });
     render(<ActivityDetailPanel activityId={7} />);
     const card = screen.getByRole("region", { name: "Segments and climbs" });
@@ -714,7 +780,10 @@ describe("ActivityDetailPanel", () => {
   it("supports keyboard tab focus, selection, and wrapping", async () => {
     const user = userEvent.setup();
     mocks.useActivity.mockReturnValue({
-      data: makeActivity({ route_points: makeClimbingRoutePoints() }),
+      data: makeActivity({
+        route_points: makeClimbingRoutePoints(),
+        climb_output: climbOutput(),
+      }),
     });
     render(<ActivityDetailPanel activityId={7} />);
     const segments = screen.getByRole("tab", { name: "Segments (1)" });
@@ -744,7 +813,10 @@ describe("ActivityDetailPanel", () => {
 
   it("resets detail tabs and climb selection when navigating to another activity", async () => {
     const user = userEvent.setup();
-    const activity = makeActivity({ route_points: makeClimbingRoutePoints() });
+    const activity = makeActivity({
+      route_points: makeClimbingRoutePoints(),
+      climb_output: climbOutput(),
+    });
     mocks.useActivity.mockReturnValue({ data: activity });
     const { rerender } = render(<ActivityDetailPanel activityId={7} />);
     await user.click(screen.getByRole("tab", { name: "Climbs (1)" }));
@@ -764,15 +836,16 @@ describe("ActivityDetailPanel", () => {
   });
 
   it.each([
-    { segments: true, climbs: false, tabs: ["Segments (1)"] },
+    { segments: true, climbs: false, tabs: ["Segments (1)", "Climbs (0)"] },
     { segments: false, climbs: true, tabs: ["Climbs (1)"] },
-    { segments: false, climbs: false, tabs: [] },
+    { segments: false, climbs: false, tabs: ["Climbs (0)"] },
   ])(
-    "only offers populated detail tabs: $tabs",
+    "offers saved climb results alongside populated segments: $tabs",
     ({ segments, climbs, tabs }) => {
       mocks.useActivity.mockReturnValue({
         data: makeActivity({
           route_points: climbs ? makeClimbingRoutePoints() : [],
+          climb_output: climbOutput(climbs ? [savedClimb()] : []),
           segment_efforts: segments ? [segmentEffort()] : [],
         }),
       });
@@ -800,6 +873,7 @@ describe("ActivityDetailPanel", () => {
     const activity = {
       ...makeMatchedActivity(2),
       route_points: makeClimbingRoutePoints(),
+      climb_output: climbOutput(),
     };
     mocks.useActivity.mockReturnValue({ data: activity });
     const { rerender } = render(<ActivityDetailPanel activityId={7} />);
@@ -1117,6 +1191,7 @@ describe("ActivityDetailPanel", () => {
     mocks.useActivity.mockReturnValue({
       data: makeActivity({
         route_points: makeClimbingRoutePoints(),
+        climb_output: climbOutput(),
         segment_efforts: [],
       }),
       isLoading: false,
@@ -1256,6 +1331,11 @@ describe("ActivityDetailPanel", () => {
       mocks.useActivity.mockReturnValue({
         data: makeActivity({
           route_points: makeManyClimbRoutePoints(count),
+          climb_output: climbOutput(
+            Array.from({ length: count }, (_, index) =>
+              savedClimb({ climb_number: index + 1 }),
+            ),
+          ),
           segment_efforts: [],
         }),
         isLoading: false,

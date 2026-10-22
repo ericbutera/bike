@@ -71,15 +71,47 @@ where
 }
 
 async fn seed(db: &sea_orm::DatabaseConnection, dataset: Dataset) -> Result<(), sea_orm::DbErr> {
+    let activity_ids: Vec<i32> = dataset
+        .records
+        .iter()
+        .filter(|record| record.entity == "activities")
+        .filter_map(|record| record.values.get("id")?.as_i64()?.try_into().ok())
+        .collect();
     let tx = db.begin().await?;
     for record in dataset.records {
         store_record(&tx, record).await?;
     }
     tx.commit().await?;
+    prepare_climbs(db, activity_ids).await?;
     if dataset.prepare_heatmaps {
         // Reuse the owning projection builder to create persisted result data;
         // browser tests do not run a worker or wait for asynchronous jobs.
         prepare_heatmaps(db).await?;
+    }
+    Ok(())
+}
+
+async fn prepare_climbs(db: &sea_orm::DatabaseConnection, activity_ids: Vec<i32>) -> Result<(), sea_orm::DbErr> {
+    let objects = bike_core::object_store::ObjectStore::filesystem(
+        &bike_core::config::Config::get().uploads_dir,
+        bike_core::object_store::ObjectOwner::ActivityImports,
+    );
+    for id in activity_ids {
+        let activity = activities::Entity::find_by_id(id)
+            .one(db)
+            .await?
+            .ok_or_else(|| sea_orm::DbErr::Custom("Fixture activity missing after seed".into()))?;
+        bike_core::activity_climbs::rebuild(
+            db,
+            &objects,
+            bike_core::bike_tasks::ActivityTask {
+                activity_id: activity.id,
+                user_id: activity.user_id,
+                priority: bike_core::bike_tasks::Priority::Background,
+            },
+        )
+        .await
+        .map_err(|error| sea_orm::DbErr::Custom(error.message))?;
     }
     Ok(())
 }
@@ -137,6 +169,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn activity_seeding_prepares_climbs_and_reuses_current_saved_results() {
+        use bike_core::{
+            activity_data::deserialize_derived_activity_data, entities::activity_climbs, test_support as fixtures,
+        };
+        let activity = fixtures::activity();
+        let recording = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
+        let output = activity_climbs::output::Model {
+            activity_id: activity.id,
+            detector_version: bike_core::activity_climbs::DETECTOR_VERSION,
+            recording_sha256: bike_core::object_store::checksum(&serde_json::to_vec(&recording).unwrap()),
+            object_ref: json!({}),
+            climb_count: 0,
+        };
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![activity.clone()], vec![activity.clone()], vec![activity.clone()]])
+            .append_query_results([vec![output]])
+            .into_connection();
+        seed(
+            &db,
+            Dataset {
+                records: vec![Record {
+                    entity: "activities".into(),
+                    operation: Operation::Update,
+                    values: json!({"id": activity.id, "title": "Fixture ride"}),
+                }],
+                prepare_heatmaps: false,
+            },
+        )
+        .await
+        .unwrap();
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(log.contains("activity_climb_outputs"));
+        assert!(!log.contains(r#"INSERT INTO \"activity_climbs\""#));
+    }
+
+    #[tokio::test]
+    async fn climb_preparation_rejects_a_missing_fixture_activity() {
+        let db = bike_core::test_support::postgres_mock()
+            .append_query_results([Vec::<activities::Model>::new()])
+            .into_connection();
+        assert!(prepare_climbs(&db, vec![42])
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("missing"));
+    }
 
     #[test]
     fn owning_models_reject_stale_fixture_fields_and_invalid_values() {

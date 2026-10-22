@@ -47,3 +47,32 @@ export function climbingRoutePoints() {
     power_watts: [142, 210, 225, 238, 250][index],
   })) satisfies ActivityRoutePoint[];
 }
+
+export function savedClimb(
+  overrides: Partial<
+    NonNullable<Activity["climb_output"]>["climbs"][number]
+  > = {},
+) {
+  return {
+    climb_number: 1,
+    start_route_point_index: 0,
+    end_route_point_index: 4,
+    start_elapsed_seconds: 0,
+    end_elapsed_seconds: 480,
+    duration_seconds: 480,
+    distance_meters: 2400,
+    elevation_gain_meters: 125,
+    average_grade_percent: (125 / 2400) * 100,
+    elevation_loss_meters: 0,
+    max_grade_percent: 6,
+    category: "4",
+    route_points: climbingRoutePoints(),
+    ...overrides,
+  };
+}
+
+export function climbOutput(
+  climbs = [savedClimb()],
+): NonNullable<Activity["climb_output"]> {
+  return { detector_version: 1, recording_sha256: "fixture-recording", climbs };
+}

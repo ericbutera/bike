@@ -11,7 +11,7 @@ import {
   DEFAULT_ROUTE_LINE_WIDTH,
   DEFAULT_ROUTE_CASING_WIDTH,
 } from "../../lib/mapAppearance";
-import type { Activity } from "./types";
+import type { Activity } from "../../lib/queries";
 import MapLibreRouteMap from "../MapLibreRouteMap";
 import { AppCard, CardHeader } from "../ui/Card";
 import ActivitySegmentLegend from "./ActivitySegmentLegend";
@@ -36,7 +36,10 @@ export default function ActivityRouteMap({
   const routePoints = activity.route_points;
   const showNewActivityMaps = useFeatureFlag(FLAG_ENHANCED_MAPS);
   const segmentGroups = useMatchedSegmentGroups(activity);
-  const climbs = useMemo(() => buildActivityClimbs(routePoints), [routePoints]);
+  const climbs = useMemo(
+    () => buildActivityClimbs(activity.climb_output),
+    [activity.climb_output],
+  );
   const [visibleLayers, setVisibleLayers] = useState({
     segments: true,
     climbs: false,
