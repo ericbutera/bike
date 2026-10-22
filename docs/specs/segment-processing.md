@@ -84,7 +84,7 @@ Some public segments represent routes that have drifted from the current trail b
 
 ## Regression Fixtures
 
-Favorite segment regression fixtures live in `api/tests/fixtures/segment_matching`. The test `favorite_segment_fixtures_match_expected_activity_files` parses the real FIT and GPX files and asserts that each listed segment produces at least one match.
+Favorite segment regression fixtures live in `bike-rs/tests/fixtures/segment_matching`. The test `favorite_segment_fixtures_match_expected_activity_files` parses the real FIT and GPX files and asserts that each listed segment produces at least one match.
 
 Required fixture matches:
 

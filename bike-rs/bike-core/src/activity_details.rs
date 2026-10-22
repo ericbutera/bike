@@ -881,7 +881,7 @@ mod tests {
 
     #[test]
     fn derives_fit_laps_and_chart_points() {
-        let fit = include_bytes!("../../api/tests/fixtures/activity.fit");
+        let fit = crate::test_support::recordings::ACTIVITY_FIT;
         let detail = derive_activity_detail_data("activity.fit", "fit", fit).expect("fit detail");
 
         assert_eq!(detail.laps.len(), 1);

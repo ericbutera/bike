@@ -326,24 +326,23 @@ mod tests {
     #[test]
     fn recorder_and_subsport_evidence_survive_generic_cycling() {
         for bytes in [
-            include_bytes!("../tests/fixtures/recording/virtual.fit").as_slice(),
-            include_bytes!("../tests/fixtures/recording/virtual-generic.fit").as_slice(),
+            crate::test_support::recordings::VIRTUAL_FIT,
+            crate::test_support::recordings::VIRTUAL_GENERIC_FIT,
         ] {
             let parsed = parse_fit_activity("archive.fit", bytes).unwrap();
             assert_eq!(parsed.recording.environment, RecordingEnvironment::Virtual);
             assert_eq!(parsed.recording.platform.as_deref(), Some("zwift"));
             assert_eq!(parsed.track_points.len(), 16);
         }
-        let indoor =
-            parse_fit_activity("indoor.fit", include_bytes!("../tests/fixtures/recording/indoor.fit")).unwrap();
+        let indoor = parse_fit_activity("indoor.fit", crate::test_support::recordings::INDOOR_FIT).unwrap();
         assert_eq!(indoor.recording.environment, RecordingEnvironment::Indoor);
     }
 
     #[test]
     fn real_recorder_with_a_non_creator_virtual_accessory_remains_outdoor_eligible() {
         for bytes in [
-            include_bytes!("../tests/fixtures/recording/outdoor.fit").as_slice(),
-            include_bytes!("../tests/fixtures/recording/outdoor-accessory.fit").as_slice(),
+            crate::test_support::recordings::OUTDOOR_FIT,
+            crate::test_support::recordings::OUTDOOR_ACCESSORY_FIT,
         ] {
             let parsed = parse_fit_activity("outdoor.fit", bytes).unwrap();
             assert!(!parsed.recording.excluded());

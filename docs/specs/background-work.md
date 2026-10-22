@@ -148,6 +148,32 @@ flowchart TD
   That is an accepted cost. Prefer this to recovering an exact previous execution
   result or coordinating every producer through shared output owners.
 
+### Activity climbs and stage backfills
+
+- After saving an activity, imports and reprocessing run `rebuild_activity_climbs`
+  independently of the segment/heatmap/training branch. Reuse the existing Rust
+  climb detector and the stored normalized recording.
+- Save an immutable, content-addressed climb artifact with the existing object
+  store. `activity_climb_outputs` holds its reference, input checksum, detector
+  version and climb count; `activity_climbs` stores ordered climb bounds and
+  metrics for consumers. Publish both in one transaction against the current
+  owned activity. Repeating unchanged input reuses the saved output.
+- An empty climb artifact is a successful result. Keep its output row even when
+  there are no child climb rows, so a flat or GPS-less activity is distinguishable
+  from an activity that has not been processed.
+- For the initial rollout, start `backfill_activity_climbs` on `bike-tasks` in the
+  `bike` namespace with JSON input `0`, using the existing Temporal UI or CLI.
+  It selects activities missing the current climb output, processes at most 16
+  per page through the same climb operation, and Continues-As-New after settling
+  a full page. Temporal owns progress and retries. Restarting from zero skips
+  outputs already saved, including empty results.
+- Roll out future stages the same way: persist their actual output, including an
+  empty result, then run a one-off paged workflow for missing outputs. A changed
+  calculation can select an older output version. Backfill only that stage;
+  existing efforts and awards do not need full import reprocessing.
+- This slice generates climb data. Activity screens switch to these saved rows
+  in a subsequent change.
+
 ## Identity and causal context
 
 - Pass the owned import/file reference and activity ID when known. New imports

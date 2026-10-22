@@ -1,4 +1,5 @@
 pub mod activity_achievements;
+pub mod activity_climbs;
 pub mod activity_data;
 pub mod activity_details;
 pub mod activity_import_lifecycle;

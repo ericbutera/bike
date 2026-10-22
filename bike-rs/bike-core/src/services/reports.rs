@@ -1744,12 +1744,16 @@ fn build_fatigue_report(activities: &[activities::Model]) -> FatigueReportRespon
     }
 }
 
+/// Shared detector for the persisted activity climb stage and report consumers.
+pub fn activity_climbs(activity: &activities::Model) -> Vec<ClimbResponse> {
+    detect_climbs(activity, &activity_samples(activity))
+}
+
 fn build_climbing_report(activities: &[activities::Model]) -> ClimbingReportResponse {
     let mut climbs = Vec::new();
 
     for activity in activities {
-        let samples = activity_samples(activity);
-        climbs.extend(detect_climbs(activity, &samples));
+        climbs.extend(activity_climbs(activity));
     }
 
     climbs.sort_by_key(|climb| (climb.activity_id, climb.climb_number));

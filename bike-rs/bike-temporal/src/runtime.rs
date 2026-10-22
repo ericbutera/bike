@@ -3,9 +3,9 @@ use crate::{
     activities::{BatchActivities, DerivedActivities, ImportActivities},
     operations::BikeOperations,
     workflows::{
-        ActivityArchiveImport, BackfillUserXcTraining, PrepareHeatmap, ProcessActivityImport, RebuildFitnessFreshness,
-        RebuildSegmentAnalytics, ReconcileHeatmaps, RegenerateActivitySegments, RegenerateSegmentEfforts,
-        RegenerateUserSegments, ReprocessActivityImport, ReprocessArchiveFitActivityImports,
+        ActivityArchiveImport, BackfillActivityClimbs, BackfillUserXcTraining, PrepareHeatmap, ProcessActivityImport,
+        RebuildFitnessFreshness, RebuildSegmentAnalytics, ReconcileHeatmaps, RegenerateActivitySegments,
+        RegenerateSegmentEfforts, RegenerateUserSegments, ReprocessActivityImport, ReprocessArchiveFitActivityImports,
         ReprocessUserActivityImports,
     },
     TASK_QUEUE,
@@ -50,6 +50,7 @@ pub fn worker(
         .register_workflow::<BackfillUserXcTraining>()?
         .register_workflow::<ActivityArchiveImport>()?
         .register_workflow::<ReconcileHeatmaps>()?
+        .register_workflow::<BackfillActivityClimbs>()?
         .register_activities(ImportActivities::new(operations.clone()))
         .register_activities(BatchActivities::new(operations.clone()))
         .register_activities(DerivedActivities::new(operations))

@@ -75,12 +75,8 @@ mod tests {
         use crate::{entities::activities, test_support as fixtures};
         use sea_orm::{DbBackend, MockDatabase, MockExecResult, Value};
         use std::collections::BTreeMap;
-        let mut derived = derive_activity_detail_data(
-            "outdoor.fit",
-            "fit",
-            include_bytes!("../../tests/fixtures/recording/outdoor.fit"),
-        )
-        .unwrap();
+        let mut derived =
+            derive_activity_detail_data("outdoor.fit", "fit", crate::test_support::recordings::OUTDOOR_FIT).unwrap();
         assert!(derived.route_points.len() >= 8);
         let source = activities::Model {
             derived_data_json: Some(crate::activity_data::serialize_derived_activity_data(&derived)),
@@ -180,12 +176,9 @@ mod tests {
             ("indoor trainer ride", "manual_upload", "Morning ride", true),
             ("road_ride", "strava_sync", "Morning ride", false),
         ] {
-            let mut derived = derive_activity_detail_data(
-                "outdoor.fit",
-                "fit",
-                include_bytes!("../../tests/fixtures/recording/outdoor.fit"),
-            )
-            .unwrap();
+            let mut derived =
+                derive_activity_detail_data("outdoor.fit", "fit", crate::test_support::recordings::OUTDOOR_FIT)
+                    .unwrap();
             derived.recording.merge(RecordingContext::legacy(sport, source, title));
             assert_eq!(prepare_route(&derived).is_empty(), excluded);
         }
@@ -199,12 +192,8 @@ mod recording_tests {
 
     #[test]
     fn real_routes_in_multiple_countries_contribute_without_geography_classification() {
-        let original = derive_activity_detail_data(
-            "outdoor.fit",
-            "fit",
-            include_bytes!("../../tests/fixtures/recording/outdoor.fit"),
-        )
-        .unwrap();
+        let original =
+            derive_activity_detail_data("outdoor.fit", "fit", crate::test_support::recordings::OUTDOOR_FIT).unwrap();
         for (latitude, longitude) in [(45.0, -120.0), (52.0, 0.0), (35.0, 140.0)] {
             let mut derived = original.clone();
             for (index, point) in derived.route_points.iter_mut().enumerate() {

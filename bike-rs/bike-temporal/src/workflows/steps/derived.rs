@@ -5,10 +5,29 @@ use temporalio_sdk::{WorkflowContext, WorkflowResult};
 
 /// Imports and reprocessing await the same analytics and report work after save.
 pub(crate) async fn rebuild<W>(ctx: &WorkflowContext<W>, imported: &ActivityImportResult) -> WorkflowResult<()> {
-    segments(ctx, imported).await?;
-    achievements(ctx, imported).await?;
-    heatmap(ctx, imported).await?;
-    training_and_fitness(ctx, imported).await
+    let existing = async {
+        segments(ctx, imported).await?;
+        achievements(ctx, imported).await?;
+        heatmap(ctx, imported).await?;
+        training_and_fitness(ctx, imported).await
+    };
+    if ctx.patched("activity-climbs-v1") {
+        let (derived, climbs) = futures::join!(existing, activity_climbs(ctx, imported));
+        derived?;
+        climbs
+    } else {
+        existing.await
+    }
+}
+
+async fn activity_climbs<W>(ctx: &WorkflowContext<W>, imported: &ActivityImportResult) -> WorkflowResult<()> {
+    options::run(
+        ctx,
+        DerivedActivities::rebuild_activity_climbs,
+        imported.activity(),
+        options::activity(imported.priority, format!("user-{}", imported.user_id)),
+    )
+    .await
 }
 
 pub(crate) async fn segments<W>(ctx: &WorkflowContext<W>, imported: &ActivityImportResult) -> WorkflowResult<()> {

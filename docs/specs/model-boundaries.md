@@ -103,6 +103,10 @@ on `activities::Entity`, and deleting the import stays on `activity_imports::Ent
 - Use fixture factories with shared test helpers. Keep routine setup shared so
   each test shows only its meaningful inputs, actions, and assertions.
 - Cross-crate Rust model fixtures live in `bike-core::test_support`.
+- Shared activity recordings and segment files live in `bike-rs/tests/fixtures`.
+  Expose reusable recording bytes through `bike_core::test_support::recordings`
+  so consumers do not depend on another crate's test directory or relative paths.
+  API-specific browser uploads remain in `api/tests/fixtures/platform`.
 - Compile them only for unit tests or the existing `test-fixtures` feature.
   Other crates enable that feature in dev-dependencies.
 - Fixtures provide valid, reusable defaults with fixed timestamps and coherent

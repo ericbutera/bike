@@ -14,7 +14,8 @@ mod reprocess_activity_import;
 mod steps;
 pub use activity_archive_import::{ActivityArchiveImport, ArchiveInput};
 pub use activity_pages::{
-    BackfillUserXcTraining, RegenerateUserSegments, ReprocessArchiveFitActivityImports, ReprocessUserActivityImports,
+    BackfillActivityClimbs, BackfillUserXcTraining, RegenerateUserSegments, ReprocessArchiveFitActivityImports,
+    ReprocessUserActivityImports,
 };
 pub use reconcile_heatmaps::ReconcileHeatmaps;
 pub use regenerate_activity_segments::RegenerateActivitySegments;

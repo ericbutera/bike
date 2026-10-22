@@ -768,7 +768,7 @@ mod tests {
 
     #[test]
     fn summarizes_fit_uploads_into_activity_metrics() {
-        let fit = include_bytes!("../../api/tests/fixtures/activity.fit");
+        let fit = crate::test_support::recordings::ACTIVITY_FIT;
         let summary = summarize_activity_upload("activity.fit", "fit", fit).expect("fit summary");
 
         assert_eq!(summary.title, "Activity");

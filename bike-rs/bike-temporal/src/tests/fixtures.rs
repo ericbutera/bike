@@ -77,6 +77,10 @@ impl BatchOperations for Operations {
     async fn finish_archive(&self, job_id: i32) -> Result<(), WorkflowError> {
         self.record("finish_archive", &job_id)
     }
+    async fn pending_climbs(&self, after_id: i32) -> Result<Vec<ActivityTask>, WorkflowError> {
+        self.record("pending_climbs", &after_id)?;
+        Ok(vec![fixtures::activity_task()])
+    }
     async fn pending_heatmaps(&self, after_id: i32) -> Result<Vec<ActivityTask>, WorkflowError> {
         self.record("pending_heatmaps", &after_id)?;
         Ok(vec![fixtures::activity_task()])
@@ -106,6 +110,9 @@ impl DerivedOperations for Operations {
     }
     async fn rebuild_fitness_freshness(&self, task: FitnessChange) -> Result<(), WorkflowError> {
         self.record("rebuild_fitness_freshness", &task)
+    }
+    async fn rebuild_activity_climbs(&self, task: ActivityTask) -> Result<(), WorkflowError> {
+        self.record("rebuild_activity_climbs", &task)
     }
     async fn rebuild_activity_training(&self, task: ActivityTask) -> Result<(), WorkflowError> {
         self.record("rebuild_activity_training", &task)

@@ -4,6 +4,7 @@ use bike_core::test_support as fixtures;
 pub(super) fn complete_derived_tasks(mock: &mut WorkflowMock, imported: &ActivityImportResult) {
     let task = imported.activity();
     mock.activity("rebuild_activity_segments", &task, &vec![18_i32, 19]);
+    mock.activity("rebuild_activity_climbs", &task, &());
     for segment_id in [18, 19] {
         let segment = SegmentChange {
             segment_id,
@@ -95,6 +96,7 @@ fn segment_child_failure_fails_the_parent_before_achievements() {
     let mut mock = WorkflowMock::new::<ProcessActivityImport>(command.source.clone());
     mock.activity("activity_import", &command, &result);
     mock.activity("rebuild_activity_segments", &result.activity(), &vec![18_i32]);
+    mock.activity("rebuild_activity_climbs", &result.activity(), &());
     let child = mock.start_child(
         "rebuild_segment_analytics",
         &SegmentChange {
@@ -113,6 +115,7 @@ fn empty_segments_still_rebuild_activity_achievements_and_other_outputs() {
     let mut mock = WorkflowMock::new::<ProcessActivityImport>(command.source.clone());
     mock.activity("activity_import", &command, &result);
     mock.activity("rebuild_activity_segments", &result.activity(), &Vec::<i32>::new());
+    mock.activity("rebuild_activity_climbs", &result.activity(), &());
     mock.activity("rebuild_activity_achievements", &result.activity(), &());
     let child = mock.start_child("prepare_heatmap", &result.activity());
     mock.complete_child(child, &());
@@ -186,6 +189,7 @@ fn replay_after_segment_completion_resumes_with_achievements() {
     let mut mock = WorkflowMock::new::<ReprocessActivityImport>(input.clone());
     mock.activity("activity_import", &input.clone().into_command(), &result);
     mock.activity("rebuild_activity_segments", &result.activity(), &vec![18_i32]);
+    mock.activity("rebuild_activity_climbs", &result.activity(), &());
     let child = mock.start_child(
         "rebuild_segment_analytics",
         &SegmentChange {
@@ -224,6 +228,7 @@ fn saved_import_waiting_for_heatmap(reprocessing: bool) -> (WorkflowMock, Activi
     let result = fixtures::import_result();
     mock.activity("activity_import", &command, &result);
     mock.activity("rebuild_activity_segments", &result.activity(), &Vec::<i32>::new());
+    mock.activity("rebuild_activity_climbs", &result.activity(), &());
     mock.activity("rebuild_activity_achievements", &result.activity(), &());
     let child = mock.start_child("prepare_heatmap", &result.activity());
     mock.assert_pending();
