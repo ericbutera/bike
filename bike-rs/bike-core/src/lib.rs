@@ -29,6 +29,7 @@ pub mod integration_events_service;
 pub mod jobs;
 pub mod object_store;
 pub mod observability;
+pub mod personal_achievements;
 pub mod provider_metrics;
 pub mod provider_rate_limit;
 pub mod segment_regeneration;

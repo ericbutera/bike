@@ -16,6 +16,8 @@ pub trait BatchOperations: Send + Sync {
     async fn finish_archive(&self, job_id: i32) -> Result<(), WorkflowError>;
     async fn pending_heatmaps(&self, after_id: i32) -> Result<Vec<ActivityTask>, WorkflowError>;
     async fn pending_climbs(&self, after_id: i32) -> Result<Vec<ActivityTask>, WorkflowError>;
+    async fn personal_achievement_segments(&self, after_id: i32) -> Result<Vec<i32>, WorkflowError>;
+    async fn rebuild_personal_achievements(&self, segment_id: i32) -> Result<(), WorkflowError>;
 }
 
 pub struct BatchActivities {
@@ -113,6 +115,28 @@ impl BatchActivities {
         after_id: i32,
     ) -> Result<Vec<ActivityTask>, ActivityError> {
         domain_task(async move { self.operations.pending_heatmaps(after_id).await })
+            .await
+            .map_err(domain_error)
+    }
+
+    #[activity(name = "personal_achievement_segments")]
+    pub async fn personal_achievement_segments(
+        self: Arc<Self>,
+        _ctx: ActivityContext,
+        after_id: i32,
+    ) -> Result<Vec<i32>, ActivityError> {
+        domain_task(async move { self.operations.personal_achievement_segments(after_id).await })
+            .await
+            .map_err(domain_error)
+    }
+
+    #[activity(name = "rebuild_personal_achievements")]
+    pub async fn rebuild_personal_achievements(
+        self: Arc<Self>,
+        _ctx: ActivityContext,
+        segment_id: i32,
+    ) -> Result<(), ActivityError> {
+        domain_task(async move { self.operations.rebuild_personal_achievements(segment_id).await })
             .await
             .map_err(domain_error)
     }

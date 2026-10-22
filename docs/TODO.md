@@ -61,6 +61,11 @@
 
 ## Segments
 
+- [x] Persist each rider's all-time segment PR, second, and third with an idempotent
+      Temporal backfill; see [achievements](specs/achievements.md).
+- [ ] Implement overall achievements: a global top ten with one position per athlete;
+      see [achievements](specs/achievements.md#overall-achievements-and-earned-awards).
+
 - [x] Support individual GPX downloads from segment detail; see the
       [download contract](specs/segment-processing.md#segment-downloads).
 

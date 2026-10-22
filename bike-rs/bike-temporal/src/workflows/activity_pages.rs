@@ -203,6 +203,41 @@ impl BackfillActivityClimbs {
     }
 }
 
+#[workflow]
+#[derive(Default)]
+pub struct BackfillPersonalAchievements;
+
+#[workflow_methods]
+impl BackfillPersonalAchievements {
+    #[run(name = "backfill_personal_achievements")]
+    pub async fn run(ctx: &mut WorkflowContext<Self>, mut after_id: i32) -> WorkflowResult<()> {
+        let segment_ids = options::run(
+            ctx,
+            BatchActivities::personal_achievement_segments,
+            after_id,
+            options::activity(Priority::Background, "personal-achievements-backfill".into()),
+        )
+        .await?;
+        let full = segment_ids.len() == 16;
+        for segment_id in segment_ids {
+            options::run(
+                ctx,
+                BatchActivities::rebuild_personal_achievements,
+                segment_id,
+                options::activity(Priority::Background, format!("segment-{segment_id}")),
+            )
+            .await?;
+            after_id = segment_id;
+        }
+        if full {
+            return ctx
+                .continue_as_new(after_id, Default::default())
+                .map(|never| match never {});
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,5 +272,32 @@ mod tests {
         mock.activity("pending_climbs", &0_i32, &vec![task.clone(), task]);
         mock.fail_activity("rebuild_activity_climbs", "climb failed");
         mock.assert_failure_message("climb failed");
+    }
+
+    #[test]
+    fn personal_achievement_backfill_pages_segments_and_resumes_after_the_completed_page() {
+        let ids: Vec<i32> = (1..=16).collect();
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillPersonalAchievements>(0);
+        mock.activity("personal_achievement_segments", &0_i32, &ids);
+        for id in ids {
+            mock.activity("rebuild_personal_achievements", &id, &());
+        }
+        let cursor = mock.continued_input::<i32>();
+        assert_eq!(cursor, 16);
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillPersonalAchievements>(cursor);
+        mock.activity("personal_achievement_segments", &cursor, &vec![23_i32]);
+        mock.activity("rebuild_personal_achievements", &23_i32, &());
+        mock.result::<()>();
+    }
+
+    #[test]
+    fn personal_achievement_backfill_finishes_empty_pages_and_stops_on_failure() {
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillPersonalAchievements>(0);
+        mock.activity("personal_achievement_segments", &0_i32, &Vec::<i32>::new());
+        mock.result::<()>();
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillPersonalAchievements>(0);
+        mock.activity("personal_achievement_segments", &0_i32, &vec![1_i32, 2]);
+        mock.fail_activity("rebuild_personal_achievements", "personal achievements failed");
+        mock.assert_failure_message("personal achievements failed");
     }
 }

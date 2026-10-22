@@ -77,6 +77,13 @@ impl BatchOperations for Operations {
     async fn finish_archive(&self, job_id: i32) -> Result<(), WorkflowError> {
         self.record("finish_archive", &job_id)
     }
+    async fn personal_achievement_segments(&self, after_id: i32) -> Result<Vec<i32>, WorkflowError> {
+        self.record("personal_achievement_segments", &after_id)?;
+        Ok(vec![fixtures::segment().id])
+    }
+    async fn rebuild_personal_achievements(&self, segment_id: i32) -> Result<(), WorkflowError> {
+        self.record("rebuild_personal_achievements", &segment_id)
+    }
     async fn pending_climbs(&self, after_id: i32) -> Result<Vec<ActivityTask>, WorkflowError> {
         self.record("pending_climbs", &after_id)?;
         Ok(vec![fixtures::activity_task()])

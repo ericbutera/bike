@@ -365,6 +365,7 @@ where
     // Different segments share activity summaries. Release segment/rank
     // locks before acquiring activity locks and reading their current ranks.
     rebuild_activity_analytics_cache(db, &activity_ids).await?;
+    crate::personal_achievements::rebuild(db, id).await?;
     Ok(())
 }
 

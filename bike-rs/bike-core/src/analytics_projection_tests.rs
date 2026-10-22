@@ -161,8 +161,10 @@ async fn segment_refresh_commits_ranks_before_locking_shared_activity_projection
         .append_query_results([vec![ranked]])
         .append_query_results([vec![fixtures::segment()]])
         .append_query_results([vec![fixtures::segment_user_summary()]])
-        // Clear both segment summaries, update effort ranks, replace activity output.
-        .append_exec_results((0..5).map(|_| written()))
+        .append_query_results([vec![fixtures::segment()]])
+        .append_query_results([vec![fixtures::segment_effort()]])
+        // Segment/activity projections and personal achievements publish separately.
+        .append_exec_results((0..7).map(|_| written()))
         .into_connection();
     rebuild_segment_analytics_cache(&db, &[1]).await.unwrap();
     let log = db.into_transaction_log();
@@ -178,6 +180,6 @@ async fn segment_refresh_commits_ranks_before_locking_shared_activity_projection
     assert!(commit < projection_lock);
     assert_eq!(
         statements.iter().filter(|statement| statement.sql == "COMMIT").count(),
-        2
+        3
     );
 }

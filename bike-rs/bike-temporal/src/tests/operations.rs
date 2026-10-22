@@ -112,7 +112,9 @@ async fn segment_rebuild_without_efforts_clears_old_summaries() {
             latest_effort_id: None,
             ..fixtures::segment_summary()
         }]])
-        .append_exec_results([fixtures::written(), fixtures::written()]);
+        .append_query_results([vec![fixtures::segment()]])
+        .append_query_results([Vec::<segment_efforts::Model>::new()])
+        .append_exec_results((0..3).map(|_| fixtures::written()));
     operations(mock)
         .rebuild_segment_analytics(bike_core::bike_tasks::SegmentChange {
             segment_id: fixtures::segment().id,

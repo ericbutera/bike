@@ -67,4 +67,46 @@ impl BatchOperations for BikeOperations {
             .await
             .map_err(Into::into)
     }
+
+    async fn personal_achievement_segments(&self, after_id: i32) -> Result<Vec<i32>, WorkflowError> {
+        Ok(bike_core::entities::segments::Model::ids_page(&self.db, after_id, 16).await?)
+    }
+
+    async fn rebuild_personal_achievements(&self, segment_id: i32) -> Result<(), WorkflowError> {
+        bike_core::personal_achievements::rebuild(&self.db, segment_id).await?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::activities::BatchActivities;
+    use bike_core::{object_store::ObjectOwner, test_support as fixtures};
+    use std::{collections::BTreeMap, sync::Arc};
+    use temporalio_sdk::testing::ActivityEnvironment;
+
+    #[tokio::test]
+    async fn registered_backfill_handlers_select_segments_and_publish_personal_achievements() {
+        let row: BTreeMap<String, sea_orm::Value> = [("id".into(), fixtures::segment().id.into())].into();
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![row]])
+            .append_query_results([vec![fixtures::segment()]])
+            .append_query_results([vec![fixtures::segment_effort()]])
+            .append_exec_results((0..2).map(|_| fixtures::written()))
+            .into_connection();
+        let (objects, _) = fixtures::object_storage(ObjectOwner::ActivityImports);
+        let environment = ActivityEnvironment::builder_with_default()
+            .register_activities(BatchActivities::new(Arc::new(BikeOperations::new(db, objects))))
+            .build();
+        let ids = environment
+            .run(BatchActivities::personal_achievement_segments, 0)
+            .await
+            .unwrap();
+        assert_eq!(ids, vec![fixtures::segment().id]);
+        environment
+            .run(BatchActivities::rebuild_personal_achievements, ids[0])
+            .await
+            .unwrap();
+    }
 }
