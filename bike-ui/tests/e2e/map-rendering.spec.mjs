@@ -612,6 +612,30 @@ for (const target of targets) {
           json: {
             ...ride,
             route_points: climbingRoute,
+            climb_output: {
+              detector_version: 1,
+              recording_sha256: "fixture-climbing-route",
+              climbs: [
+                {
+                  climb_number: 1,
+                  start_route_point_index: 0,
+                  end_route_point_index: climbingRoute.length - 1,
+                  start_elapsed_seconds: climbingRoute[0].elapsed_seconds,
+                  end_elapsed_seconds: climbingRoute.at(-1).elapsed_seconds,
+                  duration_seconds:
+                    climbingRoute.at(-1).elapsed_seconds -
+                    climbingRoute[0].elapsed_seconds,
+                  distance_meters:
+                    climbingRoute.at(-1).distance_meters -
+                    climbingRoute[0].distance_meters,
+                  elevation_gain_meters:
+                    climbingRoute.at(-1).elevation_meters -
+                    climbingRoute[0].elevation_meters,
+                  average_grade_percent: 4,
+                  route_points: climbingRoute,
+                },
+              ],
+            },
             segment_efforts: [
               {
                 segment_id: 1,

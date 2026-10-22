@@ -1,88 +1,95 @@
 import { describe, expect, it } from "vitest";
 import { buildActivityClimbs } from "./activityClimbs";
-import { type ActivityRoutePoint } from "./queries";
-
-function point(
-  elapsedSeconds: number,
-  distanceMeters: number,
-  elevationMeters: number,
-): ActivityRoutePoint {
-  return {
-    elapsed_seconds: elapsedSeconds,
-    latitude: 45 + elapsedSeconds * 0.00001,
-    longitude: -122 + elapsedSeconds * 0.00001,
-    distance_meters: distanceMeters,
-    elevation_meters: elevationMeters,
-  };
-}
+import {
+  climbOutput,
+  savedClimb,
+  climbingRoutePoints,
+} from "../tests/fixtures/activities";
 
 describe("buildActivityClimbs", () => {
-  it("finds sustained climbs and keeps short rolling gaps inside the climb", () => {
-    const climbs = buildActivityClimbs([
-      point(0, 0, 100),
-      point(120, 600, 125),
-      point(240, 1200, 160),
-      point(300, 1300, 158),
-      point(420, 1900, 205),
-      point(520, 2300, 215),
-      point(620, 2600, 214),
-      point(760, 3400, 218),
-      point(900, 4300, 265),
-      point(1040, 5200, 318),
-    ]);
-
-    expect(climbs).toHaveLength(2);
-    expect(climbs[0]).toMatchObject({
-      id: "climb-1",
-      sequence: 1,
-      startRoutePointIndex: 0,
-      endRoutePointIndex: 4,
-      startDistanceMeters: 0,
-      endDistanceMeters: 1900,
-      distanceMeters: 1900,
-      elevationGainMeters: 107,
-      elevationLossMeters: 2,
-      category: 4,
-      durationSeconds: 420,
-    });
-    expect(climbs[0]?.avgGradePercent).toBeCloseTo(5.632, 3);
-    expect(climbs[0]?.maxGradePercent).toBeCloseTo(7.833, 3);
-    expect(climbs[0]?.routePoints).toHaveLength(5);
-
-    expect(climbs[1]).toMatchObject({
-      id: "climb-2",
-      sequence: 2,
-      startRoutePointIndex: 7,
-      endRoutePointIndex: 9,
-      distanceMeters: 1800,
-      elevationGainMeters: 100,
-      elevationLossMeters: 0,
-      category: 4,
-      durationSeconds: 280,
+  it("preserves saved numbering, bounds and metrics even below detection thresholds", () => {
+    const [climb] = buildActivityClimbs(
+      climbOutput([
+        savedClimb({
+          climb_number: 7,
+          start_route_point_index: 10,
+          end_route_point_index: 14,
+          distance_meters: 100,
+          elevation_gain_meters: 2,
+          duration_seconds: 12,
+          average_grade_percent: 2,
+          elevation_loss_meters: 17,
+          max_grade_percent: 42,
+          category: "HC",
+        }),
+      ]),
+    );
+    expect(climb).toMatchObject({
+      id: "climb-7",
+      sequence: 7,
+      startRoutePointIndex: 10,
+      endRoutePointIndex: 14,
+      distanceMeters: 100,
+      elevationGainMeters: 2,
+      avgGradePercent: 2,
+      elevationLossMeters: 17,
+      maxGradePercent: 42,
+      category: "HC",
+      durationSeconds: 12,
+      routePoints: climbingRoutePoints(),
     });
   });
 
-  it("ignores short bumps that do not meet sustained climb thresholds", () => {
-    const climbs = buildActivityClimbs([
-      point(0, 0, 100),
-      point(30, 120, 108),
-      point(50, 220, 116),
-      point(80, 350, 118),
-    ]);
-
-    expect(climbs).toEqual([]);
+  it("uses saved metrics without deriving them from the prepared geometry", () => {
+    const points = climbingRoutePoints();
+    points[2].elevation_meters = 130;
+    const [climb] = buildActivityClimbs(
+      climbOutput([
+        savedClimb({
+          route_points: points,
+          elevation_loss_meters: 9,
+          max_grade_percent: 7,
+          category: "2",
+        }),
+      ]),
+    );
+    expect(climb).toMatchObject({
+      elevationLossMeters: 9,
+      maxGradePercent: 7,
+      category: "2",
+    });
   });
 
-  it("returns an empty list when distance or elevation samples are missing", () => {
-    const climbs = buildActivityClimbs([
-      point(0, 0, 100),
-      {
-        ...point(120, 700, 150),
-        elevation_meters: null,
-      },
-      point(240, 1400, 200),
-    ]);
-
-    expect(climbs).toEqual([]);
+  it("retains non-geographic climbs with missing presentation values", () => {
+    const [climb] = buildActivityClimbs(
+      climbOutput([
+        savedClimb({
+          route_points: [],
+          start_route_point_index: null,
+          end_route_point_index: null,
+          average_grade_percent: null,
+          elevation_loss_meters: null,
+          max_grade_percent: null,
+          category: null,
+        }),
+      ]),
+    );
+    expect(climb).toMatchObject({
+      elevationGainMeters: 125,
+      startDistanceMeters: null,
+      endDistanceMeters: null,
+      elevationLossMeters: null,
+      maxGradePercent: null,
+      category: null,
+      avgGradePercent: null,
+      routePoints: [],
+    });
   });
+
+  it.each([null, undefined, climbOutput([])])(
+    "does not synthesize climbs for missing or empty results",
+    (output) => {
+      expect(buildActivityClimbs(output)).toEqual([]);
+    },
+  );
 });

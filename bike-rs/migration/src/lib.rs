@@ -71,6 +71,7 @@ mod m20261017_000001_retire_sql_worker;
 mod m20261017_000002_strava_provider_watermark;
 mod m20261021_000001_activity_climbs;
 mod m20261022_000001_personal_achievements;
+mod m20261022_000002_saved_climb_details;
 
 pub struct Migrator;
 
@@ -82,6 +83,7 @@ impl MigratorTrait for Migrator {
 
         let mut locals: Vec<Box<dyn MigrationTrait>> = vec![
             Box::new(m20261022_000001_personal_achievements::Migration),
+            Box::new(m20261022_000002_saved_climb_details::Migration),
             Box::new(m20261021_000001_activity_climbs::Migration),
             Box::new(m20261017_000001_retire_sql_worker::Migration),
             Box::new(m20261017_000002_strava_provider_watermark::Migration),

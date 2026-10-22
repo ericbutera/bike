@@ -1,6 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { climbingRoutePoints } from "../../tests/fixtures/activities";
+import {
+  climbingRoutePoints,
+  climbOutput,
+  savedClimb,
+} from "../../tests/fixtures/activities";
 import { buildActivityClimbs } from "../../lib/activityClimbs";
 import ActivityClimbsPanel from "../activity-detail/ActivityClimbsPanel";
 
@@ -22,7 +26,7 @@ describe("ActivityClimbsPanel", () => {
     render(
       <ActivityClimbsPanel
         activityId={42}
-        climbs={buildActivityClimbs(climbingRoutePoints())}
+        climbs={buildActivityClimbs(climbOutput())}
         active
         unitSystem="imperial"
       />,
@@ -48,7 +52,9 @@ describe("ActivityClimbsPanel", () => {
       render(
         <ActivityClimbsPanel
           activityId={42}
-          climbs={buildActivityClimbs(routePoints)}
+          climbs={buildActivityClimbs(
+            climbOutput([savedClimb({ route_points: routePoints })]),
+          )}
           active
           unitSystem={unitSystem}
         />,

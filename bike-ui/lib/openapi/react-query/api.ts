@@ -1473,6 +1473,7 @@ export interface components {
       /** @example true */
       can_regenerate?: boolean;
       chart_points?: components["schemas"]["ActivityChartPoint"][];
+      climb_output?: null | components["schemas"]["ClimbOutput"];
       description?: string | null;
       /**
        * Format: double
@@ -1951,6 +1952,38 @@ export interface components {
        * @example 12
        */
       user_id: number;
+    };
+    Climb: {
+      /** Format: double */
+      average_grade_percent?: number | null;
+      category?: string | null;
+      /** Format: int32 */
+      climb_number: number;
+      /** Format: double */
+      distance_meters: number;
+      /** Format: int32 */
+      duration_seconds: number;
+      /** Format: double */
+      elevation_gain_meters: number;
+      /** Format: double */
+      elevation_loss_meters?: number | null;
+      /** Format: int32 */
+      end_elapsed_seconds: number;
+      /** Format: int32 */
+      end_route_point_index?: number | null;
+      /** Format: double */
+      max_grade_percent?: number | null;
+      route_points: components["schemas"]["ActivityRoutePoint"][];
+      /** Format: int32 */
+      start_elapsed_seconds: number;
+      /** Format: int32 */
+      start_route_point_index?: number | null;
+    };
+    ClimbOutput: {
+      climbs: components["schemas"]["Climb"][];
+      /** Format: int32 */
+      detector_version: number;
+      recording_sha256: string;
     };
     ClimbResponse: {
       /** Format: int32 */
@@ -2539,6 +2572,7 @@ export interface components {
         /** @example true */
         can_regenerate?: boolean;
         chart_points?: components["schemas"]["ActivityChartPoint"][];
+        climb_output?: null | components["schemas"]["ClimbOutput"];
         description?: string | null;
         /**
          * Format: double

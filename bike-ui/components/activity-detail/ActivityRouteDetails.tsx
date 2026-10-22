@@ -3,13 +3,17 @@
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { buildActivityClimbs } from "../../lib/activityClimbs";
 import type { UnitSystem } from "../../lib/activityFormatting";
-import type { Activity } from "./types";
+import type { Activity } from "../../lib/queries";
 import MatchedSegmentsSection from "../MatchedSegmentsSection";
 import { AppCard } from "../ui/Card";
 import ActivityClimbsPanel from "./ActivityClimbsPanel";
 import { useMatchedSegmentGroups } from "./matchedSegments";
 
-type DetailTab = { key: "segments" | "climbs"; label: string; count: number };
+type DetailTab = {
+  key: "segments" | "climbs";
+  label: string;
+  count: number;
+};
 
 export default function ActivityRouteDetails({
   activity,
@@ -26,16 +30,20 @@ export default function ActivityRouteDetails({
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const segments = useMatchedSegmentGroups(activity);
   const climbs = useMemo(
-    () => buildActivityClimbs(activity.route_points),
-    [activity.route_points],
+    () => buildActivityClimbs(activity.climb_output),
+    [activity.climb_output],
   );
   const choices: DetailTab[] = [
     { key: "segments", label: "Segments", count: segments.length },
-    { key: "climbs", label: "Climbs", count: climbs.length },
+    {
+      key: "climbs",
+      label: "Climbs",
+      count: climbs.length,
+    },
   ];
-  const tabs = choices.filter((tab) => tab.count > 0);
+  const tabs = choices.filter((tab) => tab.key === "climbs" || tab.count > 0);
   const [activeTab, setActiveTab] = useState<DetailTab["key"]>(
-    tabs[0]?.key ?? "segments",
+    tabs.find((tab) => (tab.count ?? 0) > 0)?.key ?? "climbs",
   );
   const selectedTab =
     tabs.find((tab) => tab.key === activeTab)?.key ?? tabs[0]?.key;

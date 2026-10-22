@@ -151,6 +151,8 @@ pub struct ActivityResponse {
     pub segment_efforts: Vec<ActivitySegmentEffort>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub training_analysis: Option<ActivityTrainingAnalysisResponse>,
+    /// Saved climb rows; activity detail returns an empty list when none are stored.
+    pub climb_output: Option<bike_core::activity_climbs::ClimbOutput>,
     #[serde(default, skip_serializing_if = "is_false")]
     #[schema(example = true)]
     pub can_regenerate: bool,
@@ -281,6 +283,7 @@ impl ActivityResponse {
             achievement_highlights,
             segment_efforts,
             training_analysis: None,
+            climb_output: None,
             can_regenerate,
             can_download_source_file: can_regenerate,
         }
@@ -697,7 +700,9 @@ pub async fn get_activity(
             .is_some(),
         None => false,
     };
+    let climb_output = bike_core::activity_climbs::load(&state.db, &activity).await?;
     let mut response = ActivityResponse::from_detail(activity, segment_efforts);
+    response.climb_output = climb_output;
     response.training_analysis = training_analysis;
     response.can_download_source_file = can_download_source_file;
 
@@ -808,7 +813,9 @@ pub async fn update_activity(
     .await?;
     let segment_efforts = load_activity_segment_efforts(&state.db, user.id, updated.id).await?;
     let training_analysis = load_activity_training_analysis_by_activity_id(&state.db, updated.id).await?;
+    let climb_output = bike_core::activity_climbs::load(&state.db, &updated).await?;
     let mut response = ActivityResponse::from_detail(updated, segment_efforts);
+    response.climb_output = climb_output;
     response.training_analysis = training_analysis;
 
     Ok(Json(response))
@@ -1003,6 +1010,94 @@ mod tests {
         let log = format!("{:?}", db.into_transaction_log());
         assert!(!log.contains("INSERT"));
         assert!(!log.contains("background_tasks"));
+    }
+
+    #[tokio::test]
+    async fn activity_detail_serializes_saved_climbs_and_completed_empty_output() {
+        use crate::controllers::test_support as http;
+        use bike_core::{activity_climbs, entities::activity_climbs as rows, test_support as fixtures};
+        for completed_empty in [false, true] {
+            let activity = fixtures::activity();
+            let recording = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
+            let output = rows::output::Model {
+                activity_id: activity.id,
+                detector_version: activity_climbs::DETECTOR_VERSION,
+                recording_sha256: bike_core::object_store::checksum(&serde_json::to_vec(&recording).unwrap()),
+                object_ref: json!({}),
+                climb_count: if completed_empty { 0 } else { 1 },
+            };
+            let climbs = if completed_empty {
+                vec![]
+            } else {
+                vec![rows::Model {
+                    activity_id: activity.id,
+                    climb_number: 2,
+                    start_route_point_index: None,
+                    end_route_point_index: None,
+                    start_elapsed_seconds: 10,
+                    end_elapsed_seconds: 110,
+                    duration_seconds: 100,
+                    distance_meters: 500.0,
+                    elevation_gain_meters: 35.0,
+                    average_grade_percent: Some(7.0),
+                    elevation_loss_meters: Some(3.0),
+                    max_grade_percent: Some(9.0),
+                    category: Some("4".into()),
+                    route_points_json: Default::default(),
+                }]
+            };
+            let db = fixtures::postgres_mock()
+                .append_query_results([vec![fixtures::customer()]])
+                .append_query_results([vec![activity]])
+                .append_query_results([Vec::<segment_efforts::Model>::new()])
+                .append_query_results([Vec::<bike_core::entities::activity_training_analyses::Model>::new()])
+                .append_query_results([vec![output]])
+                .append_query_results([climbs])
+                .into_connection();
+            let response = http::local_user_json(db, "/api/activities/42", 200).await;
+            assert_eq!(
+                response["climb_output"]["detector_version"],
+                activity_climbs::DETECTOR_VERSION
+            );
+            let climbs = response["climb_output"]["climbs"].as_array().unwrap();
+            assert_eq!(climbs.len(), usize::from(!completed_empty));
+            if !completed_empty {
+                assert_eq!(climbs[0]["climb_number"], 2);
+                assert_eq!(climbs[0]["duration_seconds"], 100);
+                assert_eq!(climbs[0]["route_points"], json!([]));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn activity_detail_serializes_missing_climb_processing_as_empty() {
+        use crate::controllers::test_support as http;
+        use bike_core::{entities::activity_climbs, test_support as fixtures};
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![fixtures::customer()]])
+            .append_query_results([vec![fixtures::activity()]])
+            .append_query_results([Vec::<segment_efforts::Model>::new()])
+            .append_query_results([Vec::<bike_core::entities::activity_training_analyses::Model>::new()])
+            .append_query_results([Vec::<activity_climbs::output::Model>::new()])
+            .append_query_results([Vec::<activity_climbs::Model>::new()])
+            .into_connection();
+        let response = http::local_user_json(db, "/api/activities/42", 200).await;
+        assert!(response.as_object().unwrap().contains_key("climb_output"));
+        assert_eq!(response["climb_output"]["climbs"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn activity_detail_checks_ownership_before_reading_saved_climbs() {
+        use crate::controllers::test_support as http;
+        use bike_core::test_support as fixtures;
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![fixtures::customer()]])
+            .append_query_results([Vec::<activities::Model>::new()])
+            .into_connection();
+        http::local_user_json(db.clone(), "/api/activities/42", 404).await;
+        let sql = format!("{:?}", db.into_transaction_log());
+        assert!(sql.contains("user_id"));
+        assert!(!sql.contains("activity_climb"));
     }
 
     #[test]
