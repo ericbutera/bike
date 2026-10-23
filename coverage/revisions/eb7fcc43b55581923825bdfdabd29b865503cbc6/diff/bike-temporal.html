@@ -1,0 +1,150 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+        <title>Diff Coverage</title>
+        <style>
+            .src-snippet { margin-top: 2em; }
+            .src-name { font-weight: bold; }
+            .snippets {
+                border-top: 1px solid #bdbdbd;
+                border-bottom: 1px solid #bdbdbd;
+            }
+            pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.hll { background-color: #ffcccc }
+.c { color: #3D7B7B; font-style: italic } /* Comment */
+.err { border: 1px solid #F00 } /* Error */
+.k { color: #008000; font-weight: bold } /* Keyword */
+.o { color: #666 } /* Operator */
+.ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.cp { color: #9C6500 } /* Comment.Preproc */
+.cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.gd { color: #A00000 } /* Generic.Deleted */
+.ge { font-style: italic } /* Generic.Emph */
+.ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.gr { color: #E40000 } /* Generic.Error */
+.gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.gi { color: #008400 } /* Generic.Inserted */
+.go { color: #717171 } /* Generic.Output */
+.gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.gs { font-weight: bold } /* Generic.Strong */
+.gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.gt { color: #04D } /* Generic.Traceback */
+.kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.kp { color: #008000 } /* Keyword.Pseudo */
+.kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.kt { color: #B00040 } /* Keyword.Type */
+.m { color: #666 } /* Literal.Number */
+.s { color: #BA2121 } /* Literal.String */
+.na { color: #687822 } /* Name.Attribute */
+.nb { color: #008000 } /* Name.Builtin */
+.nc { color: #00F; font-weight: bold } /* Name.Class */
+.no { color: #800 } /* Name.Constant */
+.nd { color: #A2F } /* Name.Decorator */
+.ni { color: #717171; font-weight: bold } /* Name.Entity */
+.ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.nf { color: #00F } /* Name.Function */
+.nl { color: #767600 } /* Name.Label */
+.nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.nt { color: #008000; font-weight: bold } /* Name.Tag */
+.nv { color: #19177C } /* Name.Variable */
+.ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.w { color: #BBB } /* Text.Whitespace */
+.mb { color: #666 } /* Literal.Number.Bin */
+.mf { color: #666 } /* Literal.Number.Float */
+.mh { color: #666 } /* Literal.Number.Hex */
+.mi { color: #666 } /* Literal.Number.Integer */
+.mo { color: #666 } /* Literal.Number.Oct */
+.sa { color: #BA2121 } /* Literal.String.Affix */
+.sb { color: #BA2121 } /* Literal.String.Backtick */
+.sc { color: #BA2121 } /* Literal.String.Char */
+.dl { color: #BA2121 } /* Literal.String.Delimiter */
+.sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.s2 { color: #BA2121 } /* Literal.String.Double */
+.se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.sh { color: #BA2121 } /* Literal.String.Heredoc */
+.si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.sx { color: #008000 } /* Literal.String.Other */
+.sr { color: #A45A77 } /* Literal.String.Regex */
+.s1 { color: #BA2121 } /* Literal.String.Single */
+.ss { color: #19177C } /* Literal.String.Symbol */
+.bp { color: #008000 } /* Name.Builtin.Pseudo */
+.fm { color: #00F } /* Name.Function.Magic */
+.vc { color: #19177C } /* Name.Variable.Class */
+.vg { color: #19177C } /* Name.Variable.Global */
+.vi { color: #19177C } /* Name.Variable.Instance */
+.vm { color: #19177C } /* Name.Variable.Magic */
+.il { color: #666 } /* Literal.Number.Integer.Long */
+.diff-cover-covered-line { background-color: #ddffdd; }
+        </style>
+    </head>
+    <body>
+        <h1>Diff Coverage</h1>
+        <p>Diff: 44d6d41bb1521ce763a727d6d14e99fbda6d379f...HEAD, staged, unstaged and untracked changes</p>
+        <ul>
+            <li><b>Total</b>: 93 lines</li>
+            <li><b>Missing</b>: 1 line</li>
+            <li><b>Coverage</b>: 98.92%</li>
+        </ul>
+        <table border="1">
+            <tr>
+                <th>Source File</th>
+                <th>Diff Coverage (%)</th>
+                <th>Missing Lines</th>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/activities/batches.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/operations/batches.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/runtime.rs</td>
+                <td>0.0%</td>
+                <td>56</td>
+            </tr>
+            <tr>
+                <td>bike-rs/bike-temporal/src/workflows/activity_pages.rs</td>
+                <td>100%</td>
+                <td>&nbsp;</td>
+            </tr>
+        </table>
+        <div class="src-snippet">
+            <div class="src-name">bike-rs/bike-temporal/src/runtime.rs</div>
+            <div class="snippets">
+            <div class="snippet"><table class="snippettable"><tr><td class="linenos"><div class="linenodiv"><pre><span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span></pre></div></td><td class="code"><div><pre><span></span><a id="bike-rs/bike-temporal/src/runtime.rs-52" name="bike-rs/bike-temporal/src/runtime.rs-52"></a><span class="w">        </span><span class="p">.</span><span class="n">register_workflow</span><span class="p">::</span><span class="o">&lt;</span><span class="n">ActivityArchiveImport</span><span class="o">&gt;</span><span class="p">()</span><span class="o">?</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-53" name="bike-rs/bike-temporal/src/runtime.rs-53"></a><span class="w">        </span><span class="p">.</span><span class="n">register_workflow</span><span class="p">::</span><span class="o">&lt;</span><span class="n">ReconcileHeatmaps</span><span class="o">&gt;</span><span class="p">()</span><span class="o">?</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-54" name="bike-rs/bike-temporal/src/runtime.rs-54"></a><span class="w">        </span><span class="p">.</span><span class="n">register_workflow</span><span class="p">::</span><span class="o">&lt;</span><span class="n">BackfillActivityClimbs</span><span class="o">&gt;</span><span class="p">()</span><span class="o">?</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-55" name="bike-rs/bike-temporal/src/runtime.rs-55"></a><span class="w">        </span><span class="p">.</span><span class="n">register_workflow</span><span class="p">::</span><span class="o">&lt;</span><span class="n">BackfillPersonalAchievements</span><span class="o">&gt;</span><span class="p">()</span><span class="o">?</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-56" name="bike-rs/bike-temporal/src/runtime.rs-56"></a><span class="hll"><span class="w">        </span><span class="p">.</span><span class="n">register_workflow</span><span class="p">::</span><span class="o">&lt;</span><span class="n">BackfillOverallAchievements</span><span class="o">&gt;</span><span class="p">()</span><span class="o">?</span>
+</span><a id="bike-rs/bike-temporal/src/runtime.rs-57" name="bike-rs/bike-temporal/src/runtime.rs-57"></a><span class="w">        </span><span class="p">.</span><span class="n">register_activities</span><span class="p">(</span><span class="n">ImportActivities</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">operations</span><span class="p">.</span><span class="n">clone</span><span class="p">()))</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-58" name="bike-rs/bike-temporal/src/runtime.rs-58"></a><span class="w">        </span><span class="p">.</span><span class="n">register_activities</span><span class="p">(</span><span class="n">BatchActivities</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">operations</span><span class="p">.</span><span class="n">clone</span><span class="p">()))</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-59" name="bike-rs/bike-temporal/src/runtime.rs-59"></a><span class="w">        </span><span class="p">.</span><span class="n">register_activities</span><span class="p">(</span><span class="n">DerivedActivities</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">operations</span><span class="p">))</span>
+<a id="bike-rs/bike-temporal/src/runtime.rs-60" name="bike-rs/bike-temporal/src/runtime.rs-60"></a><span class="w">        </span><span class="p">.</span><span class="n">graceful_shutdown_period</span><span class="p">(</span><span class="n">Duration</span><span class="p">::</span><span class="n">from_secs</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+</pre></div></td></tr></table></div>
+
+            </div>
+        </div>
+    </body>
+</html>
