@@ -187,6 +187,7 @@ export type SegmentBuilderSource = {
 export type SegmentMode = "xc" | "dh";
 
 export type Segment = {
+  can_manage?: boolean;
   id: number;
   title: string;
   source: string;

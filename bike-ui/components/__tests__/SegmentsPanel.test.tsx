@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { sharedSegmentFor } from "../../tests/fixtures/segmentTenants";
 import RequireAuth from "../RequireAuth";
 import SegmentsPanel from "../SegmentsPanel";
 
@@ -73,6 +74,7 @@ function makeSegment(
 ) {
   return {
     id: 9,
+    can_manage: true,
     title: "North Climb",
     source: "manual_upload",
     mode: "xc",
@@ -273,6 +275,29 @@ describe("SegmentsPanel", () => {
     });
   });
 
+  it("lets the creator remove a star from a shared segment", async () => {
+    const user = userEvent.setup();
+    const segment = { ...sharedSegmentFor(7), starred: true };
+    mocks.useSegments.mockReturnValue({
+      data: [segment],
+      isError: false,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+
+    render(<SegmentsPanel />);
+
+    const button = screen.getByRole("button", { name: "Unstar Shared climb" });
+    expect(button).toHaveAttribute("aria-pressed", "true");
+    await user.click(button);
+
+    expect(mocks.updateSegmentAsync).toHaveBeenCalledExactlyOnceWith({
+      id: segment.id,
+      starred: false,
+    });
+  });
+
   it("renames a segment from the library grid modal", async () => {
     const user = userEvent.setup();
 
@@ -335,5 +360,69 @@ describe("SegmentsPanel", () => {
     expect(mocks.toastError).toHaveBeenCalledWith("Segment name is required.");
     expect(mocks.updateSegmentAsync).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+function browseAs(viewerId: number) {
+  mocks.useCurrentUser.mockReturnValue({
+    user: { id: viewerId, email: `rider-${viewerId}@example.test` },
+    isLoading: false,
+  });
+  mocks.useSegments.mockReturnValue({
+    data: [sharedSegmentFor(viewerId), sharedSegmentFor(viewerId, 2)],
+    isLoading: false,
+    isError: false,
+  });
+  render(<SegmentsPanel />);
+}
+
+describe("shared segment discovery", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.searchParams = "";
+    mocks.useUploadSegment.mockReturnValue({
+      uploadAsync: mocks.uploadAsync,
+      isPending: false,
+    });
+    mocks.useUpdateSegment.mockReturnValue({
+      updateAsync: mocks.updateSegmentAsync,
+      isPending: false,
+    });
+  });
+  it("lets the creator discover both shared routes", () => {
+    browseAs(7);
+    expect(screen.getByRole("link", { name: "Shared climb" })).toHaveAttribute(
+      "href",
+      "/segments/1",
+    );
+    expect(screen.getByRole("link", { name: "Shared sprint" })).toHaveAttribute(
+      "href",
+      "/segments/2",
+    );
+  });
+  it("lets a contributor discover another athlete's route", () => {
+    browseAs(8);
+    expect(screen.getByRole("link", { name: "Shared climb" })).toHaveAttribute(
+      "href",
+      "/segments/1",
+    );
+  });
+  it("lets a spectator discover both routes without personal efforts", () => {
+    browseAs(9);
+    expect(
+      screen.getByRole("link", { name: "Shared climb" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Shared sprint" }),
+    ).toBeInTheDocument();
+  });
+  it("hides creator-only catalog actions from another rider", () => {
+    browseAs(8);
+    expect(
+      screen.queryByRole("button", { name: "Star Shared climb" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /rename shared climb/i }),
+    ).not.toBeInTheDocument();
   });
 });
