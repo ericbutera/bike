@@ -106,6 +106,10 @@ export async function fakeProductApi(
         json = ride;
         break;
       default:
+        if (/^\/segments\/\d+\/personal-achievements$/.test(path)) {
+          json = [];
+          break;
+        }
         if (
           path.startsWith(`/activities/${ride.id}/`) &&
           path.includes("map")

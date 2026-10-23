@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import RequireAuth from "../RequireAuth";
+import { personalAchievement } from "../../tests/fixtures/activitySegments";
 import SegmentDetailPanel from "../SegmentDetailPanel";
 import { ComparisonGapChartTooltip } from "../segment-detail/SegmentDetailComparisonSection";
 
@@ -34,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   useCurrentUser: vi.fn(),
   useSegment: vi.fn(),
   useSegmentComparison: vi.fn(),
+  useSegmentPersonalAchievements: vi.fn(),
   useUpdateSegment: vi.fn(),
   useDeleteSegment: vi.fn(),
   renderMapLibreRouteMap: vi.fn(),
@@ -54,6 +56,7 @@ vi.mock("../../lib/auth", () => ({
 vi.mock("../../lib/queries", () => ({
   useSegment: mocks.useSegment,
   useSegmentComparison: mocks.useSegmentComparison,
+  useSegmentPersonalAchievements: mocks.useSegmentPersonalAchievements,
   useUpdateSegment: mocks.useUpdateSegment,
   useDeleteSegment: mocks.useDeleteSegment,
 }));
@@ -205,6 +208,11 @@ describe("SegmentDetailPanel", () => {
       isError: false,
       error: null,
     });
+    mocks.useSegmentPersonalAchievements.mockReturnValue({
+      data: [personalAchievement()],
+      isLoading: false,
+      isError: false,
+    });
     mocks.useSegmentComparison.mockReturnValue({
       data: null,
       isLoading: false,
@@ -310,8 +318,9 @@ describe("SegmentDetailPanel", () => {
     expect(screen.getAllByText("Speed").length).toBeGreaterThan(0);
     expect(screen.getByText("HR")).toBeInTheDocument();
     expect(screen.getByText("KOM 5m 00s")).toBeInTheDocument();
-    expect(screen.getByText("Your PR 5m 12s")).toBeInTheDocument();
-    expect(screen.getAllByText("Lunch Ride").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("link", { name: "Your PR 5m 12s" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Eric Butera").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Casey Fast").length).toBeGreaterThan(0);
     expect(
@@ -492,6 +501,21 @@ describe("SegmentDetailPanel", () => {
     expect(
       within(runThreeRow as HTMLElement).getByText("Run 3"),
     ).toBeInTheDocument();
+  });
+
+  it("keeps saved achievements visible when comparison fails", () => {
+    mocks.useSegmentComparison.mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: true,
+    });
+    renderSegmentDetailPanel();
+    expect(
+      screen.getByRole("link", { name: "Your PR 5m 12s" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Unable to load segment comparison.",
+    );
   });
 
   it("paginates efforts 10 per page", async () => {
@@ -711,7 +735,7 @@ describe("SegmentDetailPanel", () => {
     expect(screen.queryByText("PR")).not.toBeInTheDocument();
   });
 
-  it("uses the segment PR duration when the current user effort is not matched locally", () => {
+  it("shows the saved PR when the effort is not present in comparison data", () => {
     const segment = makeSegment();
 
     segment.efforts = segment.efforts.map((effort) => ({
@@ -728,9 +752,11 @@ describe("SegmentDetailPanel", () => {
 
     renderSegmentDetailPanel();
 
-    expect(screen.getByText("Your PR 5m 12s")).toBeInTheDocument();
     expect(
-      screen.getByText("Personal best across matched efforts"),
+      screen.getByRole("link", { name: "Your PR 5m 12s" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Personal achievements" }),
     ).toBeInTheDocument();
   });
 
@@ -844,12 +870,39 @@ describe("SegmentDetailPanel", () => {
 
     expect(screen.getByText("Showing 1-1 of 1 efforts")).toBeInTheDocument();
     expect(
+      screen.getByRole("link", { name: "Your PR 5m 12s" }),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByRole("link", { name: "5m 12s" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "5m 00s" })).toHaveAttribute(
       "href",
       "/activities/8",
     );
+  });
+
+  it("selects the linked personal effort when navigating within the same segment", () => {
+    const view = renderSegmentDetailPanel({ initialSelectedEffortIds: [1] });
+    expect(
+      screen.getAllByRole("button", {
+        name: "Remove Lunch Ride from comparison",
+      }).length,
+    ).toBeGreaterThan(0);
+    view.rerender(
+      <RequireAuth>
+        <SegmentDetailPanel segmentId={14} initialSelectedEffortIds={[2]} />
+      </RequireAuth>,
+    );
+    expect(
+      screen.queryAllByRole("button", {
+        name: "Remove Lunch Ride from comparison",
+      }),
+    ).toHaveLength(0);
+    expect(
+      screen.getAllByRole("button", {
+        name: "Remove Hill Attack from comparison",
+      }).length,
+    ).toBeGreaterThan(0);
   });
 
   it("keeps compared efforts selected across time filters until removed", async () => {

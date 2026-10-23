@@ -842,6 +842,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/segments/{id}/personal-achievements": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_personal_achievements"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/segments/{id}/yearly-bests": {
     parameters: {
       query?: never;
@@ -2756,6 +2772,24 @@ export interface components {
        * @description Number of items per page
        */
       per_page?: number;
+    };
+    PersonalAchievementResponse: {
+      /**
+       * Format: int32
+       * @example 355
+       */
+      duration_seconds: number;
+      /**
+       * Format: int32
+       * @example 90
+       */
+      effort_id: number;
+      /**
+       * Format: int32
+       * @description All-time personal position: 1 is PR, 2 is second, 3 is third.
+       * @example 1
+       */
+      position: number;
     };
     PublicFlagResponse: {
       enabled: boolean;
@@ -8197,6 +8231,57 @@ export interface operations {
         content?: never;
       };
       /** @description Segment or activity not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
+  get_personal_achievements: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /**
+         * @description Segment ID
+         * @example 7
+         */
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Saved all-time personal positions for the authenticated rider */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PersonalAchievementResponse"][];
+        };
+      };
+      /** @description Not authenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Segment not found */
       404: {
         headers: {
           [name: string]: unknown;

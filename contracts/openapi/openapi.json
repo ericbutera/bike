@@ -4380,6 +4380,70 @@
         ]
       }
     },
+    "/segments/{id}/personal-achievements": {
+      "get": {
+        "tags": [
+          "segments"
+        ],
+        "operationId": "get_personal_achievements",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Segment ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "example": 7
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved all-time personal positions for the authenticated rider",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PersonalAchievementResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "404": {
+            "description": "Segment not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/segments/{id}/yearly-bests": {
       "get": {
         "tags": [
@@ -9017,6 +9081,34 @@
             "type": "integer",
             "format": "int64",
             "description": "Number of items per page"
+          }
+        }
+      },
+      "PersonalAchievementResponse": {
+        "type": "object",
+        "required": [
+          "position",
+          "effort_id",
+          "duration_seconds"
+        ],
+        "properties": {
+          "duration_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "example": 355
+          },
+          "effort_id": {
+            "type": "integer",
+            "format": "int32",
+            "example": 90
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32",
+            "description": "All-time personal position: 1 is PR, 2 is second, 3 is third.",
+            "example": 1,
+            "maximum": 3,
+            "minimum": 1
           }
         }
       },

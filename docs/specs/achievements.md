@@ -40,9 +40,23 @@
 - Current personal positions are distinct from awards earned by an activity.
   Previously earned awards remain attached to their effort when current
   standings change.
-- This slice saves current personal positions and their backfill. Global
-  standings, historical award persistence, period filters, and API/UI consumer
-  changes remain separate work.
+- Global standings, historical award persistence, and period filters remain
+  separate work.
+
+## Personal API and UI
+
+- Authenticated `GET /segments/{id}/personal-achievements` returns the current
+  rider's saved rows ordered by position, with `position`, `effort_id`, and
+  `duration_seconds`. Use the same segment access policy as segment detail.
+- Return `[]` when no personal positions are saved and 404 for an inaccessible
+  or missing segment. Do not accept a rider ID from the caller.
+- Segment detail displays an all-time personal achievements panel with PR,
+  second and third labels and saved durations. Show only saved positions,
+  including repeated attempts from one activity, with links selecting each effort.
+- Show loading, error and empty states within the panel. Available saved results
+  remain visible during refresh and do not depend on comparison samples.
+- Effort date filters never change these all-time personal positions. The panel
+  describes current standings, not historical awards earned by activities.
 
 See [segment processing](segment-processing.md) for efforts and
 [background work](background-work.md) for Temporal execution.

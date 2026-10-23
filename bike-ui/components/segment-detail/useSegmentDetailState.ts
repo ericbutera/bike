@@ -258,7 +258,7 @@ export function useSegmentEffortSelection({
 }) {
   const allEfforts = segment?.efforts ?? EMPTY_EFFORTS;
   const [selectionState, setSelectionState] = useKeyedState(
-    String(segment?.id ?? segmentId),
+    `${segment?.id ?? segmentId}:${initialSelectedEffortIds.join(",")}`,
     { ids: initialSelectedEffortIds, edited: false },
   );
   const availableEffortIds = new Set(allEfforts.map((effort) => effort.id));
