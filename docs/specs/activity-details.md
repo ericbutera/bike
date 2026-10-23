@@ -79,6 +79,15 @@
 
 ## Route map and matched segments
 
+- Activity detail reads current ranks directly from the rider's saved segment
+  efforts and personal-best durations from their saved segment/rider summaries.
+  Limit queries to the requested activities and their matched segments.
+- Return saved values unchanged while background processing catches up. Missing
+  ranks or personal-best summaries remain null; timestamps never hide saved
+  results. GET requests do not scan effort history, calculate replacements,
+  write results, or enqueue repair.
+- Preserve effort traversal order and the separately saved earned-award decisions
+  and chip display order. Current ranks do not recreate historical awards.
 - Matched segment lines use the same 6 CSS pixel width and 9 CSS pixel white
   casing as the interactive blue activity route. Hovering or selecting must not
   thicken the lines. Render focused segments above other segments.
