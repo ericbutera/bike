@@ -343,26 +343,33 @@ mod overall_tests {
     use workflow_test_support::WorkflowMock;
 
     #[test]
-    fn overall_backfill_pages_segments_and_resumes_after_completed_replacements() {
+    fn a_full_page_continues_after_all_replacements_complete() {
         let ids: Vec<i32> = (1..=16).collect();
         let mut mock: WorkflowMock = WorkflowMock::new::<BackfillOverallAchievements>(0);
         mock.activity("overall_achievement_segments", &0_i32, &ids);
         for id in ids {
             mock.activity("rebuild_overall_achievements", &id, &());
         }
-        let cursor = mock.continued_input::<i32>();
-        assert_eq!(cursor, 16);
-        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillOverallAchievements>(cursor);
-        mock.activity("overall_achievement_segments", &cursor, &vec![23_i32]);
+        assert_eq!(mock.continued_input::<i32>(), 16);
+    }
+
+    #[test]
+    fn a_partial_page_resumes_from_the_supplied_cursor() {
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillOverallAchievements>(16);
+        mock.activity("overall_achievement_segments", &16_i32, &vec![23_i32]);
         mock.activity("rebuild_overall_achievements", &23_i32, &());
         mock.result::<()>();
     }
 
     #[test]
-    fn overall_backfill_finishes_empty_pages_and_stops_on_failure() {
+    fn an_empty_page_finishes_the_backfill() {
         let mut mock: WorkflowMock = WorkflowMock::new::<BackfillOverallAchievements>(0);
         mock.activity("overall_achievement_segments", &0_i32, &Vec::<i32>::new());
         mock.result::<()>();
+    }
+
+    #[test]
+    fn a_failed_replacement_stops_the_backfill() {
         let mut mock: WorkflowMock = WorkflowMock::new::<BackfillOverallAchievements>(0);
         mock.activity("overall_achievement_segments", &0_i32, &vec![1_i32, 2]);
         mock.fail_activity("rebuild_overall_achievements", "overall achievements failed");

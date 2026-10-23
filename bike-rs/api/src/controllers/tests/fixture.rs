@@ -43,8 +43,17 @@ pub(super) async fn local_user_json(db: DatabaseConnection, path: &str, status: 
     local_user_request(state, Request::builder().uri(path).body(Body::empty()).unwrap(), status).await
 }
 
-pub(super) async fn local_user_request(mut state: AppStorage, request: Request<Body>, status: u16) -> Value {
-    state.local_admin_user_pid = Some(fixtures::customer().pid);
+pub(super) async fn local_user_request(state: AppStorage, request: Request<Body>, status: u16) -> Value {
+    user_request(state, fixtures::customer().pid, request, status).await
+}
+
+pub(super) async fn user_request(
+    mut state: AppStorage,
+    user_pid: uuid::Uuid,
+    request: Request<Body>,
+    status: u16,
+) -> Value {
+    state.local_admin_user_pid = Some(user_pid);
     let response = super::routes()
         .with_state(Arc::new(state))
         .oneshot(request)
