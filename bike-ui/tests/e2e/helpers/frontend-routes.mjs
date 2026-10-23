@@ -1,7 +1,7 @@
 import { activityId, raceEffortIds, segmentId } from "./targets.mjs";
 
 // This is the shared browser route inventory. Keep route names stable: they
-// are used in the artifact names and in the shared parity evidence.
+// are used in artifact names and the focused browser fixtures.
 export const frontendRoutes = [
   { name: "activity-list", path: "/", surface: "activities" },
   {

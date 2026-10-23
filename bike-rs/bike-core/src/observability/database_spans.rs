@@ -14,9 +14,6 @@ use std::{
 
 type SpanKey = (opentelemetry::trace::TraceId, opentelemetry::trace::SpanId);
 
-#[cfg(test)]
-mod tests;
-
 #[derive(Debug, Default)]
 struct DatabaseWork {
     calls: i64,

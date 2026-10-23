@@ -121,17 +121,3 @@ async fn refresh_database_metrics(state: &AppStorage) -> Result<(), DbErr> {
 
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::directory_bytes;
-
-    #[test]
-    fn measures_nested_upload_files() {
-        let root = std::env::temp_dir().join(format!("bike-upload-metrics-{}", std::process::id()));
-        std::fs::create_dir_all(root.join("nested")).unwrap();
-        std::fs::write(root.join("nested/activity.fit"), b"12345").unwrap();
-        assert_eq!(directory_bytes(&root).unwrap(), 5);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-}

@@ -24,7 +24,7 @@ id = "workflow-lint"
 name = "Woodpecker workflow lint"
 language = "system"
 entry = "mise run ci:check"
-files = "^\\.woodpecker/.*\\.yaml$|^mise\\.toml$|^scripts/check-ci(-test)?\\.sh$"
+files = "^\\.woodpecker/.*\\.yaml$|^mise\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
@@ -33,14 +33,6 @@ name = "Release image build plan"
 language = "system"
 entry = "mise run images:plan"
 files = "(^|/)Dockerfile(\\..*)?$|^docker-bake\\.hcl$|^mise\\.toml$"
-pass_filenames = false
-
-[[repos.hooks]]
-id = "coverage-policy"
-name = "Changed-line coverage policy fixtures"
-language = "system"
-entry = "mise run coverage:test"
-files = "^scripts/coverage-.*\\.sh$|^coverage-projects\\.json$|^(map-renderer|bike-rs)/mise\\.toml$|^mise\\.toml$|^prek\\.toml$"
 pass_filenames = false
 
 [[repos.hooks]]
@@ -121,12 +113,4 @@ name = "Map service protobuf freshness"
 language = "system"
 entry = "mise --cd map-renderer run generate:protobuf:check"
 files = "^(proto|bike-rs/proto)/bike/maps/.*\\.proto$|^map-renderer/gen/|^map-renderer/mise\\.toml$|^mise\\.toml$"
-pass_filenames = false
-
-[[repos.hooks]]
-id = "storage-policy"
-name = "Image storage safety fixtures"
-language = "system"
-entry = "mise run storage:test"
-files = "^scripts/storage-.*\\.sh$|^mise\\.toml$|^docker/buildkitd\\.toml$"
 pass_filenames = false

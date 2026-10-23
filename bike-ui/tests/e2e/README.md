@@ -20,7 +20,7 @@ Prepare cached release images separately from test execution:
 mise install
 mise run e2e:prepare
 mise run e2e
-mise run e2e 'activity-import-result|warm-reset'
+mise run e2e activity-import-result
 mise run e2e 'activity-list|segment-detail|race-viewer'
 mise run e2e 'auth-happy-path|heatmap-controls'
 PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
@@ -40,10 +40,9 @@ PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
 - `compose.yaml` owns the shared release-service definitions.
   `compose.dev.yaml` retains development builds, mounts, ports, and persistence;
   `compose.e2e.yaml` contains only test differences. Production remains in Pulumi.
-- Services start once. Setup verifies migrations, recovery helpers, API readiness,
-  worker startup and both worker metrics endpoints in that same environment.
-  It stops the worker, checks its clean exit, preserves backend logs, and removes
-  the worker before loading browser data. Playwright defines baseline/scenario data in
+- Services start once. Setup applies migrations and waits for the API, UI and
+  renderer needed by product flows. It does not start an ingestion worker or run
+  infrastructure smoke checks. Playwright defines baseline/scenario data in
   [`helpers/seeds.mjs`](helpers/seeds.mjs); the prepared API image's fixture CLI
   validates records through current SeaORM models. Migrations and scenario
   seeding happen once per run; native `pg_dump` captures fresh data snapshots.
@@ -51,8 +50,7 @@ PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
   retaining the database, schema, pooled connections, and application processes.
   Uploads and image caches are restored through run-owned volumes. Fresh normal
   sessions and the existing flag-update API keep authentication/caches coherent.
-  Snapshot hashes, container IDs/start times/restart counts, and database object
-  IDs are checked after every attempt. One Playwright worker owns the database.
+  One Playwright worker owns the database.
 - The fixture-driven browser phase excludes the job worker. Browser tests verify real
   queue submission and seeded persisted results; they never wait for job
   execution. Heatmap fixtures reuse the owning projection builder during seeding.
@@ -85,9 +83,8 @@ models, rather than committed SQL datasets or database dumps.
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `baseline`          | `activity-actions`, `activity-detail`, `activity-edit`, `activity-import-duplicate`, `activity-import-new`, `activity-lifecycle`, `activity-list` | Activity reads, edits, upload/queue operations, deletion; no worker                                         |
 | `baseline`          | `segment-actions`, `segment-builder`, `segment-delete`, `segment-detail`, `segment-import`, `segment-list`, `race-viewer`, `xc-target`            | Segment/effort reads, construction/import, edits/deletion, race playback                                    |
-| `baseline`          | `admin-tasks`, `admin-users`, `archive-import-queue`, `training-reports`, `frontend-matrix`                                                       | Admin/task/user/report reads and actions, archive queue                                                     |
+| `baseline`          | `admin-tasks`, `admin-users`, `archive-import-queue`, `training-reports`                                                                          | Admin/task/user/report reads and actions, archive queue                                                     |
 | `baseline`          | `four-view-states`                                                                                                                                | Real successful reads and missing-record API checks; loading/empty/error UI responses explicitly controlled |
-| `baseline`          | `warm-reset`                                                                                                                                      | Real deletion followed by data restoration and live pooled reads; unchanged database/service identities     |
 | `laps`              | `activity-laps`                                                                                                                                   | Seeded lap summaries                                                                                        |
 | `climb`             | `activity-climb`                                                                                                                                  | Seeded sustained-climb geometry                                                                             |
 | `zones`             | `activity-zone-without-chart`                                                                                                                     | Zone rollup with empty chart samples                                                                        |
@@ -132,10 +129,9 @@ models, rather than committed SQL datasets or database dumps.
   configuration, fixtures, Compose files and their explicit env files from the
   current checkout, then uses
   `pnpm install --frozen-lockfile`. It is not a published application image.
-- `mise run e2e` owns backend startup/helper checks and browser acceptance in
-  one environment. Worker checks finish before fixture seeding; the browser
-  phase still does not execute ingestion workflows. `backend.log` retains the
-  API and worker startup/shutdown evidence even after the worker is removed.
+- `mise run e2e` prepares one environment for product browser acceptance. It
+  does not execute ingestion workflows, metrics/startup smoke checks, or tests
+  of the fixture-reset machinery. Service logs remain attached to test results.
 
 - Woodpecker uses one workflow for checks, three application images, then
   `mise run ci:e2e`, which calls the same `mise run e2e` lifecycle. It uses a

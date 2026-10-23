@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
 import { expect } from "@playwright/test";
 import {
   baselineData,
@@ -11,7 +10,6 @@ import {
 } from "./seeds.mjs";
 
 const execute = promisify(execFile);
-const identityFile = ".artifacts/playwright/runtime.json";
 const attemptStarts = new WeakMap();
 
 export async function environmentCommand(...args) {
@@ -41,48 +39,14 @@ function composeArgs(...args) {
     "/workspace/compose.yaml",
     "--file",
     "/workspace/compose.e2e.yaml",
-    "--profile",
-    "worker",
     ...args,
   ];
-}
-
-async function runtimeIdentity() {
-  const { stdout: ids } = await execute(
-    "docker",
-    composeArgs("ps", "--all", "--quiet"),
-  );
-  const { stdout } = await execute("docker", [
-    "inspect",
-    ...ids.trim().split(/\s+/),
-  ]);
-  const containers = JSON.parse(stdout)
-    .map((container) => ({
-      service: container.Config.Labels["com.docker.compose.service"],
-      id: container.Id,
-      startedAt: container.State.StartedAt,
-      restarts: container.RestartCount,
-      running: container.State.Running,
-    }))
-    .sort((first, second) => first.service.localeCompare(second.service));
-  expect(containers.map((container) => container.service)).not.toContain(
-    "temporal-worker",
-  );
-  for (const service of ["postgres", "temporal", "bike-rs", "ui", "bike-maps"])
-    expect(
-      containers.find((container) => container.service === service)?.running,
-      `${service} remains running`,
-    ).toBe(true);
-  const { stdout: database } = await environmentCommand("identity");
-  return { containers, database };
 }
 
 async function waitForServices(request) {
   for (const url of [
     "http://api.e2e.test:3000/api/health",
     "http://ui.e2e.test:3000",
-    "http://temporal-worker:9091/metrics",
-    "http://temporal-worker:9092/metrics",
   ]) {
     await expect
       .poll(
@@ -97,18 +61,6 @@ async function waitForServices(request) {
       )
       .toBe(200);
   }
-  await expect
-    .poll(
-      async () => {
-        const { stdout } = await execute(
-          "docker",
-          composeArgs("logs", "--no-color", "temporal-worker"),
-        );
-        return stdout;
-      },
-      { message: "Temporal worker registered", timeout: 60_000 },
-    )
-    .toContain("Temporal worker started for Strava and Bike");
   await expect
     .poll(
       async () => {
@@ -129,11 +81,6 @@ export async function prepareBaseline(request, testInfo) {
   const started = performance.now();
   await environmentCommand("prepare");
   await waitForServices(request);
-  await environmentCommand("stop-worker");
-  await writeFile(
-    identityFile,
-    JSON.stringify(await runtimeIdentity(), null, 2),
-  );
   await environmentCommand("seed", JSON.stringify(baselineData()));
   await environmentCommand("snapshot", "baseline");
   // Each named variant is built once by Playwright and snapshotted from the
@@ -242,15 +189,4 @@ export async function attachServiceLogs(testInfo) {
   expect(stdout + stderr, "Services must not emit diagnostic logs").not.toMatch(
     /warning:|notice:|fatal:|error:|"level":"(?:warn|error)"|⨯|unhandledRejection/i,
   );
-  const result = await environmentCommand("verify");
-  expect(result.stderr, "Snapshot verification diagnostics").toBe("");
-  const identity = await runtimeIdentity();
-  expect(
-    identity,
-    "Containers and database objects remain identical across attempts",
-  ).toEqual(JSON.parse(await readFile(identityFile, "utf8")));
-  await testInfo.attach("runtime-identity", {
-    body: JSON.stringify(identity),
-    contentType: "application/json",
-  });
 }

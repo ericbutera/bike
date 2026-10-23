@@ -42,6 +42,20 @@
 
 ## Checks and coverage
 
+- Unit tests cover Bike's core behavior with shared fixtures and mocks: activity
+  parsing and imports, segment matching and achievements, training and reports,
+  heatmaps, authentication, and map rendering. Cover successful results first;
+  retain meaningful failure and ownership checks for these operations.
+- Each unit test needs a distinct behavior or input case. Keep rules with their
+  owning service or component; parent tests cover their own wiring and state
+  rather than repeating child behavior. Shared setup or similar names do not make
+  tests duplicates. E2E flows may overlap the units they exercise together.
+  Retire generic route/contract smoke matrices that repeat focused product flows.
+- Do not test infrastructure or scaffolding: CI graphs and image publication,
+  storage maintenance, coverage/report tooling, fixture factories or exports,
+  tracing, metrics, environment configuration, and service startup/shutdown.
+  Keep native linters, type/build checks, generated-file freshness checks, and
+  runtime admission checks. Product browser regressions remain in acceptance.
 - Keep `coverage-projects.json` as the project inventory. Every owning project
   emits HTML, LCOV and JSON coverage reports into this workflow's checkout.
   Missing, empty or foreign-source reports fail the 80% changed-line gate.
@@ -86,12 +100,12 @@
   Keyword search attribute. Start PostgreSQL and Temporal and wait for health
   before API startup. Warm resets preserve both identities. Browser tests use
   fixtures for derived results and do not claim ingestion-worker coverage.
-- One acceptance environment verifies API/worker startup, worker metrics,
-  migration status and recovery helpers before loading browser fixtures. Stop
-  the worker cleanly, preserve its logs, and remove it before seeding; retain
-  the same PostgreSQL, Temporal, API, UI and renderer for the browser suite.
-  Fixture seeding exercises the packaged fixture command. Unit tests retain
-  mocked Activities/child workflows. One outer cleanup owns all run resources.
+- Browser setup applies real migrations, waits for the services needed by product
+  flows, and loads fixtures through the packaged fixture command. Do not start
+  an ingestion worker for infrastructure smoke checks, invoke CLI/status commands
+  just to prove availability, or assert container/database identities after tests.
+  Unit tests retain mocked Activities/child workflows. One outer cleanup owns all
+  run resources.
 - Deployment uses the same backend digest for API, worker and migrations plus
   the accepted UI/maps digests. Main deployment requires successful checks,
   coverage and image acceptance. A companion infrastructure change updates the
@@ -135,4 +149,3 @@
   its generator freshness task remains authoritative for its source formatting.
 
 Image builds and CI prepare must pass the [storage capacity policy](image-storage.md).
-Capacity fixture tests run in the tooling gate and affected local hooks.

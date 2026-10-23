@@ -26,6 +26,5 @@
 - Gate thresholds reserve room for ordinary builds; they do not interrupt a
   running build or provide a filesystem quota. Any hard-quota migration needs
   separate storage planning, downtime, and verification of persistent-data safety.
-- Verify under/over-budget, boundary, unavailable/stale measurements, and scoped
-  cleanup with command fixtures. Inspect the resolved native BuildKit policy and
-  run a representative image build before rollout.
+- Inspect the resolved native BuildKit policy and run a representative image
+  build before rollout. Storage maintenance has no application unit test suite.

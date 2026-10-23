@@ -146,3 +146,29 @@ it("keeps text field accessible names independent of their existing values", () 
     "Trail bike",
   );
 });
+
+it("saves a changed title as its own field patch", async () => {
+  const user = userEvent.setup();
+  const close = vi.fn();
+  mutation.updateAsync.mockResolvedValue(activity());
+  render(<ActivityModal activity={activity()} onClose={close} />);
+
+  await user.clear(screen.getByLabelText("Title"));
+  await user.type(screen.getByLabelText("Title"), "Evening Trail Work");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(mutation.updateAsync).toHaveBeenCalledExactlyOnceWith(42, {
+    title: "Evening Trail Work",
+  });
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it("keeps saving disabled for a blank title", async () => {
+  const user = userEvent.setup();
+  render(<ActivityModal activity={activity()} onClose={vi.fn()} />);
+
+  await user.clear(screen.getByLabelText("Title"));
+
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  expect(mutation.updateAsync).not.toHaveBeenCalled();
+});

@@ -35,7 +35,7 @@ fi
 
 compose() {
   docker compose --project-name "$project" \
-    --file compose.yaml --file compose.e2e.yaml --profile worker "$@"
+    --file compose.yaml --file compose.e2e.yaml "$@"
 }
 
 cleanup() {
@@ -112,7 +112,7 @@ select_image BIKE_E2E_TOOLS_IMAGE "${BIKE_E2E_TOOLS_IMAGE:-bike-e2e-tools:review
 select_image BIKE_POSTGRES_IMAGE "${BIKE_POSTGRES_IMAGE:?Run through mise}"
 if [[ -n "${CI:-}" ]]; then
   : >.artifacts/e2e-images.env
-  # Publish these identities only after combined backend and browser acceptance.
+  # Publish these identities only after product browser acceptance.
   printf 'BIKE_TESTED_REVISION=%s\n' "${CI_COMMIT_SHA:?}" >"$release_digests"
   record_digest BIKE_TESTED_BACKEND_DIGEST "$BIKE_BACKEND_IMAGE"
   record_digest BIKE_TESTED_UI_DIGEST "$BIKE_UI_IMAGE"
@@ -122,7 +122,7 @@ fi
 # Mark ownership before creation so partial-startup failures also get cleanup.
 runtime_created=true
 compose config --quiet
-compose create --no-build postgres migration bike-rs ui bike-maps temporal-worker
+compose create --no-build postgres migration bike-rs ui bike-maps
 
 engine=()
 if [[ "${DOCKER_HOST:-unix://}" == tcp://* ]]; then
@@ -165,7 +165,7 @@ fi
 # Copy current tracked source, including worktree edits, without an archive image.
 tar -cf - bike-ui/package.json bike-ui/pnpm-lock.yaml bike-ui/pnpm-workspace.yaml \
   bike-ui/playwright.config.mjs bike-ui/tests/e2e bike-ui/public/map-styles \
-  contracts/openapi/openapi.json bike-rs/api/tests/fixtures/platform \
+  bike-rs/api/tests/fixtures/platform \
   compose.yaml compose.e2e.yaml docker/*.env \
   scripts/e2e-state.sh scripts/e2e-reset.sql \
   scripts/e2e-browser.sh scripts/fixture-sequences.sql | docker cp - "$runner:/workspace"

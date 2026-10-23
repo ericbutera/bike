@@ -5,7 +5,6 @@ mod handlers_fixture;
 mod imports;
 mod persistence;
 mod upsert;
-mod workflow_spans;
 use super::*;
 use fixture::Fixture;
 use sea_orm::{DatabaseBackend, MockDatabase};

@@ -1,6 +1,4 @@
 import { expect } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { openRoute, stabilize } from "./ui.mjs";
 import { expectedEffortCount } from "./targets.mjs";
 
@@ -9,38 +7,6 @@ const NEXT_ERROR_MARKERS = [
   "Unhandled Runtime Error",
   "This page could not be found",
 ];
-
-const rustOpenApiPath =
-  process.env.BIKE_RUST_OPENAPI_FILE ??
-  fileURLToPath(
-    new URL("../../../../contracts/openapi/openapi.json", import.meta.url),
-  );
-const rustOpenApi = JSON.parse(readFileSync(rustOpenApiPath, "utf8"));
-const apiBasePath = new URL(
-  rustOpenApi.servers[0].url,
-  "http://bike.local",
-).pathname.replace(/\/$/, "");
-
-function operationPathPattern(path) {
-  const segments = `${apiBasePath}${path}`.split("/").slice(1);
-  const pattern = segments.map((segment) =>
-    segment.startsWith("{") && segment.endsWith("}")
-      ? "[^/]+"
-      : segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-  );
-  return new RegExp(`^/${pattern.join("/")}$`);
-}
-
-const apiOperations = Object.entries(rustOpenApi.paths).flatMap(
-  ([path, methods]) =>
-    Object.entries(methods)
-      .filter(([, operation]) => operation.operationId)
-      .map(([method, operation]) => ({
-        method: method.toUpperCase(),
-        operationId: operation.operationId,
-        path: operationPathPattern(path),
-      })),
-);
 
 export async function openFrontendRoute(page, target, route) {
   const requests = [];
@@ -103,24 +69,6 @@ export async function openFrontendRoute(page, target, route) {
   };
 }
 
-export async function assertKeyboardNavigation(page) {
-  const focusableCount = await page
-    .locator(
-      "a[href]:visible,button:not([disabled]):visible,input:not([disabled]):visible,select:not([disabled]):visible,textarea:not([disabled]):visible",
-    )
-    .count();
-  if (focusableCount === 0) return;
-
-  // Start from the document body instead of a component-specific control.
-  // Map widgets can intentionally move focus to their own canvas after a
-  // control receives focus, which is not a failure of page-level tab order.
-  await page.locator("body").focus();
-  await page.keyboard.press("Tab");
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement !== document.body))
-    .toBe(true);
-}
-
 export async function stabilizePage(page) {
   await stabilize(page);
   await page.evaluate(
@@ -129,24 +77,6 @@ export async function stabilizePage(page) {
         requestAnimationFrame(() => requestAnimationFrame(resolve)),
       ),
   );
-}
-
-export function apiOperationEvidence(responses) {
-  return responses.map((response) => ({
-    url: new URL(response.url()).pathname,
-    method: response.request().method(),
-    operationId:
-      apiOperations.find(
-        (operation) =>
-          operation.method === response.request().method() &&
-          operation.path.test(new URL(response.url()).pathname),
-      )?.operationId ?? null,
-    status: response.status(),
-    requestId:
-      response.headers()["x-request-id"] ??
-      response.headers()["x-correlation-id"] ??
-      null,
-  }));
 }
 
 export function dynamicVisualMasks(page) {

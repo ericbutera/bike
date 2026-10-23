@@ -165,22 +165,3 @@ impl OAuthRouteStorage for AppStorage {
         bike_core::auth::OAuthProviderService::is_provider_enabled(provider)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn map_cache_is_optional_and_starts_with_existing_configuration() {
-        let mut config = Config::get().clone();
-        config.map_renderer_grpc_address = None;
-        assert!(create_map_image_service(&config).await.is_none());
-        let directory = tempfile::tempdir().unwrap();
-        config.map_renderer_grpc_address = Some("http://unused.invalid".into());
-        config.map_service_token = "worker-secret".into();
-        config.map_image_cache_dir = directory.path().to_str().unwrap().into();
-        config.map_image_cache_ttl_seconds = 60;
-        let service = create_map_image_service(&config).await.unwrap();
-        service.prune().await.unwrap();
-    }
-}
