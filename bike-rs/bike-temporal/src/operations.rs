@@ -51,6 +51,7 @@ impl DerivedOperations for BikeOperations {
 
     async fn rebuild_activity_achievements(&self, task: ActivityTask) -> Result<(), WorkflowError> {
         let activity = self.activity(&task).await?;
+        bike_core::activity_achievements::record(&self.db, &activity).await?;
         bike_core::analytics::rebuild_activity_analytics_cache(&self.db, &[activity.id]).await?;
         Ok(())
     }

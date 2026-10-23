@@ -6,7 +6,6 @@ use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use bike_core::activity_achievements::ActivityAchievementHighlight;
 use bike_core::activity_details::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint,
 };
@@ -19,7 +18,7 @@ use bike_core::activity_type::ActivityType;
 use bike_core::analytics::{estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty};
 use bike_core::auth::UserContext;
 use bike_core::entities::{
-    activities, activity_analytics, activity_import_artifacts, segment_efforts, segment_user_summaries, segments,
+    activities, activity_earned_awards, activity_import_artifacts, segment_efforts, segment_user_summaries, segments,
 };
 use bike_core::platform::data::pagination::{PaginatedResponse, PaginationParams};
 use bike_core::training_profile::{deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary};
@@ -145,8 +144,7 @@ pub struct ActivityResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schema(example = json!([{"elapsed_seconds": 900,"latitude": 42.3314,"longitude": -83.0458,"distance_meters": 4200.5,"elevation_meters": 183.2}]))]
     pub route_points: Vec<ActivityRoutePoint>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub achievement_highlights: Vec<ActivityAchievementHighlight>,
+    pub earned_awards: Vec<activity_earned_awards::Model>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub segment_efforts: Vec<ActivitySegmentEffort>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -206,14 +204,14 @@ fn is_false(value: &bool) -> bool {
 }
 
 impl ActivityResponse {
-    fn from_summary_with_achievement_highlights(
+    fn from_summary_with_earned_awards(
         model: activities::Model,
-        achievement_highlights: Vec<ActivityAchievementHighlight>,
+        earned_awards: Vec<activity_earned_awards::Model>,
     ) -> Self {
         let derived_data = summary_derived_data(model.derived_data_json.as_ref());
         let location = location_from_derived_json(model.derived_data_json.as_ref());
 
-        Self::from_model(model, derived_data, location, achievement_highlights, Vec::new(), false)
+        Self::from_model(model, derived_data, location, earned_awards, Vec::new(), false)
     }
 
     fn from_detail(model: activities::Model, segment_efforts: Vec<ActivitySegmentEffort>) -> Self {
@@ -235,7 +233,7 @@ impl ActivityResponse {
         model: activities::Model,
         derived_data: ActivityDerivedData,
         location: Option<String>,
-        achievement_highlights: Vec<ActivityAchievementHighlight>,
+        earned_awards: Vec<activity_earned_awards::Model>,
         segment_efforts: Vec<ActivitySegmentEffort>,
         can_regenerate: bool,
     ) -> Self {
@@ -280,7 +278,7 @@ impl ActivityResponse {
             laps: derived_data.laps,
             chart_points: derived_data.chart_points,
             route_points: derived_data.route_points,
-            achievement_highlights,
+            earned_awards,
             segment_efforts,
             training_analysis: None,
             climb_output: None,
@@ -604,30 +602,17 @@ fn group_activity_segment_efforts(
     efforts_by_activity
 }
 
-async fn load_activity_achievement_highlights_by_activity_ids(
+async fn load_activity_earned_awards_by_activity_ids(
     db: &sea_orm::DatabaseConnection,
     user_id: i32,
     activity_ids: &[i32],
-) -> Result<HashMap<i32, Vec<ActivityAchievementHighlight>>, AppError> {
-    if activity_ids.is_empty() {
-        return Ok(HashMap::new());
+) -> Result<HashMap<i32, Vec<activity_earned_awards::Model>>, AppError> {
+    let rows = activity_earned_awards::Model::for_user_activity_ids(db, user_id, activity_ids).await?;
+    let mut awards: HashMap<i32, Vec<activity_earned_awards::Model>> = HashMap::new();
+    for row in rows {
+        awards.entry(row.activity_id).or_default().push(row);
     }
-
-    Ok(
-        activity_analytics::Model::list_by_user_activity_ids(db, user_id, activity_ids)
-            .await?
-            .into_iter()
-            .map(|analytics| {
-                (
-                    analytics.activity_id,
-                    analytics
-                        .achievement_highlights_json
-                        .map(|stored| stored.items)
-                        .unwrap_or_default(),
-                )
-            })
-            .collect(),
-    )
+    Ok(awards)
 }
 
 #[utoipa::path(
@@ -654,15 +639,13 @@ pub async fn list_activities(
     let activities = activities::Model::paginate_for_user(&state.db, user.id, &pagination, params.sport).await?;
 
     let activity_ids = activities.data.iter().map(|activity| activity.id).collect::<Vec<_>>();
-    let mut achievement_highlights_by_activity =
-        load_activity_achievement_highlights_by_activity_ids(&state.db, user.id, &activity_ids).await?;
+    let mut earned_awards_by_activity =
+        load_activity_earned_awards_by_activity_ids(&state.db, user.id, &activity_ids).await?;
 
     Ok(Json(activities.map(|activity| {
-        let achievement_highlights = achievement_highlights_by_activity
-            .remove(&activity.id)
-            .unwrap_or_default();
+        let earned_awards = earned_awards_by_activity.remove(&activity.id).unwrap_or_default();
 
-        ActivityResponse::from_summary_with_achievement_highlights(activity, achievement_highlights)
+        ActivityResponse::from_summary_with_earned_awards(activity, earned_awards)
     })))
 }
 
@@ -702,6 +685,7 @@ pub async fn get_activity(
     };
     let climb_output = bike_core::activity_climbs::load(&state.db, &activity).await?;
     let mut response = ActivityResponse::from_detail(activity, segment_efforts);
+    response.earned_awards = activity_earned_awards::Model::for_user_activity_ids(&state.db, user.id, &[id]).await?;
     response.climb_output = climb_output;
     response.training_analysis = training_analysis;
     response.can_download_source_file = can_download_source_file;
@@ -815,6 +799,7 @@ pub async fn update_activity(
     let training_analysis = load_activity_training_analysis_by_activity_id(&state.db, updated.id).await?;
     let climb_output = bike_core::activity_climbs::load(&state.db, &updated).await?;
     let mut response = ActivityResponse::from_detail(updated, segment_efforts);
+    response.earned_awards = activity_earned_awards::Model::for_user_activity_ids(&state.db, user.id, &[id]).await?;
     response.climb_output = climb_output;
     response.training_analysis = training_analysis;
 
@@ -954,6 +939,70 @@ fn resolve_activity_import_storage_path(uploads_dir: &str, storage_path: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn saved_awards_are_scoped_to_each_rider_and_use_saved_display_order() {
+        use bike_core::test_support as fixtures;
+        for (user_id, activity_id) in [(7, 42), (8, 77)] {
+            let first = activity_earned_awards::Model {
+                activity_id,
+                position: 2,
+                display_position: 1,
+                effort_index: 2,
+                ..fixtures::activity_earned_awards()
+            };
+            let second = activity_earned_awards::Model {
+                position: 1,
+                display_position: 2,
+                effort_index: 1,
+                ..first.clone()
+            };
+            let db = fixtures::postgres_mock()
+                .append_query_results([vec![first.clone(), second.clone()]])
+                .into_connection();
+            let awards = load_activity_earned_awards_by_activity_ids(&db, user_id, &[42, 77, 99])
+                .await
+                .unwrap();
+            assert_eq!(awards.len(), 1);
+            assert_eq!(awards[&activity_id], vec![first, second]);
+            let log = db.into_transaction_log();
+            let query = &log[0].statements()[0];
+            assert!(query.sql.contains("INNER JOIN \"activity_award_outputs\""));
+            assert!(query
+                .sql
+                .contains("\"activity_earned_awards\".\"display_position\" ASC"));
+            assert!(query.sql.contains("\"activity_award_outputs\".\"user_id\" = $1"));
+            assert_eq!(
+                query.values.as_ref().unwrap().0,
+                vec![user_id.into(), 42.into(), 77.into(), 99.into()]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn absent_awards_return_empty_arrays_without_falling_back_to_json() {
+        use bike_core::test_support as fixtures;
+        let db = fixtures::postgres_mock()
+            .append_query_results([Vec::<activity_earned_awards::Model>::new()])
+            .into_connection();
+        assert!(load_activity_earned_awards_by_activity_ids(&db, 7, &[42])
+            .await
+            .unwrap()
+            .is_empty());
+        let log = db.into_transaction_log();
+        assert_eq!(log.len(), 1);
+        assert!(!log[0].statements()[0].sql.contains("activity_analytics"));
+        let db = fixtures::postgres_mock().into_connection();
+        assert!(load_activity_earned_awards_by_activity_ids(&db, 7, &[])
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(db.into_transaction_log().is_empty());
+        let response = ActivityResponse::from_summary_with_earned_awards(fixtures::activity(), Vec::new());
+        let json = serde_json::to_value(response).unwrap();
+        assert_eq!(json["earned_awards"], json!([]));
+        assert!(json.get("achievement_highlights").is_none());
+    }
+
     use bike_core::activity_details::{serialize_derived_activity_data, StoredActivityDerivedData};
     use bike_core::activity_training_analysis::ActivityTrainingAnalysisResponse;
     use bike_core::platform::data::pagination::PaginatedResponse;
@@ -1053,8 +1102,10 @@ mod tests {
                 .append_query_results([Vec::<bike_core::entities::activity_training_analyses::Model>::new()])
                 .append_query_results([vec![output]])
                 .append_query_results([climbs])
+                .append_query_results([vec![fixtures::activity_earned_awards()]])
                 .into_connection();
             let response = http::local_user_json(db, "/api/activities/42", 200).await;
+            assert_eq!(response["earned_awards"], json!([fixtures::activity_earned_awards()]));
             assert_eq!(
                 response["climb_output"]["detector_version"],
                 activity_climbs::DETECTOR_VERSION
@@ -1080,10 +1131,12 @@ mod tests {
             .append_query_results([Vec::<bike_core::entities::activity_training_analyses::Model>::new()])
             .append_query_results([Vec::<activity_climbs::output::Model>::new()])
             .append_query_results([Vec::<activity_climbs::Model>::new()])
+            .append_query_results([Vec::<activity_earned_awards::Model>::new()])
             .into_connection();
         let response = http::local_user_json(db, "/api/activities/42", 200).await;
         assert!(response.as_object().unwrap().contains_key("climb_output"));
         assert_eq!(response["climb_output"]["climbs"], json!([]));
+        assert_eq!(response["earned_awards"], json!([]));
     }
 
     #[tokio::test]
@@ -1113,7 +1166,7 @@ mod tests {
             }),
         };
         model.derived_data_json = Some(activity_response_derived_data_json().with_source_metadata(metadata.clone()));
-        let summary = ActivityResponse::from_summary_with_achievement_highlights(model.clone(), vec![]);
+        let summary = ActivityResponse::from_summary_with_earned_awards(model.clone(), vec![]);
         let detail = ActivityResponse::from_detail(model, vec![]);
         for response in [summary, detail] {
             assert_eq!(response.description, metadata.description);
@@ -1456,7 +1509,7 @@ mod tests {
             10,
             24,
         )
-        .map(|model| ActivityResponse::from_summary_with_achievement_highlights(model, Vec::new()));
+        .map(|model| ActivityResponse::from_summary_with_earned_awards(model, Vec::new()));
 
         assert_eq!(response.data.len(), 1);
         assert_eq!(response.data[0].title, "Morning Ride");
@@ -1483,7 +1536,7 @@ mod tests {
                 power_watts: None,
             })
             .collect::<Vec<_>>();
-        let response = ActivityResponse::from_summary_with_achievement_highlights(
+        let response = ActivityResponse::from_summary_with_earned_awards(
             activities::Model {
                 id: 7,
                 user_id: 8,
@@ -1557,7 +1610,7 @@ mod tests {
         route_points[13].longitude = -123.4;
         route_points[29].longitude = -120.8;
 
-        let response = ActivityResponse::from_summary_with_achievement_highlights(
+        let response = ActivityResponse::from_summary_with_earned_awards(
             activities::Model {
                 id: 7,
                 user_id: 8,

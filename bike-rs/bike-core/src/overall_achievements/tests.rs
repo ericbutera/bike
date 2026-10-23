@@ -46,6 +46,21 @@ fn equal_times_choose_the_smaller_effort_identity_first() {
 }
 
 #[test]
+fn later_equal_time_attempt_keeps_the_original_effort_on_the_leaderboard() {
+    let original = fixtures::segment_effort();
+    let before = overall_top_ten(vec![original.clone()]);
+    let later = segment_efforts::Model {
+        id: 2,
+        activity_id: 43,
+        ..original.clone()
+    };
+    // Present the later attempt first so input order cannot decide the tie.
+    let after = overall_top_ten(vec![later, original]);
+    assert_eq!(after, before);
+    assert_eq!(after[0].effort_id, 1);
+}
+
+#[test]
 fn tied_athletes_receive_consecutive_positions() {
     let efforts = fixtures::shared_segment_efforts()
         .into_iter()

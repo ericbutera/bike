@@ -72,14 +72,7 @@ export type ActivitySegmentEffort = {
   personal_best_duration_seconds?: number | null;
 };
 
-export type ActivityAchievementHighlight = {
-  segment_id: number;
-  segment_title: string;
-  effort_index: number;
-  overall_rank?: number | null;
-  personal_rank?: number | null;
-  personal_best_duration_seconds?: number | null;
-};
+export type ActivityEarnedAward = components["schemas"]["ActivityEarnedAward"];
 
 export type ActivityHeartRateZone = {
   zone: number;
@@ -109,7 +102,7 @@ export type ActivityTrainingAnalysis = {
 
 export type Activity = Pick<
   components["schemas"]["ActivityResponse"],
-  "description" | "gear" | "private_notes" | "climb_output"
+  "description" | "gear" | "private_notes" | "climb_output" | "earned_awards"
 > & {
   activity_import_id?: number | null;
   id: number;
@@ -140,7 +133,6 @@ export type Activity = Pick<
   laps?: ActivityLap[] | null;
   chart_points?: ActivityChartPoint[] | null;
   route_points?: ActivityRoutePoint[] | null;
-  achievement_highlights?: ActivityAchievementHighlight[] | null;
   segment_efforts?: ActivitySegmentEffort[] | null;
   training_analysis?: ActivityTrainingAnalysis | null;
   can_regenerate?: boolean;

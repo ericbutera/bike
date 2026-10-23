@@ -92,6 +92,7 @@ async fn owned_activity_update_preserves_fields_and_commits_its_audit() {
             .append_query_results([Vec::<activity_training_analyses::Model>::new()])
             .append_query_results([vec![output]])
             .append_query_results([Vec::<activity_climbs::Model>::new()])
+            .append_query_results([vec![test_support::activity_earned_awards()]])
             .append_exec_results([MockExecResult {
                 rows_affected: 1,
                 ..Default::default()
@@ -109,6 +110,10 @@ async fn owned_activity_update_preserves_fields_and_commits_its_audit() {
             .await;
         if !fail_start {
             assert_eq!(updated["climb_output"]["climbs"], json!([]));
+            assert_eq!(
+                updated["earned_awards"],
+                json!([test_support::activity_earned_awards()])
+            );
             assert_eq!(updated["title"], after.title);
             assert_eq!(updated["activity_type"], after.activity_type);
             assert_eq!(updated["source"], after.source);

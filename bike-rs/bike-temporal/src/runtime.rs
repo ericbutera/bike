@@ -3,10 +3,10 @@ use crate::{
     activities::{BatchActivities, DerivedActivities, ImportActivities},
     operations::BikeOperations,
     workflows::{
-        ActivityArchiveImport, BackfillActivityClimbs, BackfillOverallAchievements, BackfillPersonalAchievements,
-        BackfillUserXcTraining, PrepareHeatmap, ProcessActivityImport, RebuildFitnessFreshness,
-        RebuildSegmentAnalytics, ReconcileHeatmaps, RegenerateActivitySegments, RegenerateSegmentEfforts,
-        RegenerateUserSegments, ReprocessActivityImport, ReprocessArchiveFitActivityImports,
+        ActivityArchiveImport, BackfillActivityClimbs, BackfillEarnedAwards, BackfillOverallAchievements,
+        BackfillPersonalAchievements, BackfillUserXcTraining, PrepareHeatmap, ProcessActivityImport,
+        RebuildFitnessFreshness, RebuildSegmentAnalytics, ReconcileHeatmaps, RegenerateActivitySegments,
+        RegenerateSegmentEfforts, RegenerateUserSegments, ReprocessActivityImport, ReprocessArchiveFitActivityImports,
         ReprocessUserActivityImports,
     },
     TASK_QUEUE,
@@ -54,6 +54,7 @@ pub fn worker(
         .register_workflow::<BackfillActivityClimbs>()?
         .register_workflow::<BackfillPersonalAchievements>()?
         .register_workflow::<BackfillOverallAchievements>()?
+        .register_workflow::<BackfillEarnedAwards>()?
         .register_activities(ImportActivities::new(operations.clone()))
         .register_activities(BatchActivities::new(operations.clone()))
         .register_activities(DerivedActivities::new(operations))

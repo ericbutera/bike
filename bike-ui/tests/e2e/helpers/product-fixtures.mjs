@@ -25,7 +25,7 @@ export const ride = {
   segment_efforts: [],
   laps: [],
   heart_rate_zones: [],
-  achievement_highlights: [],
+  earned_awards: [],
   route_points: streams.latlng.data.map(([latitude, longitude], index) => ({
     latitude,
     longitude,

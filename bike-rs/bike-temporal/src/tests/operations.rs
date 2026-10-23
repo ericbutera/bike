@@ -12,11 +12,16 @@ fn operations(mock: MockDatabase) -> BikeOperations {
 }
 
 #[tokio::test]
-async fn activity_achievements_rebuild_current_rows_without_execution_records() {
+async fn activity_achievements_reuse_the_first_decision_and_refresh_the_summary() {
     let mock = fixtures::postgres_mock()
         .append_query_results([vec![fixtures::activity()]])
         .append_query_results([vec![fixtures::activity_id_row()]])
+        .append_query_results([vec![fixtures::activity_award_output()]])
+        .append_query_results([vec![fixtures::activity_id_row()]])
+        .append_query_results([vec![fixtures::activity_analytics()]])
         .append_query_results([Vec::<segment_efforts::Model>::new()])
+        .append_query_results([vec![fixtures::activity_award_output()]])
+        .append_query_results([vec![fixtures::activity_earned_awards()]])
         .append_exec_results([fixtures::written()]);
     operations(mock)
         .rebuild_activity_achievements(fixtures::activity_task())

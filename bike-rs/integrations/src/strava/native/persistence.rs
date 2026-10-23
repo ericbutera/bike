@@ -303,6 +303,12 @@ impl StravaOperations {
 
     pub async fn rebuild_segments(&self, change: ActivityChange) -> Result<ActivityChange, WorkflowError> {
         bike_core::analytics::rebuild_segment_analytics_cache(&self.db, &change.segment_ids).await?;
+        if let Some(id) = change.bike_activity_id {
+            if let Some(activity) = activities::Model::find_owned(&self.db, id, change.event.bike_user_id).await? {
+                bike_core::activity_achievements::record(&self.db, &activity).await?;
+                bike_core::analytics::rebuild_activity_analytics_cache(&self.db, &[id]).await?;
+            }
+        }
         Ok(change)
     }
 

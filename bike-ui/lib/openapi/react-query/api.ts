@@ -1062,45 +1062,6 @@ export interface components {
       /** Format: int32 */
       user_id: number;
     };
-    /**
-     * @example {
-     *       "effort_index": 1,
-     *       "overall_rank": 3,
-     *       "personal_best_duration_seconds": 355,
-     *       "personal_rank": 1,
-     *       "segment_id": 7,
-     *       "segment_title": "Riverfront climb"
-     *     }
-     */
-    ActivityAchievementHighlight: {
-      /**
-       * Format: int32
-       * @example 1
-       */
-      effort_index: number;
-      /**
-       * Format: int32
-       * @example 3
-       */
-      overall_rank?: number | null;
-      /**
-       * Format: int32
-       * @example 355
-       */
-      personal_best_duration_seconds?: number | null;
-      /**
-       * Format: int32
-       * @example 1
-       */
-      personal_rank?: number | null;
-      /**
-       * Format: int32
-       * @example 7
-       */
-      segment_id: number;
-      /** @example Riverfront climb */
-      segment_title: string;
-    };
     /** @enum {string} */
     ActivityAction:
       | "reprocess"
@@ -1278,6 +1239,25 @@ export interface components {
        * @example 6.4
        */
       speed_mps?: number | null;
+    };
+    ActivityEarnedAward: {
+      /** Format: int32 */
+      activity_id: number;
+      /** Format: int32 */
+      display_position: number;
+      /** Format: int32 */
+      effort_index: number;
+      /** Format: int32 */
+      overall_rank?: number | null;
+      /** Format: int32 */
+      personal_best_duration_seconds?: number | null;
+      /** Format: int32 */
+      personal_rank?: number | null;
+      /** Format: int32 */
+      position: number;
+      /** Format: int32 */
+      segment_id: number;
+      segment_title: string;
     };
     ActivityGear: {
       id: string;
@@ -1482,7 +1462,6 @@ export interface components {
      *     }
      */
     ActivityResponse: {
-      achievement_highlights?: components["schemas"]["ActivityAchievementHighlight"][];
       /** Format: int32 */
       activity_import_id?: number | null;
       activity_type: components["schemas"]["ActivityType"];
@@ -1512,6 +1491,7 @@ export interface components {
        * @example 25430.5
        */
       distance_meters?: number | null;
+      earned_awards: components["schemas"]["ActivityEarnedAward"][];
       /**
        * Format: double
        * @example 312.4
@@ -2605,7 +2585,6 @@ export interface components {
     PaginatedResponse_ActivityResponse: {
       /** @description Recordset */
       data: {
-        achievement_highlights?: components["schemas"]["ActivityAchievementHighlight"][];
         /** Format: int32 */
         activity_import_id?: number | null;
         activity_type: components["schemas"]["ActivityType"];
@@ -2635,6 +2614,7 @@ export interface components {
          * @example 25430.5
          */
         distance_meters?: number | null;
+        earned_awards: components["schemas"]["ActivityEarnedAward"][];
         /**
          * Format: double
          * @example 312.4

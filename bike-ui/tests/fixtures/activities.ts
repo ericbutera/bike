@@ -1,5 +1,6 @@
 import type {
   Activity,
+  ActivityEarnedAward,
   ActivityLap,
   ActivityRoutePoint,
 } from "../../lib/queries";
@@ -7,10 +8,28 @@ import type {
 export function activity(overrides: Partial<Activity> = {}): Activity {
   return {
     id: 42,
+    earned_awards: [],
     title: "Fixture ride",
     sport: "road_ride",
     source: "manual_upload",
     started_at: "2026-10-14T12:00:00Z",
+    ...overrides,
+  };
+}
+
+export function activityEarnedAward(
+  overrides: Partial<ActivityEarnedAward> = {},
+): ActivityEarnedAward {
+  return {
+    activity_id: 42,
+    position: 1,
+    display_position: 1,
+    segment_id: 11,
+    segment_title: "Riverfront climb",
+    effort_index: 1,
+    overall_rank: 1,
+    personal_rank: 1,
+    personal_best_duration_seconds: 60,
     ...overrides,
   };
 }
