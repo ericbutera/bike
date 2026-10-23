@@ -63,6 +63,8 @@
 
 - [x] Persist each rider's all-time segment PR, second, and third with an idempotent
       Temporal backfill; see [achievements](specs/achievements.md).
+- [x] Display saved personal PR, second and third through an authenticated API
+      and segment-detail panel; see [achievements](specs/achievements.md#personal-api-and-ui).
 - [ ] Implement overall achievements: a global top ten with one position per athlete;
       see [achievements](specs/achievements.md#overall-achievements-and-earned-awards).
 

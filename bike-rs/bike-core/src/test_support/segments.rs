@@ -50,3 +50,14 @@ pub fn segment_user_summary() -> crate::entities::segment_user_summaries::Model 
         updated_at: super::timestamp(),
     }
 }
+
+pub fn personal_achievement() -> crate::entities::segment_personal_achievements::Model {
+    let effort = super::segment_effort();
+    crate::entities::segment_personal_achievements::Model {
+        segment_id: effort.segment_id,
+        user_id: effort.user_id,
+        position: 1,
+        effort_id: effort.id,
+        duration_seconds: effort.duration_seconds,
+    }
+}

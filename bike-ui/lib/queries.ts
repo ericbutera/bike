@@ -214,6 +214,9 @@ export type Segment = {
   efforts?: SegmentEffort[] | null;
 };
 
+export type PersonalAchievement =
+  components["schemas"]["PersonalAchievementResponse"];
+
 export type SegmentComparison = {
   segment_id: number;
   route_points?: ActivityRoutePoint[] | null;
@@ -1701,6 +1704,17 @@ export function useSegment(id: number | string | null | undefined) {
     ...response,
     data: (response.data ?? null) as Segment | null,
   };
+}
+
+export function useSegmentPersonalAchievements(id: number | string) {
+  const numericId = Number(id);
+  const enabled = Number.isFinite(numericId) && numericId > 0;
+  return $typedApi.useQuery(
+    "get",
+    "/segments/{id}/personal-achievements",
+    { params: { path: { id: enabled ? numericId : 0 } } },
+    { enabled },
+  );
 }
 
 export function useSegmentComparison(id: number | string | null | undefined) {

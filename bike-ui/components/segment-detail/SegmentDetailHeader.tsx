@@ -1,13 +1,9 @@
 "use client";
 
-import {
-  faBars,
-  faCrown,
-  faMedal,
-  faRoute,
-} from "@fortawesome/free-solid-svg-icons";
+import { faBars, faCrown, faRoute } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import Link from "next/link";
+import SegmentPersonalAchievements from "./SegmentPersonalAchievements";
 import {
   formatActivityTimestamp,
   formatDistance,
@@ -53,12 +49,7 @@ export default function SegmentDetailHeader({
 }: SegmentDetailHeaderProps) {
   const { routeDistanceMeters, routeGradePercent, routeNetElevationMeters } =
     metrics;
-  const {
-    currentUserPrDurationSeconds,
-    currentUserPrLabel,
-    currentUserPrDisplayName,
-    overallKom,
-  } = performance;
+  const { overallKom } = performance;
   const { isEditingTitle, draftTitle } = editor;
   const { isSavingSegment, isDeletingSegment } = status;
 
@@ -224,23 +215,7 @@ export default function SegmentDetailHeader({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="min-w-[14rem] border border-base-300 bg-base-200 px-4 py-4">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-base-content/55">
-                <FontAwesomeIcon
-                  icon={faMedal}
-                  className="h-3.5 w-3.5 text-primary"
-                />
-                <span>
-                  Your PR {formatDuration(currentUserPrDurationSeconds)}
-                </span>
-              </div>
-              <div className="mt-2 font-semibold text-base-content">
-                {currentUserPrDisplayName}
-              </div>
-              <div className="mt-1 text-sm text-base-content/65">
-                {currentUserPrLabel}
-              </div>
-            </div>
+            <SegmentPersonalAchievements segmentId={segment.id} />
 
             <div className="min-w-[14rem] border border-base-300 bg-base-200 px-4 py-4">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-base-content/55">

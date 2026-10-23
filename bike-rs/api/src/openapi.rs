@@ -9,6 +9,7 @@ use crate::controllers::fitness;
 use crate::controllers::heatmaps;
 use crate::controllers::integration_events;
 use crate::controllers::reports;
+use crate::controllers::segment_personal_achievements;
 use crate::controllers::segments;
 use crate::controllers::strava;
 use crate::controllers::training_goals;
@@ -81,6 +82,7 @@ use utoipa::OpenApi;
         strava::handle_webhook_event,
         segments::list_segments,
         segments::get_segment,
+        segment_personal_achievements::get_personal_achievements,
         segments::get_segment_comparison,
         segments::get_segment_yearly_bests,
         segments::get_segment_effort_analysis,
@@ -214,6 +216,7 @@ use utoipa::OpenApi;
             segments::SegmentMode,
             segments::UpdateSegmentRequest,
             segments::SegmentResponse,
+            segment_personal_achievements::PersonalAchievementResponse,
             segments::SegmentComparisonResponse,
             segments::SegmentYearlyBestsResponse,
             segments::SegmentYearlyBestResponse,

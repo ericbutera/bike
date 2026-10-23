@@ -179,6 +179,15 @@ async function fixture(page, target, theme) {
         : segment,
     }),
   );
+  await page.route("**/api/segments/16/personal-achievements", (request) =>
+    request.fulfill({
+      json: segment.efforts.map((effort, index) => ({
+        position: index + 1,
+        effort_id: effort.id,
+        duration_seconds: effort.duration_seconds,
+      })),
+    }),
+  );
   await page.route("**/api/feature-flags", (request) =>
     request.fulfill({
       json: {
@@ -287,6 +296,15 @@ for (const target of targets) {
           .locator(`[aria-label="${route.label}"]`)
           .locator("canvas");
         await expect(canvas).toBeVisible();
+        if (route.label === "Segment comparison map") {
+          const achievements = page.getByRole("region", {
+            name: "Personal achievements",
+          });
+          await expect(achievements.getByRole("listitem")).toHaveCount(3);
+          await expect(
+            achievements.getByRole("link", { name: "Your PR 1m 30s" }),
+          ).toHaveAttribute("href", "/segments/16?efforts=7286");
+        }
         await expect
           .poll(async () =>
             pixelsWithColor(await canvas.screenshot(), backgroundColor),

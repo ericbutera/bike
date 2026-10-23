@@ -1,4 +1,7 @@
-import type { ActivitySegmentEffort } from "../../lib/queries";
+import type {
+  ActivitySegmentEffort,
+  PersonalAchievement,
+} from "../../lib/queries";
 
 export function segmentEffort(
   overrides: Partial<ActivitySegmentEffort> = {},
@@ -15,4 +18,10 @@ export function segmentEffort(
     personal_best_duration_seconds: 312,
     ...overrides,
   };
+}
+
+export function personalAchievement(
+  overrides: Partial<PersonalAchievement> = {},
+): PersonalAchievement {
+  return { position: 1, effort_id: 1, duration_seconds: 312, ...overrides };
 }

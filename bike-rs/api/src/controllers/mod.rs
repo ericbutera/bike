@@ -10,6 +10,7 @@ pub mod fitness;
 pub mod heatmaps;
 pub mod integration_events;
 pub mod reports;
+pub mod segment_personal_achievements;
 pub mod segments;
 pub mod strava;
 pub mod training_goals;
@@ -155,6 +156,10 @@ fn segment_routes() -> Router<Arc<AppStorage>> {
             axum::routing::get(segments::get_segment)
                 .put(segments::update_segment)
                 .delete(segments::delete_segment),
+        )
+        .route(
+            "/api/segments/:id/personal-achievements",
+            axum::routing::get(segment_personal_achievements::get_personal_achievements),
         )
         .route(
             "/api/segments/:id/comparison",

@@ -44,7 +44,7 @@ mod persistence;
 pub use persistence::{insert, update};
 mod segments;
 pub mod trace;
-pub use segments::{segment, segment_summary, segment_user_summary};
+pub use segments::{personal_achievement, segment, segment_summary, segment_user_summary};
 
 pub use accounts::{auth_event, connection, customer, new_connection, new_customer, refresh_token};
 pub use imports::{activity_upload, archive_import_job, artifact_payload, import_artifact};

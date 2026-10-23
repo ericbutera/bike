@@ -136,10 +136,6 @@ export default function SegmentDetailPanel({
     return <ErrorCard fallback="Segment not found." />;
   }
 
-  if (comparisonQuery.isError) {
-    return <ErrorCard fallback="Unable to load segment comparison." />;
-  }
-
   return (
     <section className="space-y-6">
       <SegmentDetailHeader
@@ -162,35 +158,41 @@ export default function SegmentDetailPanel({
         }}
       />
 
-      <SegmentDetailEffortsSection
-        segment={segment}
-        effortList={efforts.effortList}
-        performance={performance}
-        isLoading={isComparisonLoading}
-      />
+      {comparisonQuery.isError ? (
+        <ErrorCard fallback="Unable to load segment comparison." />
+      ) : (
+        <>
+          <SegmentDetailEffortsSection
+            segment={segment}
+            effortList={efforts.effortList}
+            performance={performance}
+            isLoading={isComparisonLoading}
+          />
 
-      <SegmentDetailComparisonSection
-        isLoading={isComparisonLoading}
-        unitSystem={routeMetrics.unitSystem}
-        workspace={{
-          routePoints: segment.route_points,
-          routeDistanceMeters: routeMetrics.routeDistanceMeters,
-          selectedEffortIds: efforts.selectedEffortIds,
-          selectedRows: efforts.selectedRows,
-          liveComparisonRows,
-          focusedEffortId: efforts.focusedEffortId,
-          raceViewerHref,
-          actions: {
-            hoverEffort: efforts.actions.hoverEffort,
-            removeEffort: efforts.actions.removeEffort,
-          },
-        }}
-        playback={{
-          ...playback,
-          pace: playbackPace,
-          setPace: setPlaybackPace,
-        }}
-      />
+          <SegmentDetailComparisonSection
+            isLoading={isComparisonLoading}
+            unitSystem={routeMetrics.unitSystem}
+            workspace={{
+              routePoints: segment.route_points,
+              routeDistanceMeters: routeMetrics.routeDistanceMeters,
+              selectedEffortIds: efforts.selectedEffortIds,
+              selectedRows: efforts.selectedRows,
+              liveComparisonRows,
+              focusedEffortId: efforts.focusedEffortId,
+              raceViewerHref,
+              actions: {
+                hoverEffort: efforts.actions.hoverEffort,
+                removeEffort: efforts.actions.removeEffort,
+              },
+            }}
+            playback={{
+              ...playback,
+              pace: playbackPace,
+              setPace: setPlaybackPace,
+            }}
+          />
+        </>
+      )}
     </section>
   );
 }
