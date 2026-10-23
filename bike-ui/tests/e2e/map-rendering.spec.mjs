@@ -188,6 +188,9 @@ async function fixture(page, target, theme) {
       })),
     }),
   );
+  await page.route("**/api/segments/16/overall-achievements", (route) =>
+    route.fulfill({ json: [] }),
+  );
   await page.route("**/api/feature-flags", (request) =>
     request.fulfill({
       json: {

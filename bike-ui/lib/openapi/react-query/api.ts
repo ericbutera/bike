@@ -842,6 +842,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/segments/{id}/overall-achievements": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_overall_achievements"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/segments/{id}/personal-achievements": {
     parameters: {
       query?: never;
@@ -2553,6 +2569,30 @@ export interface components {
     };
     OAuthProvidersResponse: {
       providers: components["schemas"]["OAuthProviderMetadata"][];
+    };
+    OverallAchievementResponse: {
+      /**
+       * Format: int32
+       * @example 355
+       */
+      duration_seconds: number;
+      /**
+       * Format: int32
+       * @example 90
+       */
+      effort_id: number;
+      /**
+       * Format: int32
+       * @description Current global all-time position, with one athlete per position.
+       * @example 1
+       */
+      position: number;
+      rider_name?: string | null;
+      /**
+       * Format: int32
+       * @example 7
+       */
+      user_id: number;
     };
     /** @description Standard paginated response wrapper */
     PaginatedResponse: {
@@ -8231,6 +8271,57 @@ export interface operations {
         content?: never;
       };
       /** @description Segment or activity not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiErrorResponse"];
+        };
+      };
+    };
+  };
+  get_overall_achievements: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /**
+         * @description Segment ID
+         * @example 7
+         */
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Saved current global all-time top ten, one position per athlete */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OverallAchievementResponse"][];
+        };
+      };
+      /** @description Not authenticated */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Segment not found */
       404: {
         headers: {
           [name: string]: unknown;

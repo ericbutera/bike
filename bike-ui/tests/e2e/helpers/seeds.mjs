@@ -1,3 +1,5 @@
+import { segmentSceneData } from "./segment-scene.mjs";
+
 // Playwright owns readable scenario data. The fixture CLI validates every
 // record against Bike's current SeaORM model, retaining database defaults.
 const created = "2025-01-01T00:00:00Z";
@@ -8,6 +10,7 @@ const update = (entity, values) => ({ entity, operation: "update", values });
 
 export const scenarios = [
   "baseline",
+  "representative-segment",
   "laps",
   "climb",
   "zones",
@@ -363,6 +366,7 @@ function uploadResultScenario() {
 
 const scenarioBuilders = {
   baseline: () => [],
+  "representative-segment": () => segmentSceneData(baselineData()).records,
   laps: lapScenario,
   climb: climbScenario,
   zones: zoneScenario,

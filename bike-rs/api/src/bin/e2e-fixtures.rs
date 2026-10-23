@@ -77,12 +77,22 @@ async fn seed(db: &sea_orm::DatabaseConnection, dataset: Dataset) -> Result<(), 
         .filter(|record| record.entity == "activities")
         .filter_map(|record| record.values.get("id")?.as_i64()?.try_into().ok())
         .collect();
+    let segment_ids: Vec<i32> = dataset
+        .records
+        .iter()
+        .filter(|record| record.entity == "segments")
+        .filter_map(|record| record.values.get("id")?.as_i64()?.try_into().ok())
+        .collect();
     let tx = db.begin().await?;
     for record in dataset.records {
         store_record(&tx, record).await?;
     }
     tx.commit().await?;
     prepare_climbs(db, activity_ids).await?;
+    for id in segment_ids {
+        bike_core::personal_achievements::rebuild(db, id).await?;
+        bike_core::overall_achievements::rebuild(db, id).await?;
+    }
     if dataset.prepare_heatmaps {
         // Reuse the owning projection builder to create persisted result data;
         // browser tests do not run a worker or wait for asynchronous jobs.

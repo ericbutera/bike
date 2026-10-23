@@ -8,64 +8,88 @@ import {
   visualThemes,
   waitForVisualReady,
 } from "./helpers/frontend.mjs";
+import { segmentScene } from "./helpers/segment-scene.mjs";
 import { snapshotSet, targets } from "./helpers/targets.mjs";
 
-test("Rust owns the canonical frontend screenshots", async ({
-  createContext,
-}) => {
-  test.setTimeout(10 * 60 * 1000);
-  test.skip(
-    process.env.PLAYWRIGHT_VISUAL !== "1",
-    "Set PLAYWRIGHT_VISUAL=1 to run or update the canonical screenshot set.",
-  );
+for (const requestedRoute of selectedFrontendRoutes()) {
+  const isSegmentDetail = requestedRoute.name === "segment-detail";
+  const route = isSegmentDetail
+    ? { ...requestedRoute, path: `/segments/${segmentScene.id}` }
+    : requestedRoute;
+  test.describe(route.name, () => {
+    test.use({
+      scenario: isSegmentDetail ? "representative-segment" : "baseline",
+    });
 
-  const rust = targets.find(({ name }) => name === "rust");
-  const { viewport, suffix } = visualViewport();
-  for (const route of selectedFrontendRoutes()) {
-    for (const theme of visualThemes()) {
-      const context = await createContext({
-        colorScheme: theme,
-        locale: "en-US",
-        timezoneId: "America/Detroit",
-        reducedMotion: "reduce",
-        viewport,
-      });
-      const page = await context.newPage();
-      await openFrontendRoute(page, rust, route, {
-        retryAuthRedirect: true,
-        settleMs: 2_500,
-      });
-      await waitForVisualReady(page, route.name);
-      const accountButton = page.getByRole("button", { name: "Account" });
-      if ((await accountButton.count()) > 0) {
-        await accountButton.click();
-      }
-      const controller = page.locator("input.theme-controller");
-      if (
-        (await controller.count()) > 0 &&
-        (await controller.isChecked()) !== (theme === "dark")
-      ) {
-        await controller.click();
-      } else if ((await controller.count()) === 0) {
-        await page.locator("html").evaluate((element, selectedTheme) => {
-          element.setAttribute("data-theme", selectedTheme);
-        }, theme);
-      }
-      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      await page.keyboard.press("Escape");
-      await stabilizePage(page);
-      await expect(page).toHaveScreenshot(
-        `${snapshotSet}-${route.name}-${theme}${suffix}.png`,
-        {
-          fullPage: true,
-          animations: "disabled",
-          caret: "hide",
-          mask: dynamicVisualMasks(page),
-          maxDiffPixels: 5_000,
-          maxDiffPixelRatio: 0.001,
-        },
+    test("Rust owns the canonical frontend screenshots", async ({
+      createContext,
+    }) => {
+      test.setTimeout(10 * 60 * 1000);
+      test.skip(
+        process.env.PLAYWRIGHT_VISUAL !== "1",
+        "Set PLAYWRIGHT_VISUAL=1 to run or update the canonical screenshot set.",
       );
-      await context.close();
-    }
-  }
-});
+
+      const rust = targets.find(({ name }) => name === "rust");
+      const { viewport, suffix } = visualViewport();
+      for (const theme of visualThemes()) {
+        const context = await createContext({
+          colorScheme: theme,
+          locale: "en-US",
+          timezoneId: "America/Detroit",
+          reducedMotion: "reduce",
+          viewport,
+        });
+        const page = await context.newPage();
+        await openFrontendRoute(page, rust, route);
+        await waitForVisualReady(
+          page,
+          route.name,
+          isSegmentDetail ? segmentScene.effortCount : undefined,
+        );
+        if (isSegmentDetail) {
+          await expect(
+            page.getByRole("heading", {
+              name: segmentScene.title,
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("button", { name: "4", exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText("Run 2", { exact: true }).first(),
+          ).toBeVisible();
+        }
+        const accountButton = page.getByRole("button", { name: "Account" });
+        if ((await accountButton.count()) > 0) await accountButton.click();
+        const controller = page.locator("input.theme-controller");
+        if (
+          (await controller.count()) > 0 &&
+          (await controller.isChecked()) !== (theme === "dark")
+        ) {
+          await controller.click();
+        } else if ((await controller.count()) === 0) {
+          await page.locator("html").evaluate((element, selectedTheme) => {
+            element.setAttribute("data-theme", selectedTheme);
+          }, theme);
+        }
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        await page.keyboard.press("Escape");
+        await stabilizePage(page);
+        await expect(page).toHaveScreenshot(
+          `${snapshotSet}-${route.name}-${theme}${suffix}.png`,
+          {
+            fullPage: true,
+            animations: "disabled",
+            caret: "hide",
+            mask: dynamicVisualMasks(page),
+            maxDiffPixels: 5_000,
+            maxDiffPixelRatio: 0.001,
+          },
+        );
+        await context.close();
+      }
+    });
+  });
+}

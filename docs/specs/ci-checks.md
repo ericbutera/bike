@@ -96,6 +96,11 @@
 - Keep light/dark pixel, route, layer and theme-persistence tests in the default
   browser gate. Optional full-page comparisons use reviewed baselines for both
   themes. Do not regenerate baselines to make tests pass.
+- Segment-detail interaction and screenshot coverage uses the original winding
+  -g GPX route with 37 saved efforts, repeated runs, four pages and three compared
+  efforts. Keep this representative scene rather than substituting the small
+  Northbound baseline. Geometry is retained; the disposable effort history is
+  deterministic fixture data.
 - Disposable Temporal supports submission acknowledgment and the `BikeUserId`
   Keyword search attribute. Start PostgreSQL and Temporal and wait for health
   before API startup. Warm resets preserve both identities. Browser tests use

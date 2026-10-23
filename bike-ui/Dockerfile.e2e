@@ -9,6 +9,7 @@ COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker /usr/local/libexec/docker/cli-plugins/ /usr/local/libexec/docker/cli-plugins/
 ARG NPM_VERSION
 ARG PNPM_VERSION
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 RUN npm install --global "npm@${NPM_VERSION:?NPM_VERSION must be supplied by mise}" \
     && npm install --global --allow-scripts=pnpm "pnpm@${PNPM_VERSION:?PNPM_VERSION must be supplied by mise}"
 WORKDIR /workspace/bike-ui

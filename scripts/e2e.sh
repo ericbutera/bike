@@ -33,6 +33,14 @@ if [[ -n "${BIKE_DOCKER_STORAGE_ROOT:-}" ]]; then
   )
 fi
 
+source_excludes=()
+if [[ "${PLAYWRIGHT_UPDATE_SNAPSHOTS:-}" == 1 ]]; then
+  : "${BIKE_DOCKER_STORAGE_ROOT:?Snapshot updates require the Docker checks checkout}"
+  runner_storage+=(--mount "type=bind,source=$PWD/bike-ui/tests/e2e/snapshots,target=/workspace/bike-ui/tests/e2e/snapshots")
+  set -- "$@" --update-snapshots
+  source_excludes+=(--exclude=bike-ui/tests/e2e/snapshots)
+fi
+
 compose() {
   docker compose --project-name "$project" \
     --file compose.yaml --file compose.e2e.yaml "$@"
@@ -157,13 +165,13 @@ docker create --name "$runner" --init --shm-size=1g \
   --env BIKE_TEST_ADMIN_TASK_FIXTURE=true --env PLAYWRIGHT_AUTH_STATE=1 \
   --env BIKE_TEST_EXPECT_AUTHENTICATED=true \
   --env HEATMAP_REQUIRE_ENABLED=1 --env HEATMAP_PREVIEW_FILTERS='sport=road_ride' \
-  --env CI --env PLAYWRIGHT_VISUAL --env PLAYWRIGHT_THEMES \
+  --env CI --env PLAYWRIGHT_VISUAL --env PLAYWRIGHT_THEMES --env PLAYWRIGHT_ROUTE \
   "$BIKE_E2E_TOOLS_IMAGE" "$@" >"$artifacts/runner.id"
 if [[ "${DOCKER_HOST:-unix://}" == tcp://* ]]; then
   docker cp "${DOCKER_CERT_PATH:?Authenticated remote engine requires client certificates}/." "$runner:/docker-certs"
 fi
 # Copy current tracked source, including worktree edits, without an archive image.
-tar -cf - bike-ui/package.json bike-ui/pnpm-lock.yaml bike-ui/pnpm-workspace.yaml \
+tar "${source_excludes[@]}" -cf - bike-ui/package.json bike-ui/pnpm-lock.yaml bike-ui/pnpm-workspace.yaml \
   bike-ui/playwright.config.mjs bike-ui/tests/e2e bike-ui/public/map-styles \
   bike-rs/api/tests/fixtures/platform \
   compose.yaml compose.e2e.yaml docker/*.env \

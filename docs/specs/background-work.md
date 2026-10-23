@@ -66,6 +66,7 @@
 | `regenerate_activity_segments`           | Replace matches for one owned activity, refresh affected old/new segment results, then activity achievements. A broader rebuild on retry is acceptable.                  | [Activity segments](../../bike-rs/bike-temporal/src/workflows/regenerate_activity_segments.rs)                                                                                                                                                  |
 | `regenerate_segment_efforts`             | Run the existing segment-wide matching operation, including segment analytics and affected activity achievements.                                                        | [Segment efforts](../../bike-rs/bike-temporal/src/workflows/regenerate_segment_efforts.rs), [domain operation](../../bike-rs/bike-core/src/segment_regeneration.rs)                                                                             |
 | `backfill_personal_achievements`         | Page all segments and call the shared saved-effort operation to replace personal podium rows.                                                                            | [Personal achievements](achievements.md)                                                                                                                                                                                                        |
+| `backfill_overall_achievements` | Page all segments and call the shared saved-effort operation to replace the global top ten, one athlete per position. | [Overall achievements](achievements.md#overall-achievements) |
 | `backfill_user_xc_training`              | Page the user's cycling activities, rebuild each training analysis, then mark the existing preference complete.                                                          | [User batches](../../bike-rs/bike-temporal/src/workflows/activity_pages.rs)                                                                                                                                                                     |
 | `reprocess_user_activity_imports`        | Page owned activities linked to retained imports, exclude native Strava sources, and await reprocessing for every item.                                                  | [User batches](../../bike-rs/bike-temporal/src/workflows/activity_pages.rs)                                                                                                                                                                     |
 | `reprocess_archive_fit_activity_imports` | Use the same reprocessing loop restricted to `archive_url_import` imports with format `fit`.                                                                             | [User batches](../../bike-rs/bike-temporal/src/workflows/activity_pages.rs)                                                                                                                                                                     |
@@ -155,6 +156,13 @@ flowchart TD
   second, and third through the personal-achievement domain operation.
 - `backfill_personal_achievements` on `bike-tasks` accepts an integer segment-ID
   cursor, starting at zero, and calls that same operation for every segment. See [achievements](achievements.md) for stored results and paging rules.
+
+### Overall achievements
+
+- Segment analytics refreshes saved overall standings through the same domain
+  operation as `backfill_overall_achievements` on `bike-tasks`. The backfill
+  accepts an integer segment-ID cursor starting at zero. See
+  [achievements](achievements.md#overall-achievements) for ranking, reads, and paging.
 
 ### Activity climbs and stage backfills
 

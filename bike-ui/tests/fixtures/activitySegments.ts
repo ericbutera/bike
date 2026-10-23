@@ -1,5 +1,6 @@
 import type {
   ActivitySegmentEffort,
+  OverallAchievement,
   PersonalAchievement,
 } from "../../lib/queries";
 
@@ -24,4 +25,17 @@ export function personalAchievement(
   overrides: Partial<PersonalAchievement> = {},
 ): PersonalAchievement {
   return { position: 1, effort_id: 1, duration_seconds: 312, ...overrides };
+}
+
+export function overallAchievement(
+  overrides: Partial<OverallAchievement> = {},
+): OverallAchievement {
+  return {
+    position: 1,
+    user_id: 7,
+    rider_name: "Fixture Rider",
+    effort_id: 90,
+    duration_seconds: 312,
+    ...overrides,
+  };
 }
