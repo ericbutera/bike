@@ -106,7 +106,7 @@ export async function fakeProductApi(
         json = ride;
         break;
       default:
-        if (/^\/segments\/\d+\/personal-achievements$/.test(path)) {
+        if (/^\/segments\/\d+\/(personal|overall)-achievements$/.test(path)) {
           json = [];
           break;
         }

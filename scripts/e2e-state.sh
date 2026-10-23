@@ -32,7 +32,7 @@ SQL
 }
 
 seed() {
-  printf '%s' "${1:?Fixture JSON required}" | compose exec -T \
+  compose exec -T \
     --env "BIKE_E2E_PROJECT=$BIKE_E2E_PROJECT" \
     --env DATABASE_URL=postgres://postgres:postgres@postgres:5432/bike \
     bike-rs /app/e2e-fixtures
@@ -71,7 +71,7 @@ files() {
 
 case "${1:?Choose prepare, seed, snapshot, restore, files or health}" in
   prepare) prepare ;;
-  seed) seed "${2:?}" ;;
+  seed) seed ;;
   snapshot) snapshot "${2:?}" ;;
   restore) restore "${2:?}" "${3:-0}" ;;
   files) files ;;

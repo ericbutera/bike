@@ -61,3 +61,14 @@ pub fn personal_achievement() -> crate::entities::segment_personal_achievements:
         duration_seconds: effort.duration_seconds,
     }
 }
+
+pub fn overall_achievement() -> crate::entities::segment_overall_achievements::Model {
+    let effort = super::segment_effort();
+    crate::entities::segment_overall_achievements::Model {
+        segment_id: effort.segment_id,
+        position: 1,
+        user_id: effort.user_id,
+        effort_id: effort.id,
+        duration_seconds: effort.duration_seconds,
+    }
+}

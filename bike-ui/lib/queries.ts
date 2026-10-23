@@ -2458,3 +2458,19 @@ export function useUpdateUserPreferences() {
     },
   };
 }
+
+export type OverallAchievement =
+  components["schemas"]["OverallAchievementResponse"];
+
+export function useSegmentOverallAchievements(
+  id: number | string | null | undefined,
+) {
+  const numericId = Number(id);
+  const enabled = Number.isFinite(numericId) && numericId > 0;
+  return $typedApi.useQuery(
+    "get",
+    "/segments/{id}/overall-achievements",
+    { params: { path: { id: enabled ? numericId : 0 } } },
+    { enabled },
+  );
+}

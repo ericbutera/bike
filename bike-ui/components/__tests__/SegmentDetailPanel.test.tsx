@@ -36,6 +36,11 @@ const mocks = vi.hoisted(() => ({
   useSegment: vi.fn(),
   useSegmentComparison: vi.fn(),
   useSegmentPersonalAchievements: vi.fn(),
+  useSegmentOverallAchievements: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    isError: false,
+  })),
   useUpdateSegment: vi.fn(),
   useDeleteSegment: vi.fn(),
   renderMapLibreRouteMap: vi.fn(),
@@ -57,6 +62,7 @@ vi.mock("../../lib/queries", () => ({
   useSegment: mocks.useSegment,
   useSegmentComparison: mocks.useSegmentComparison,
   useSegmentPersonalAchievements: mocks.useSegmentPersonalAchievements,
+  useSegmentOverallAchievements: mocks.useSegmentOverallAchievements,
   useUpdateSegment: mocks.useUpdateSegment,
   useDeleteSegment: mocks.useDeleteSegment,
 }));

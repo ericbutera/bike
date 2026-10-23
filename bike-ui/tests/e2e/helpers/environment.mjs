@@ -12,17 +12,20 @@ import {
 const execute = promisify(execFile);
 const attemptStarts = new WeakMap();
 
-export async function environmentCommand(...args) {
+export async function environmentCommand(command, ...args) {
   if (!process.env.BIKE_E2E_PROJECT)
     throw new Error("Disposable connected tests require mise run e2e");
-  const result = await execute(
+  const input = command === "seed" ? args.shift() : undefined;
+  const execution = execute(
     "bash",
-    ["/workspace/scripts/e2e-state.sh", ...args],
+    ["/workspace/scripts/e2e-state.sh", command, ...args],
     {
       timeout: 120_000,
       maxBuffer: 8 * 1024 * 1024,
     },
   );
+  execution.child.stdin.end(input);
+  const result = await execution;
   expect(
     result.stdout + result.stderr,
     "Fixture command diagnostics",

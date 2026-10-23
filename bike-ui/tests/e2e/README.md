@@ -31,9 +31,16 @@ PLAYWRIGHT_VISUAL=1 mise run e2e frontend-visual
 - `map-rendering` checks actual canvas pixels, backgrounds, routes, layers, and
   controls in both light and dark themes in the default browser gate. These tests
   remain after retiring comparisons with removed implementations.
+- Segment-detail interactions and screenshots use the original -g GPX route
+  with 37 saved efforts, repeated runs, four pages and three compared efforts.
+  Ride history is deterministic fixture data; Northbound remains the small
+  baseline for other scenarios.
 - Full-page `frontend-visual` comparisons default to both light and dark themes.
   `PLAYWRIGHT_THEMES=light` or `dark` narrows an explicit visual run. Keep reviewed
   baselines; a changed appearance requires review before updating screenshots.
+  For an intentional segment-scene update, select `PLAYWRIGHT_ROUTE=segment-detail`
+  and set `PLAYWRIGHT_UPDATE_SNAPSHOTS=1` on the visual run. The runner writes
+  baselines into the Docker checkout; inspect both themes before committing.
 - Each run resolves its image inputs once and owns a unique Compose project,
   network, PostgreSQL volume, uploads, renderer styles, and cache. It exposes no
   host ports and shares no development data or source mounts.

@@ -4380,6 +4380,70 @@
         ]
       }
     },
+    "/segments/{id}/overall-achievements": {
+      "get": {
+        "tags": [
+          "segments"
+        ],
+        "operationId": "get_overall_achievements",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Segment ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "example": 7
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved current global all-time top ten, one position per athlete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OverallAchievementResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "404": {
+            "description": "Segment not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/segments/{id}/personal-achievements": {
       "get": {
         "tags": [
@@ -8513,6 +8577,46 @@
             "items": {
               "$ref": "#/components/schemas/OAuthProviderMetadata"
             }
+          }
+        }
+      },
+      "OverallAchievementResponse": {
+        "type": "object",
+        "required": [
+          "position",
+          "user_id",
+          "effort_id",
+          "duration_seconds"
+        ],
+        "properties": {
+          "duration_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "example": 355
+          },
+          "effort_id": {
+            "type": "integer",
+            "format": "int32",
+            "example": 90
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Current global all-time position, with one athlete per position.",
+            "example": 1,
+            "maximum": 10,
+            "minimum": 1
+          },
+          "rider_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32",
+            "example": 7
           }
         }
       },

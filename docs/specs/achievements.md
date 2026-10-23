@@ -33,16 +33,6 @@
   Await each operation, then Continue-As-New after a full page. Rerunning the
   backfill replaces the same rows without creating duplicates.
 
-## Overall achievements and earned awards
-
-- Overall achievements are a separate implementation slice: the global all-time
-  top ten contains unique athletes, each represented by their fastest effort.
-- Current personal positions are distinct from awards earned by an activity.
-  Previously earned awards remain attached to their effort when current
-  standings change.
-- Global standings, historical award persistence, and period filters remain
-  separate work.
-
 ## Personal API and UI
 
 - Authenticated `GET /segments/{id}/personal-achievements` returns the current
@@ -57,6 +47,44 @@
   remain visible during refresh and do not depend on comparison samples.
 - Effort date filters never change these all-time personal positions. The panel
   describes current standings, not historical awards earned by activities.
+
+## Overall achievements
+
+- Save each segment's current global all-time top ten in
+  `segment_overall_achievements`, keyed by `(segment_id, position)`.
+- Each athlete occupies one position, represented by their fastest individual
+  effort. Faster duration wins; equal durations use the smaller effort ID first.
+  Positions are consecutive from 1 through at most 10, including tied times.
+- Store athlete, effort ID, and duration with each position. Uniqueness protects
+  one athlete per segment and one selected effort. Foreign keys cascade deletion.
+- The worker locks the segment, reads saved efforts, and replaces its standings
+  in one transaction. Empty segments clear previously saved rows. New efforts
+  can displace rows; deleted efforts promote the next eligible athlete/attempt.
+- Existing segment analytics refreshes overall standings after imports,
+  reprocessing, regeneration, and activity deletion using the same operation
+  as `backfill_overall_achievements`.
+- The backfill accepts an integer segment-ID cursor starting at zero, processes
+  all segments in 16-segment ID pages, awaits each replacement, and uses
+  Continue-As-New after a full page. Repeating it replaces the same saved rows.
+- `GET /segments/{id}/overall-achievements` requires authentication and the
+  existing segment ownership check. Return the saved rows ordered by position,
+  including athlete ID, profile display name, effort ID, and duration; missing
+  output returns `[]`. Profile names enrich saved positions without filtering
+  or recalculating them; a missing name leaves the position intact.
+- Reads return whatever is stored while workers catch up. Never scan efforts,
+  recalculate rankings, check freshness, or write during this read.
+- Segment detail shows an "Overall top ten" table with position, athlete, and
+  time, including loading, failure, and empty states. This section always shows
+  all-time standings independently of any effort-list date selection.
+- This slice excludes date-window standings, historical earned awards, and
+  changes to existing effort ranks or activity achievement highlights.
+
+## Earned awards
+
+- Current personal and overall positions are distinct from awards earned by an
+  activity. Historical award persistence remains a separate implementation slice.
+- Previously earned awards remain attached to their effort when current
+  standings change.
 
 See [segment processing](segment-processing.md) for efforts and
 [background work](background-work.md) for Temporal execution.

@@ -17,6 +17,7 @@ import {
 import SegmentDetailComparisonSection from "./segment-detail/SegmentDetailComparisonSection";
 import SegmentDetailEffortsSection from "./segment-detail/SegmentDetailEffortsSection";
 import SegmentDetailHeader from "./segment-detail/SegmentDetailHeader";
+import SegmentOverallAchievements from "./segment-detail/SegmentOverallAchievements";
 import {
   useSegmentEffortsContainer,
   useSegmentPlayback,
@@ -157,6 +158,8 @@ export default function SegmentDetailPanel({
           },
         }}
       />
+
+      <SegmentOverallAchievements segmentId={segment.id} />
 
       {comparisonQuery.isError ? (
         <ErrorCard fallback="Unable to load segment comparison." />

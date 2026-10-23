@@ -1,6 +1,10 @@
 import { connectedTest as test, expect } from "./helpers/test.mjs";
-import { expectedEffortCount, segmentId, targets } from "./helpers/targets.mjs";
+import { targets } from "./helpers/targets.mjs";
+import { segmentScene } from "./helpers/segment-scene.mjs";
 import { openRoute } from "./helpers/ui.mjs";
+
+test.use({ scenario: "representative-segment" });
+const { id: segmentId, effortCount: expectedEffortCount } = segmentScene;
 
 test("segment detail renders the shared workspace and supports core interactions", async ({
   createContext,
@@ -18,7 +22,16 @@ test("segment detail renders the shared workspace and supports core interactions
     });
 
     await openRoute(page, target, `/segments/${segmentId}`);
+    await expect(
+      page.getByRole("heading", { name: segmentScene.title, exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole("heading", { name: "Efforts" })).toBeVisible();
+    const overall = page.getByRole("table", { name: "Overall top ten" });
+    await expect(overall).toBeVisible();
+    await expect(overall.locator("tbody tr")).toHaveCount(1);
+    await expect(overall.locator("tbody tr").first()).toContainText(
+      "Local Developer",
+    );
     await expect(page.getByLabel("Segment efforts table")).toBeVisible();
     const effortsCard = page
       .getByRole("heading", { name: "Efforts" })
@@ -53,6 +66,16 @@ test("segment detail renders the shared workspace and supports core interactions
       segmentRequests.some((url) => /\/segments\/0(?:\/|$)/.test(url)),
       `${target.name} requested an invalid segment id: ${segmentRequests.join(", ")}`,
     ).toBe(false);
+
+    await expect(
+      effortsCard.getByRole("columnheader", { name: "Run", exact: true }),
+    ).toBeVisible();
+    await expect(
+      effortsCard.getByText("Run 2", { exact: true }).first(),
+    ).toBeVisible();
+    await expect(
+      effortsCard.getByRole("button", { name: /^Remove .* from comparison$/ }),
+    ).toHaveCount(3);
 
     if (expectedEffortCount > 10) {
       const pageCount = Math.ceil(expectedEffortCount / 10);

@@ -117,7 +117,11 @@ export function visualThemes() {
   return [...new Set(themes)];
 }
 
-export async function waitForVisualReady(page, routeName) {
+export async function waitForVisualReady(
+  page,
+  routeName,
+  effortCount = expectedEffortCount,
+) {
   const timeout = 15_000;
   if (routeName === "activity-list") {
     await expect(
@@ -142,14 +146,14 @@ export async function waitForVisualReady(page, routeName) {
   } else if (routeName === "segment-detail") {
     await expect(
       page.getByText(
-        `Showing 1-${Math.min(10, expectedEffortCount)} of ${expectedEffortCount} efforts`,
+        `Showing 1-${Math.min(10, effortCount)} of ${effortCount} efforts`,
       ),
     ).toBeVisible({ timeout });
     const comparisonMap = page.locator('[aria-label="Segment comparison map"]');
     await expect(comparisonMap).toBeVisible({ timeout });
     await expect(
       comparisonMap.locator(".maplibregl-ctrl-attrib"),
-    ).toContainText("Waymarked Trails", { timeout });
+    ).toContainText("OpenFreeMap", { timeout });
     await expect(comparisonMap.locator("canvas")).toBeVisible();
   } else if (routeName === "race-viewer") {
     await expect(
