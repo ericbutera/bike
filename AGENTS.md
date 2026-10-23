@@ -61,9 +61,10 @@ Docker checkout and shared caches. Publish completed work before removing its
 checkout; preserve active uncommitted source. Git/GitHub may use host authentication,
 but that exception does not authorize host worktrees or host hook execution.
 
-Before editing, state the outcome, affected components, exclusions, and
-completion checks in one short paragraph. Fill all four corresponding PR
-template sections with concrete bullets before publishing or updating a PR.
+Before editing, briefly state the intended outcome and affected components.
+Keep PR descriptions focused on the changes and why they are needed. Omit
+completion checklists, test results, CI/CD status, and local execution details.
+Report verification or unfinished CI/CD status in the conversation when needed.
 
 Keep PRs at or below 20 changed files and 7,000 changed lines (additions plus
 deletions, measured against the PR base). These are soft scope limits. Before
@@ -150,7 +151,6 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
 - Bugs must have a unit test added before fixing to prevent future regressions
 - Use conventional `#[cfg(test)] mod tests` modules, `tests.rs`, or descriptive
   files inside `tests/`. Do not introduce `_unit.rs` or `_tests.rs` filenames.
-- PR descriptions explain behavior and intenent. Execution details such as Docker or a local environment do not belong in the description.
 - Backend unit tests use PostgreSQL SeaORM mocks and shared fixtures. Do not
   introduce SQLite databases, schema substitutes, timestamp massaging, or
   compatibility logic to maintain a second persistence implementation for tests.
