@@ -30,3 +30,30 @@ impl SharedSegments {
             .append_query_results([self.users()])
     }
 }
+
+impl SharedSegments {
+    pub fn personal_read_mock(&self, reader: &users::Model, segment: &segments::Model) -> MockDatabase {
+        segment_access_mock(reader, segment).append_query_results([self.personal_standings_for(reader.id, segment.id)])
+    }
+
+    pub fn comparison_read_mock(&self, reader: &users::Model, segment: &segments::Model) -> MockDatabase {
+        let efforts: Vec<_> = self
+            .efforts_for(segment.id)
+            .into_iter()
+            .filter(|row| row.user_id == reader.id)
+            .collect();
+        let empty = efforts.is_empty();
+        let mock = segment_access_mock(reader, segment).append_query_results([efforts]);
+        if empty {
+            return mock;
+        }
+        let activities: Vec<_> = self
+            .activities
+            .iter()
+            .filter(|row| row.user_id == reader.id)
+            .cloned()
+            .collect();
+        mock.append_query_results([activities])
+            .append_query_results([vec![reader.clone()]])
+    }
+}

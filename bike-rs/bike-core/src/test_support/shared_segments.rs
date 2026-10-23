@@ -158,3 +158,47 @@ pub fn distinct_athlete_efforts(count: i32) -> Vec<segment_efforts::Model> {
         })
         .collect()
 }
+
+impl SharedSegments {
+    pub fn personal_standings_for(
+        &self,
+        user_id: i32,
+        segment_id: i32,
+    ) -> Vec<crate::entities::segment_personal_achievements::Model> {
+        use crate::entities::segment_personal_achievements::Model;
+        let rows = vec![
+            Model {
+                duration_seconds: 100,
+                ..super::personal_achievement()
+            },
+            Model {
+                position: 2,
+                effort_id: 2,
+                duration_seconds: 200,
+                ..super::personal_achievement()
+            },
+            Model {
+                user_id: self.contributor.id,
+                effort_id: 3,
+                duration_seconds: 300,
+                ..super::personal_achievement()
+            },
+            Model {
+                segment_id: self.other_segment.id,
+                user_id: self.contributor.id,
+                effort_id: 4,
+                duration_seconds: 50,
+                ..super::personal_achievement()
+            },
+            Model {
+                segment_id: self.other_segment.id,
+                effort_id: 5,
+                duration_seconds: 150,
+                ..super::personal_achievement()
+            },
+        ];
+        rows.into_iter()
+            .filter(|row| row.user_id == user_id && row.segment_id == segment_id)
+            .collect()
+    }
+}

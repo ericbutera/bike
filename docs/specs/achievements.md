@@ -37,9 +37,10 @@
 
 - Authenticated `GET /segments/{id}/personal-achievements` returns the current
   rider's saved rows ordered by position, with `position`, `effort_id`, and
-  `duration_seconds`. Use the same segment access policy as segment detail.
-- Return `[]` when no personal positions are saved and 404 for an inaccessible
-  or missing segment. Do not accept a rider ID from the caller.
+  `duration_seconds`. Use shared segment access, with personal output always
+  scoped to the authenticated rider.
+- Return `[]` when no personal positions are saved and 404 for a missing segment.
+  Do not accept a rider ID from the caller.
 - Segment detail displays an all-time personal achievements panel with PR,
   second and third labels and saved durations. Show only saved positions,
   including repeated attempts from one activity, with links selecting each effort.

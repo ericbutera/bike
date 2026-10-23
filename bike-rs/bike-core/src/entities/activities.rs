@@ -50,11 +50,13 @@ impl Model {
 
     pub async fn effort_sources(
         db: &impl ConnectionTrait,
+        user_id: i32,
         activity_ids: &[i32],
     ) -> Result<Vec<EffortActivityRow>, DbErr> {
         Entity::find()
             .select_only()
             .columns([Column::Id, Column::Title, Column::StartedAt, Column::DerivedDataJson])
+            .filter(Column::UserId.eq(user_id))
             .filter(Column::Id.is_in(activity_ids.iter().copied()))
             .into_model::<EffortActivityRow>()
             .all(db)
@@ -63,11 +65,13 @@ impl Model {
 
     pub async fn effort_summaries(
         db: &impl ConnectionTrait,
+        user_id: i32,
         activity_ids: &[i32],
     ) -> Result<Vec<EffortActivitySummaryRow>, DbErr> {
         Entity::find()
             .select_only()
             .columns([Column::Id, Column::Title, Column::StartedAt])
+            .filter(Column::UserId.eq(user_id))
             .filter(Column::Id.is_in(activity_ids.iter().copied()))
             .into_model::<EffortActivitySummaryRow>()
             .all(db)

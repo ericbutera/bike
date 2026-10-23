@@ -11,6 +11,7 @@ Update the owning spec in the same change as any intended behavior change.
 - [TODO](../TODO.md): outstanding work only; it does not duplicate the worker spec.
 - [Activities](activities.md): activity list and activity details specifications.
 - [Achievements](achievements.md): personal segment podiums and saved stage output.
+- [Authentication and user data](authentication.md): ownership boundaries and browser session isolation.
 
 ## Spec Rules
 

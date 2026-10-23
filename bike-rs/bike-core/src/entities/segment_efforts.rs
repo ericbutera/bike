@@ -46,15 +46,6 @@ impl Model {
             .await
     }
 
-    pub async fn ranked_for_segments(db: &impl ConnectionTrait, segment_ids: &[i32]) -> Result<Vec<Self>, DbErr> {
-        Entity::find()
-            .filter(Column::SegmentId.is_in(segment_ids.iter().copied()))
-            .order_by_asc(Column::DurationSeconds)
-            .order_by_asc(Column::Id)
-            .all(db)
-            .await
-    }
-
     pub async fn count_for_activity(db: &impl ConnectionTrait, activity_id: i32) -> Result<u64, DbErr> {
         use sea_orm::PaginatorTrait;
         Entity::find()

@@ -47,7 +47,7 @@ pub async fn get_personal_achievements(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<PersonalAchievementResponse>>, AppError> {
-    segments::Model::find_owned(&state.db, id, user.id)
+    segments::Model::find_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
     let saved = segment_personal_achievements::Model::for_user_segment(&state.db, user.id, id).await?;
@@ -121,7 +121,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_or_inaccessible_segment_does_not_read_personal_results() {
+    async fn missing_segment_does_not_read_personal_results() {
         let db = fixtures::postgres_mock()
             .append_query_results([vec![fixtures::customer()]])
             .append_query_results([Vec::<segments::Model>::new()])
@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(log.len(), 2);
         assert_eq!(
             log[1].statements()[0].values.as_ref().unwrap().0,
-            vec![1.into(), fixtures::customer().id.into(), 1_u64.into()]
+            vec![1.into(), 1_u64.into()]
         );
     }
 

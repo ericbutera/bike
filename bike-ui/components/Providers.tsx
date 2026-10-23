@@ -1,20 +1,23 @@
 "use client";
 
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Toaster } from "react-hot-toast";
 import type { AppConfig } from "../lib/config";
 import { ConfigProvider } from "../lib/config-context";
 import { AuthProvider } from "../lib/auth";
+import UserDataBoundary from "./UserDataBoundary";
 import { queryClient } from "../lib/query-client";
 import { UnitPreferencesProvider } from "../lib/unitPreferences";
 import { ReactQueryActivityIndicator } from "./ui/QueryState";
 
 export default function Providers({
   config,
+  client = queryClient,
   children,
 }: {
   config: AppConfig;
+  client?: QueryClient;
   children: ReactNode;
 }) {
   const authConfig = {
@@ -23,11 +26,13 @@ export default function Providers({
 
   return (
     <ConfigProvider initialConfig={config}>
-      <QueryClientProvider client={queryClient}>
+      <QueryClientProvider client={client}>
         <ReactQueryActivityIndicator />
         <AuthProvider config={authConfig}>
-          <UnitPreferencesProvider>{children}</UnitPreferencesProvider>
-          <Toaster position="top-right" />
+          <UserDataBoundary>
+            <UnitPreferencesProvider>{children}</UnitPreferencesProvider>
+            <Toaster position="top-right" />
+          </UserDataBoundary>
         </AuthProvider>
       </QueryClientProvider>
     </ConfigProvider>
