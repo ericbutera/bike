@@ -2,7 +2,7 @@ import { connectedTest as test, expect } from "./helpers/test.mjs";
 import { activityId, targets } from "./helpers/targets.mjs";
 import { openRoute } from "./helpers/ui.mjs";
 
-test("segment builder crops, saves, reopens, and updates a ride segment in Bike", async ({
+test("segment builder creates fixed geometry and the creator renames it from detail", async ({
   createContext,
 }) => {
   test.setTimeout(120_000);
@@ -73,44 +73,43 @@ test("segment builder crops, saves, reopens, and updates a ride segment in Bike"
         page.getByRole("heading", { name: "Parity UI builder segment" }),
       ).toBeVisible();
 
-      await openRoute(page, target, `/segments/builder?segmentId=${segmentId}`);
+      await page.getByRole("button", { name: "Open segment actions" }).click();
       await expect(
-        page.getByText("Editing saved segment", { exact: true }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("slider", { name: "Start point" }),
-      ).toHaveValue("2");
-      await expect(page.getByRole("slider", { name: "End point" })).toHaveValue(
-        "7",
-      );
+        page.getByRole("link", { name: "Edit in builder" }),
+      ).toHaveCount(0);
+      await page.getByRole("button", { name: "Rename", exact: true }).click();
       await page
         .getByRole("textbox", { name: "Segment name" })
-        .fill("Parity UI builder updated");
-
-      const updated = page.waitForResponse(
+        .fill("Renamed fixed segment");
+      const renamed = page.waitForResponse(
         (response) =>
-          new URL(response.url()).pathname ===
-            `/api/segments/${segmentId}/from-activity` &&
+          new URL(response.url()).pathname === `/api/segments/${segmentId}` &&
           response.request().method() === "PUT",
       );
-      await page.getByRole("button", { name: "Save changes" }).click();
-      const updateResponse = await updated;
-      expect(updateResponse.status(), `${target.name} builder update`).toBe(
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      const renameResponse = await renamed;
+      expect(renameResponse.status(), `${target.name} creator rename`).toBe(
         200,
       );
-      expect(await updateResponse.json()).toMatchObject({
+      const renameBody = await renameResponse.json();
+      expect(renameBody).toMatchObject({
         id: segmentId,
-        title: "Parity UI builder updated",
-        builder_source: {
-          activity_id: Number(activityId),
-          start_route_point_index: 2,
-          end_route_point_index: 7,
-        },
+        title: "Renamed fixed segment",
+        distance_meters: createBody.distance_meters,
+        builder_source: createBody.builder_source,
       });
-      await expect(page).toHaveURL(new RegExp(`/segments/${segmentId}$`));
+      expect(renameBody.processing_task_id).toBeUndefined();
       await expect(
-        page.getByRole("heading", { name: "Parity UI builder updated" }),
+        page.getByRole("heading", { name: "Renamed fixed segment" }),
       ).toBeVisible();
+      await openRoute(page, target, `/segments/builder?segmentId=${segmentId}`);
+      await expect(
+        page.getByText(
+          "Saved segment geometry is locked. Rename the segment from its detail page.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await expect(page.getByRole("slider")).toHaveCount(0);
     } finally {
       if (apiBase && segmentId) {
         await page.evaluate(

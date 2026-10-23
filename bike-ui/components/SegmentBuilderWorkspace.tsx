@@ -15,9 +15,7 @@ import {
 import {
   type Activity,
   type ActivityRoutePoint,
-  type Segment,
   useCreateSegmentFromActivity,
-  useUpdateSegmentFromActivity,
 } from "../lib/queries";
 import {
   buildInitialSegmentSelection,
@@ -35,7 +33,7 @@ import { useKeyedState } from "../lib/useKeyedState";
 import { useUnitPreferences } from "../lib/unitPreferences";
 import MapLibreRouteMap from "./MapLibreRouteMap";
 import { AppCard } from "./ui/Card";
-import { ErrorCard, LoadingCard } from "./ui/QueryState";
+import { LoadingCard } from "./ui/QueryState";
 
 const EMPTY_ROUTE_POINTS: ActivityRoutePoint[] = [];
 
@@ -153,65 +151,27 @@ function SelectionControl({
 }
 
 type SegmentBuilderWorkspaceProps = {
-  segment: Segment | null;
   activity: Activity | null;
   isLoading: boolean;
-  unavailableMessage?: string | null;
 };
 
 export default function SegmentBuilderWorkspace({
-  segment,
   activity,
   isLoading,
-  unavailableMessage = null,
 }: SegmentBuilderWorkspaceProps) {
   const router = useRouter();
   const { unitSystem } = useUnitPreferences();
   const createSegmentMutation = useCreateSegmentFromActivity();
-  const updateSegmentFromActivityMutation = useUpdateSegmentFromActivity();
   const routePoints = activity?.route_points ?? EMPTY_ROUTE_POINTS;
   const hasRoute = hasSegmentBuilderRoute(routePoints);
-  const builderSource = segment?.builder_source ?? null;
-  const isEditingExistingSegment = builderSource != null;
-  const initialSelection = (() => {
-    if (!activity) {
-      return buildInitialSegmentSelection(undefined);
-    }
-
-    if (
-      builderSource &&
-      builderSource.activity_id === activity.id &&
-      hasSegmentBuilderRoute(routePoints)
-    ) {
-      const startIndex = clampStartIndex(
-        routePoints,
-        builderSource.start_route_point_index,
-        builderSource.end_route_point_index,
-      );
-      return {
-        startIndex,
-        endIndex: clampEndIndex(
-          routePoints,
-          startIndex,
-          builderSource.end_route_point_index,
-        ),
-      };
-    }
-
-    return buildInitialSegmentSelection(activity.route_points);
-  })();
+  const initialSelection = buildInitialSegmentSelection(activity?.route_points);
   const builderDraftKey = [
     activity?.id ?? "no-activity",
     routePoints.length,
-    segment?.id ?? "new-segment",
-    segment?.title ?? "",
-    builderSource?.activity_id ?? "",
-    builderSource?.start_route_point_index ?? "",
-    builderSource?.end_route_point_index ?? "",
   ].join(":");
   const [draft, setDraft] = useKeyedState(builderDraftKey, {
     selection: initialSelection,
-    segmentName: segment?.title ?? "",
+    segmentName: "",
   });
   const { selection, segmentName } = draft;
   const setSelection = (value: SetStateAction<SegmentBuilderSelection>) =>
@@ -248,9 +208,7 @@ export default function SegmentBuilderWorkspace({
   );
   const overlayPoints =
     selectedRoutePoints.length >= 2 ? selectedRoutePoints : [];
-  const isSaving =
-    createSegmentMutation.isPending ||
-    updateSegmentFromActivityMutation.isPending;
+  const isSaving = createSegmentMutation.isPending;
 
   const mapMarkers = [
     {
@@ -289,26 +247,17 @@ export default function SegmentBuilderWorkspace({
     }
 
     try {
-      const savedSegment =
-        isEditingExistingSegment && segment
-          ? await updateSegmentFromActivityMutation.updateAsync({
-              id: segment.id,
-              activityId: activity.id,
-              title,
-              startRoutePointIndex: normalizedSelection.startIndex,
-              endRoutePointIndex: normalizedSelection.endIndex,
-            })
-          : await createSegmentMutation.createAsync({
-              activityId: activity.id,
-              title,
-              startRoutePointIndex: normalizedSelection.startIndex,
-              endRoutePointIndex: normalizedSelection.endIndex,
-            });
+      const savedSegment = await createSegmentMutation.createAsync({
+        activityId: activity.id,
+        title,
+        startRoutePointIndex: normalizedSelection.startIndex,
+        endRoutePointIndex: normalizedSelection.endIndex,
+      });
 
       toast.success(
         savedSegment.processing_task_id
           ? `Saved ${savedSegment.title}. Segment matching queued as task ${savedSegment.processing_task_id}.`
-          : `Saved ${savedSegment.title}. Segment matching queued.`,
+          : `Saved ${savedSegment.title}.`,
       );
       router.push(`/segments/${savedSegment.id}`);
     } catch {
@@ -322,16 +271,6 @@ export default function SegmentBuilderWorkspace({
         size="lg"
         className="border border-base-300"
         bodyClassName="items-center justify-center py-16"
-      />
-    );
-  }
-
-  if (unavailableMessage) {
-    return (
-      <ErrorCard
-        error={null}
-        fallback={unavailableMessage}
-        className="border border-base-300"
       />
     );
   }
@@ -360,9 +299,6 @@ export default function SegmentBuilderWorkspace({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm text-base-content/60">Segment workspace</p>
-            {isEditingExistingSegment ? (
-              <span className="badge badge-outline">Editing saved segment</span>
-            ) : null}
           </div>
           <h2 className="text-2xl font-semibold text-base-content">
             {activity.title}
@@ -542,11 +478,7 @@ export default function SegmentBuilderWorkspace({
                   void handleSave();
                 }}
               >
-                {isSaving
-                  ? "Saving..."
-                  : isEditingExistingSegment
-                    ? "Save changes"
-                    : "Save segment"}
+                {isSaving ? "Saving..." : "Save segment"}
               </button>
             </div>
           </div>

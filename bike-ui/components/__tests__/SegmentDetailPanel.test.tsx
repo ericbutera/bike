@@ -312,6 +312,27 @@ describe("SegmentDetailPanel", () => {
     expect(within(table).getByText("Rider 8")).toBeInTheDocument();
   });
 
+  it("lets the creator rename a fixed segment without exposing route editing", async () => {
+    const user = userEvent.setup();
+    const updateAsync = vi
+      .fn()
+      .mockResolvedValue({ ...sharedSegmentFor(7), title: "New climb name" });
+    mocks.useUpdateSegment.mockReturnValue({ updateAsync, isPending: false });
+    openSharedSegment(7);
+    expect(
+      screen.queryByRole("link", { name: "Edit in builder" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    const input = screen.getByRole("textbox");
+    await user.clear(input);
+    await user.type(input, "New climb name");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(updateAsync).toHaveBeenCalledExactlyOnceWith({
+      id: 1,
+      title: "New climb name",
+    });
+  });
+
   it("lets the creator confirm deletion of a shared segment and returns to the catalog", async () => {
     const user = userEvent.setup();
     const confirm = vi.fn().mockReturnValue(true);

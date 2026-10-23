@@ -61,6 +61,12 @@
 
 ## Segments
 
+- [x] Fix segment geometry after creation and keep creator renaming as a metadata
+      update without matching or standings work; see the
+      [fixed-geometry contract](specs/segment-processing.md#fixed-geometry-and-creator-renaming).
+      PR 100 follow-ups LOAD05, LOAD06, and LOAD19 still own stable effort
+      persistence, lock ordering, and gradual historical matching.
+
 - [x] Isolate personal segment results and comparison recordings by authenticated
       user, and isolate browser query data across account changes and logout; see
       [authentication](specs/authentication.md) and [segment visibility](specs/segment-processing.md#segment-ownership-and-visibility).

@@ -1,11 +1,10 @@
 use super::{ActiveModel, Model, SegmentMode};
 use crate::activity_details::{derive_activity_detail_data, deserialize_derived_activity_data, ActivityRoutePoint};
 use crate::activity_summary::summarize_activity_upload;
-use crate::analytics::rebuild_activity_analytics_cache;
-use crate::entities::{activities, segment_efforts, segments};
+use crate::entities::{activities, segments};
 use crate::segment_support::{serialize_segment_route_points, slice_effort_route_points};
 use crate::workflow_error::WorkflowError as AppError;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, IntoActiveModel, Set, TransactionSession, TransactionTrait};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
 
 #[derive(Debug, Clone)]
 pub struct ActivitySegmentSource {
@@ -30,13 +29,6 @@ impl ActivitySegmentSource {
     pub fn distance_meters(&self) -> Option<f64> {
         self.distance_meters
     }
-    fn require_owner(&self, user_id: i32) -> Result<(), AppError> {
-        if self.activity.user_id != user_id {
-            return Err(AppError::not_found("Activity not found"));
-        }
-        Ok(())
-    }
-
     pub async fn load(
         db: &impl ConnectionTrait,
         user_id: i32,
@@ -62,14 +54,6 @@ impl ActivitySegmentSource {
             start_route_point_index,
             end_route_point_index,
         })
-    }
-    fn matches_builder(&self, segment: &Model) -> bool {
-        let activity_matches = segment.source_activity_id == Some(self.activity.id);
-        let range_matches = (
-            segment.source_start_route_point_index,
-            segment.source_end_route_point_index,
-        ) == (Some(self.start_route_point_index), Some(self.end_route_point_index));
-        activity_matches && range_matches
     }
 }
 
@@ -138,7 +122,7 @@ pub fn slice_builder_route_points(
 impl Model {
     pub async fn update_details(
         self,
-        db: &(impl ConnectionTrait + TransactionTrait),
+        db: &impl ConnectionTrait,
         title: Option<&str>,
         mode: Option<SegmentMode>,
         starred: Option<bool>,
@@ -158,61 +142,20 @@ impl Model {
             return Ok(self);
         }
 
-        let activity_ids = if title_changed {
-            segment_efforts::Model::activity_ids_for_segments(db, &[self.id]).await?
-        } else {
-            Vec::new()
+        let mut patch = ActiveModel {
+            id: Set(self.id),
+            ..Default::default()
         };
-        let txn = db.begin().await?;
-        activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
-        let mut active_segment = self.into_active_model();
-        active_segment.title = Set(title);
-        active_segment.mode = Set(mode.as_str().to_string());
-        active_segment.starred = Set(starred);
-        let updated_segment = active_segment.update(&txn).await?;
-
-        if title_changed && !activity_ids.is_empty() {
-            rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
+        if title_changed {
+            patch.title = Set(title);
         }
-
-        txn.commit().await?;
-
-        Ok(updated_segment)
-    }
-    pub async fn adopt_builder_source(
-        self,
-        db: &(impl ConnectionTrait + TransactionTrait),
-        source: &ActivitySegmentSource,
-    ) -> Result<Self, AppError> {
-        source.require_owner(self.user_id)?;
-        let should_update_title = self.title != source.title;
-        let should_update_builder_source = !source.matches_builder(&self);
-
-        if !should_update_title && !should_update_builder_source {
-            return Ok(self);
+        if mode_changed {
+            patch.mode = Set(mode.as_str().to_string());
         }
-
-        let activity_ids = if should_update_title {
-            segment_efforts::Model::activity_ids_for_segments(db, &[self.id]).await?
-        } else {
-            Vec::new()
-        };
-        let txn = db.begin().await?;
-        activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
-        let mut active_segment = self.into_active_model().with_builder_link(source);
-        if should_update_title {
-            active_segment.title = Set(source.title.clone());
+        if starred_changed {
+            patch.starred = Set(starred);
         }
-
-        let updated_segment = active_segment.update(&txn).await?;
-
-        if !activity_ids.is_empty() {
-            rebuild_activity_analytics_cache(&txn, &activity_ids).await?;
-        }
-
-        txn.commit().await?;
-
-        Ok(updated_segment)
+        Ok(patch.update(db).await?)
     }
     pub async fn create_from_activity(
         db: &impl ConnectionTrait,
@@ -225,31 +168,6 @@ impl Model {
         .with_activity_source(source)
         .insert(db)
         .await?)
-    }
-    pub async fn replace_from_activity(
-        self,
-        db: &(impl ConnectionTrait + TransactionTrait),
-        source: &ActivitySegmentSource,
-    ) -> Result<Self, AppError> {
-        source.require_owner(self.user_id)?;
-        if let Some(existing) =
-            Self::find_duplicate(db, self.user_id, source.distance_meters, &source.route_points).await?
-        {
-            if existing.id != self.id {
-                return Err(AppError::validation_field(
-                    "activity_id",
-                    "Another segment already uses this route",
-                ));
-            }
-        }
-        let txn = db.begin().await?;
-        let updated = self
-            .into_active_model()
-            .with_activity_source(source)
-            .update(&txn)
-            .await?;
-        txn.commit().await?;
-        Ok(updated)
     }
     pub async fn import_route(
         db: &impl ConnectionTrait,
@@ -322,5 +240,63 @@ impl ActiveModel {
             ..self.with_builder_link(source)
         }
         .with_route(source.distance_meters, &source.route_points)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support;
+
+    #[tokio::test]
+    async fn unchanged_segment_metadata_does_not_write_or_read_related_results() {
+        let original = test_support::segment();
+        let db = test_support::postgres_mock().into_connection();
+        let updated = original
+            .clone()
+            .update_details(&db, Some("  Fixture segment  "), None, None)
+            .await
+            .unwrap();
+        assert_eq!(updated, original);
+        assert!(db.into_transaction_log().is_empty());
+    }
+
+    #[tokio::test]
+    async fn blank_segment_names_are_rejected_before_any_write() {
+        let db = test_support::postgres_mock().into_connection();
+        let error = test_support::segment()
+            .update_details(&db, Some("  "), None, None)
+            .await
+            .unwrap_err();
+        assert_eq!(error.errors.unwrap()["title"], vec!["Segment name is required"]);
+        assert!(db.into_transaction_log().is_empty());
+    }
+
+    #[tokio::test]
+    async fn mode_and_star_changes_preserve_the_fixed_route_and_name() {
+        let before = test_support::segment();
+        let after = Model {
+            mode: "dh".into(),
+            starred: true,
+            ..before.clone()
+        };
+        let db = test_support::postgres_mock()
+            .append_query_results([vec![after.clone()]])
+            .into_connection();
+        assert_eq!(
+            before
+                .update_details(&db, None, Some(SegmentMode::Dh), Some(true))
+                .await
+                .unwrap(),
+            after
+        );
+        let log = db.into_transaction_log();
+        assert_eq!(log.len(), 1);
+        let assignment = log[0].statements()[0].sql.split(" WHERE ").next().unwrap();
+        assert!(!assignment.contains("\"title\" ="));
+        assert!(!assignment.contains("\"route_data_json\" ="));
+        assert!(!assignment.contains("\"distance_meters\" ="));
+        assert!(assignment.contains("\"mode\" ="));
+        assert!(assignment.contains("\"starred\" ="));
     }
 }

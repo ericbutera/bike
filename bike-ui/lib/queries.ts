@@ -1850,47 +1850,6 @@ export function useCreateSegmentFromActivity() {
   };
 }
 
-export function useUpdateSegmentFromActivity() {
-  const queryClient = useQueryClient();
-  const mutation = $typedApi.useMutation("put", "/segments/{id}/from-activity");
-
-  return {
-    ...mutation,
-    updateAsync: async (payload: {
-      id: number | string;
-      activityId: number | string;
-      title: string;
-      startRoutePointIndex: number;
-      endRoutePointIndex: number;
-    }) => {
-      const numericId = Number(payload.id);
-      const result = await mutation.mutateAsync({
-        params: { path: { id: numericId } },
-        body: {
-          activity_id: Number(payload.activityId),
-          title: payload.title,
-          start_route_point_index: payload.startRoutePointIndex,
-          end_route_point_index: payload.endRoutePointIndex,
-        },
-      });
-
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["get", "/segments"] }),
-        queryClient.invalidateQueries({ queryKey: ["get", "/segments/{id}"] }),
-        queryClient.invalidateQueries({
-          queryKey: ["get", "/segments/{id}/comparison"],
-        }),
-        queryClient.invalidateQueries({ queryKey: ["get", "/activities"] }),
-        queryClient.invalidateQueries({
-          queryKey: ["get", "/activities/{id}"],
-        }),
-      ]);
-
-      return result as Segment;
-    },
-  };
-}
-
 export function useUpdateSegment() {
   const queryClient = useQueryClient();
   const mutation = $typedApi.useMutation("put", "/segments/{id}");

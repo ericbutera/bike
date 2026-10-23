@@ -2,7 +2,6 @@
 
 import { faBars, faCrown, faRoute } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import Link from "next/link";
 import SegmentPersonalAchievements from "./SegmentPersonalAchievements";
 import {
   formatActivityTimestamp,
@@ -27,9 +26,6 @@ type SegmentDetailHeaderProps = {
     isSavingSegment: boolean;
     isDeletingSegment: boolean;
   };
-  links: {
-    builderEditHref: string | null;
-  };
   actions: {
     changeSegmentMode: (mode: SegmentMode) => void;
     deleteSegment: () => void;
@@ -41,7 +37,6 @@ export default function SegmentDetailHeader({
   metrics,
   editor,
   status,
-  links,
   actions,
 }: SegmentDetailHeaderProps) {
   const { routeDistanceMeters, routeGradePercent, routeNetElevationMeters } =
@@ -177,11 +172,6 @@ export default function SegmentDetailHeader({
                 tabIndex={0}
                 className="dropdown-content menu z-20 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
               >
-                {segment.can_manage && links.builderEditHref ? (
-                  <li>
-                    <Link href={links.builderEditHref}>Edit in builder</Link>
-                  </li>
-                ) : null}
                 {segment.can_manage && !isEditingTitle ? (
                   <li>
                     <button type="button" onClick={editor.startEditingTitle}>

@@ -77,9 +77,6 @@ export default function SegmentDetailPanel({
     [efforts.selectedRows, playback.seconds],
   );
   const raceViewerHref = efforts.raceViewerHref(playbackPace);
-  const builderEditHref = segment?.builder_source
-    ? `/segments/builder?segmentId=${segment.id}`
-    : null;
 
   async function handleUpdateSegmentMode(mode: SegmentMode) {
     if (!segment?.can_manage) return;
@@ -144,7 +141,6 @@ export default function SegmentDetailPanel({
           isSavingSegment: updateSegmentMutation.isPending,
           isDeletingSegment: deleteSegmentMutation.isPending,
         }}
-        links={{ builderEditHref }}
         actions={{
           changeSegmentMode: (mode) => {
             void handleUpdateSegmentMode(mode);
