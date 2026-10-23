@@ -88,6 +88,21 @@ Incomplete analytics should feel normal in the UI. A newly created segment may i
 
 The activity ingestion graph also rebuilds segment efforts after an activity is saved. That pipeline owns import orchestration and trace events; this spec owns the segment route-matching behavior used by that graph stage.
 
+## Global matching scope
+
+- Activity matching scans shared segment routes across creators. It replaces only
+  the matched activity owner's efforts, deriving effort ownership from that
+  activity rather than the segment creator.
+- Segment regeneration scans eligible cycling activities across all users in
+  stable ID pages. Replacement retains each activity's real owner, refreshes
+  current personal and overall standings, and never creates spectator efforts.
+- Segment effort replacement is atomic. A failed replacement preserves the
+  previous effort set, including other athletes' efforts.
+- Matching and regeneration refresh current effort counts and standings. Activity
+  highlights come from the saved award decisions defined in
+  [achievements](achievements.md); segment regeneration never records or
+  recalculates earned awards.
+
 ## Matching Contract
 
 Bike matches stored segment routes against normalized activity route points to create segment efforts. This contract must stay stable across parser, matcher, import, and performance changes.

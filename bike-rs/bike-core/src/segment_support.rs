@@ -180,27 +180,28 @@ where
     Ok(())
 }
 
-#[tracing::instrument(name = "segments.match.segment", skip_all, fields(bike.operation = "segments.match.segment", user_id, segment_id, route_point_count = segment_route_points.len() as i64))]
+#[tracing::instrument(name = "segments.match.segment", skip_all, fields(bike.operation = "segments.match.segment", segment_id, route_point_count = segment_route_points.len() as i64))]
 pub async fn replace_segment_efforts_for_segment<C>(
     db: &C,
-    user_id: i32,
     segment_id: i32,
     segment_route_points: &[ActivityRoutePoint],
 ) -> Result<Vec<i32>, SegmentSupportError>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + TransactionTrait,
 {
+    let txn = db.begin().await?;
     if segment_route_points.len() < 2 {
-        let affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
-        segment_efforts::Entity::delete_for_segment(db, segment_id).await?;
+        let affected_activity_ids = load_activity_ids_for_segment(&txn, segment_id).await?;
+        segment_efforts::Entity::delete_for_segment(&txn, segment_id).await?;
+        txn.commit().await?;
         return Ok(affected_activity_ids);
     }
 
-    let mut affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
+    let mut affected_activity_ids = load_activity_ids_for_segment(&txn, segment_id).await?;
     let mut replacements = Vec::new();
     let mut after_id = 0;
     loop {
-        let candidates = activities::Model::matching_routes_page(db, user_id, after_id, 16).await?;
+        let candidates = activities::Model::global_matching_routes_page(&txn, after_id, 16).await?;
         let Some(last) = candidates.last() else {
             break;
         };
@@ -218,15 +219,16 @@ where
         }
     }
 
-    segment_efforts::Entity::delete_for_segment(db, segment_id).await?;
+    segment_efforts::Entity::delete_for_segment(&txn, segment_id).await?;
 
     for (user_id, activity_id, matches) in replacements {
-        insert_matches(db, user_id, segment_id, activity_id, &matches).await?;
+        insert_matches(&txn, user_id, segment_id, activity_id, &matches).await?;
     }
 
     affected_activity_ids.sort_unstable();
     affected_activity_ids.dedup();
 
+    txn.commit().await?;
     Ok(affected_activity_ids)
 }
 
@@ -801,3 +803,7 @@ mod tests {
         assert_eq!(matches[0].end_route_point_index, 4);
     }
 }
+
+#[cfg(test)]
+#[path = "segment_support/matching.rs"]
+mod matching_tests;

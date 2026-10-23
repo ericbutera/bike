@@ -30,17 +30,3 @@ where
         .await
         .map_err(|error| AppError::internal(error.message))
 }
-
-pub async fn replace_segment_efforts_for_segment<C>(
-    db: &C,
-    user_id: i32,
-    segment_id: i32,
-    segment_route_points: &[ActivityRoutePoint],
-) -> Result<Vec<i32>, AppError>
-where
-    C: ConnectionTrait,
-{
-    bike_core::segment_support::replace_segment_efforts_for_segment(db, user_id, segment_id, segment_route_points)
-        .await
-        .map_err(|error| AppError::internal(error.message))
-}

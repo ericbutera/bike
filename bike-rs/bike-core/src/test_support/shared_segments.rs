@@ -202,3 +202,19 @@ impl SharedSegments {
             .collect()
     }
 }
+
+impl SharedSegments {
+    /// Reuse the canonical outdoor recording for cross-athlete matching scenarios.
+    pub fn with_recordings(mut self) -> Self {
+        let parsed = super::parsed_reprocess_activity();
+        self.segment.route_data_json = Some(crate::segment_support::serialize_segment_route_points(
+            &parsed.derived_data.route_points,
+        ));
+        for activity in &mut self.activities {
+            activity.derived_data_json = Some(crate::activity_data::serialize_derived_activity_data(
+                &parsed.derived_data,
+            ));
+        }
+        self
+    }
+}

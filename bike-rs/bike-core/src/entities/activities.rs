@@ -594,9 +594,8 @@ impl Model {
             .await
     }
 
-    pub async fn matching_routes_page<C>(
+    pub async fn global_matching_routes_page<C>(
         db: &C,
-        user_id: i32,
         after_id: i32,
         limit: u64,
     ) -> Result<Vec<ActivityMatchingRoute>, DbErr>
@@ -608,7 +607,6 @@ impl Model {
             .column(Column::Id)
             .column(Column::UserId)
             .column(Column::DerivedDataJson)
-            .filter(Column::UserId.eq(user_id))
             .filter(Column::Sport.is_in(BIKE_ACTIVITY_SPORT_VALUES.iter().copied()))
             .filter(Column::Id.gt(after_id))
             .order_by_asc(Column::Id)

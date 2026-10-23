@@ -55,8 +55,7 @@ pub async fn regenerate_segment_efforts(
         .ok_or_else(|| SegmentRegenerationError::internal(format!("segment {segment_id} was not found")))?;
     let route_points = deserialize_segment_route_points(segment.route_data_json.as_ref());
 
-    let affected_activity_ids =
-        replace_segment_efforts_for_segment(db, segment.user_id, segment.id, &route_points).await?;
+    let affected_activity_ids = replace_segment_efforts_for_segment(db, segment.id, &route_points).await?;
     mark_segment_activity_changes(db, &[segment.id], Utc::now()).await?;
     rebuild_segment_analytics_cache(db, &[segment.id]).await?;
     rebuild_activity_analytics_cache(db, &affected_activity_ids).await?;

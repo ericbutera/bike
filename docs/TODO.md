@@ -75,8 +75,8 @@
       segment, including athletes without an effort.
 - [x] Allow authenticated users to browse shared segments through the API and UI,
       with personal results, private source metadata, and creator writes isolated.
-- [ ] Match activities across global segments in both activity and segment
-      regeneration; see [segment visibility](specs/segment-processing.md#segment-ownership-and-visibility).
+- [x] Match activities across global segments in both activity and segment
+      regeneration; see [global matching](specs/segment-processing.md#global-matching-scope).
 
 - [x] Support individual GPX downloads from segment detail; see the
       [download contract](specs/segment-processing.md#segment-downloads).
