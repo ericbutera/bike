@@ -20,6 +20,9 @@
   resolution, account change, or logout, cancel pending application queries and
   remove previous cached application data before rendering the new session.
   Keep the current-user query available to resolve the session boundary.
+- An unauthenticated current-user response settles into the signed-out state.
+  Mounting navigation or protected content must not restart initial identity
+  loading; sign-in controls remain available after a 401 response.
 - While identity is loading or the cache belongs to another session, show a
   loading state instead of the previous session's data. Once signed out, protected
   content remains behind the existing authentication gate.

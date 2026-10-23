@@ -152,6 +152,22 @@ Changes that touch matcher internals should also run:
 cargo test segment_support
 ```
 
+## Saved Analytics Persistence
+
+- LOAD01: write effort overall and personal ranks in batches of at most 500,
+  preserving duration-then-effort-ID ordering and independent personal ranks
+  for each rider. Update only ranks and the modification timestamp; retain
+  effort identity, traversal order, recording bounds and saved award decisions.
+- LOAD02: insert segment/rider summaries in batches of at most 500, including
+  each rider's effort count and personal-best effort and duration.
+- Keep rank writes, clearing previous summaries and inserting replacement
+  summaries in the existing segment transaction and behind its existing lock.
+  A failed batch rolls back the replacement. No efforts clears rider summaries
+  and stores an empty segment summary. Unrelated segments remain untouched.
+- These persistence changes introduce no new saved fields or ranking rules.
+  Existing rows need no conversion or backfill; explicit refreshes use the same
+  `rebuild_segment_analytics` operation as normal worker processing.
+
 ## Segment Responses
 
 The segment list should be lightweight. It should include summary information such as title, mode, starred state, distance, effort count, best duration, current-user PR, builder source, and processing state. It should not load full route blobs or full effort route slices just to render the list.

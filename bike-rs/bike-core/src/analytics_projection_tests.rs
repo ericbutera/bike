@@ -165,7 +165,7 @@ async fn segment_refresh_commits_ranks_before_locking_shared_activity_projection
         .append_query_results([vec![fixtures::segment_effort()]])
         .append_query_results([vec![fixtures::activity_award_output()]])
         .append_query_results([vec![fixtures::activity_earned_awards()]])
-        .append_exec_results((0..7).map(|_| written()))
+        .append_exec_results((0..9).map(|_| written()))
         .into_connection();
     rebuild_segment_analytics_cache(&db, &[1]).await.unwrap();
     let log = db.into_transaction_log();
@@ -307,14 +307,9 @@ fn segment_result_refresh(mock: MockDatabase, segment_id: i32) -> MockDatabase {
         .append_query_results([vec![effort.clone()]])
         .append_query_results([vec![fixtures::activity()]])
         .append_query_results([vec![segment.clone()]])
-        .append_query_results([vec![effort.clone()]])
         .append_query_results([vec![segment_summaries::Model {
             segment_id,
             ..fixtures::segment_summary()
-        }]])
-        .append_query_results([vec![segment_user_summaries::Model {
-            segment_id,
-            ..fixtures::segment_user_summary()
         }]])
         .append_query_results([vec![segment.clone()]])
         .append_query_results([vec![effort.clone()]])
@@ -338,7 +333,7 @@ async fn segment_batch_refreshes_shared_activity_award_counts_only_once() {
         ]])
         .append_query_results([vec![fixtures::activity_award_output()]])
         .append_query_results([vec![fixtures::activity_earned_awards()]])
-        .append_exec_results((0..13).map(|_| written()))
+        .append_exec_results((0..17).map(|_| written()))
         .into_connection();
     rebuild_segment_analytics_cache(&db, &[2, 1, 2]).await.unwrap();
     let log = db.into_transaction_log();
@@ -374,7 +369,7 @@ async fn segment_batch_refreshes_shared_activity_award_counts_only_once() {
 async fn failed_segment_batch_leaves_award_summary_refresh_for_retry() {
     let db = segment_result_refresh(fixtures::postgres_mock(), 1)
         .append_query_errors([DbErr::Custom("segment lookup failed".into())])
-        .append_exec_results((0..6).map(|_| written()))
+        .append_exec_results((0..8).map(|_| written()))
         .into_connection();
     let error = rebuild_segment_analytics_cache(&db, &[1, 2]).await.unwrap_err();
     assert_eq!(error, DbErr::Custom("segment lookup failed".into()));

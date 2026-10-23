@@ -10,15 +10,15 @@ description = "Check package-manager metadata against the root mise pin"
 run = "mise --cd .. run pins:check"
 
 [tasks.check]
-description = "Install dependencies and run UI lint, type, unit, format, and audit checks"
-run = ["mise run lint:check", "mise run test", "mise run audit"]
+description = "Install dependencies and run UI audit, lint, type, format, and unit checks"
+run = ["mise run lint:check", "mise run test"]
 
 [tasks.audit]
 description = "Reject dependency advisories and incompatible peers"
 run = ["pnpm audit", "pnpm peers check"]
 
 [tasks."lint:check"]
-description = "Install locked dependencies and run strict lint, types, and formatting"
+description = "Install locked dependencies and run audit, strict lint, types, and formatting"
 run = ["mise run deps", "mise run lint", "mise run typecheck", "mise run format:check"]
 
 [tasks.dev]
@@ -29,8 +29,8 @@ run = "pnpm run dev"
 run = "pnpm run typecheck"
 
 [tasks.lint]
-description = "Run Next.js and React ESLint checks"
-run = "pnpm run lint"
+description = "Audit UI dependencies and peers, then run ESLint"
+run = ["mise run audit", "pnpm run lint"]
 
 [tasks.build]
 run = "pnpm run build"

@@ -69,7 +69,7 @@ pass_filenames = false
 
 [[repos.hooks]]
 id = "ui-lint"
-name = "UI ESLint"
+name = "UI dependency audit and ESLint"
 language = "system"
 entry = "mise --cd bike-ui run lint"
 files = "^bike-ui/.*\\.(ts|tsx|js|jsx|mjs|json|toml|yaml)$|^mise\\.toml$"
@@ -93,7 +93,7 @@ pass_filenames = false
 
 [[repos.hooks]]
 id = "renderer-lint"
-name = "Renderer and shared JavaScript lint and formatting"
+name = "Renderer dependency audit, JavaScript lint, and formatting"
 language = "system"
 entry = "mise run lint:maps"
 files = "^map-renderer/.*\\.(mjs|html|json|toml)$|^mise\\.toml$"

@@ -1,8 +1,8 @@
 use crate::analytics::SegmentUserSummaryAccumulator;
-use crate::entities::segment_user_summaries;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, QuerySelect, Set};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -96,13 +96,26 @@ impl Entity {
 }
 
 impl Model {
-    pub(crate) async fn store_summary(
+    pub(crate) async fn store_summaries(
         db: &impl ConnectionTrait,
-        segment_id: i32,
-        user_id: i32,
-        summary: SegmentUserSummaryAccumulator,
+        summaries: HashMap<(i32, i32), SegmentUserSummaryAccumulator>,
     ) -> Result<(), DbErr> {
-        segment_user_summaries::ActiveModel {
+        let rows: Vec<_> = summaries
+            .into_iter()
+            .map(|((segment_id, user_id), summary)| ActiveModel::from_summary(segment_id, user_id, summary))
+            .collect();
+        for batch in rows.chunks(500) {
+            Entity::insert_many(batch.iter().cloned())
+                .exec_without_returning(db)
+                .await?;
+        }
+        Ok(())
+    }
+}
+
+impl ActiveModel {
+    fn from_summary(segment_id: i32, user_id: i32, summary: SegmentUserSummaryAccumulator) -> Self {
+        Self {
             segment_id: Set(segment_id),
             user_id: Set(user_id),
             effort_count: Set(summary.effort_count),
@@ -110,8 +123,71 @@ impl Model {
             personal_best_duration_seconds: Set(summary.personal_best_duration_seconds),
             ..Default::default()
         }
-        .insert(db)
-        .await?;
-        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support as fixtures;
+
+    #[tokio::test]
+    async fn rider_summaries_are_inserted_in_bounded_batches_with_their_own_personal_bests() {
+        let summaries = (1..=501)
+            .map(|user_id| {
+                (
+                    (1, user_id),
+                    SegmentUserSummaryAccumulator {
+                        effort_count: user_id,
+                        personal_best_effort_id: Some(1000 + user_id),
+                        personal_best_duration_seconds: Some(2000 + user_id),
+                    },
+                )
+            })
+            .collect();
+        let db = fixtures::postgres_mock()
+            .append_exec_results([fixtures::written(), fixtures::written()])
+            .into_connection();
+        Model::store_summaries(&db, summaries).await.unwrap();
+        let log = db.into_transaction_log();
+        assert_eq!(log.len(), 2);
+        let mut riders = Vec::new();
+        let sizes: Vec<_> = log
+            .iter()
+            .map(|txn| {
+                let statement = &txn.statements()[0];
+                assert!(statement.sql.starts_with("INSERT INTO \"segment_user_summaries\""));
+                assert!(!statement.sql.contains("RETURNING"));
+                let values = &statement.values.as_ref().unwrap().0;
+                for row in values.as_chunks::<5>().0 {
+                    let user_id = match row[1] {
+                        sea_orm::Value::Int(Some(id)) => id,
+                        _ => panic!("expected rider id"),
+                    };
+                    assert_eq!(
+                        row,
+                        &[
+                            1.into(),
+                            user_id.into(),
+                            user_id.into(),
+                            (1000 + user_id).into(),
+                            (2000 + user_id).into()
+                        ]
+                    );
+                    riders.push(user_id);
+                }
+                values.len()
+            })
+            .collect();
+        riders.sort_unstable();
+        assert_eq!(riders, (1..=501).collect::<Vec<_>>());
+        assert_eq!(sizes, vec![2500, 5]);
+    }
+
+    #[tokio::test]
+    async fn no_rider_summaries_does_not_issue_an_insert() {
+        let db = fixtures::postgres_mock().into_connection();
+        Model::store_summaries(&db, HashMap::new()).await.unwrap();
+        assert!(db.into_transaction_log().is_empty());
     }
 }
