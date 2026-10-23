@@ -362,61 +362,6 @@ fn relative_effort(model: &activities::Model) -> Option<i32> {
     estimated_training_load(model).map(|value| value.round() as i32)
 }
 
-fn rank_efforts_by_segment(efforts: Vec<segment_efforts::Model>) -> HashMap<i32, i32> {
-    let mut sorted_efforts = efforts;
-    sorted_efforts.sort_by_key(|effort| (effort.segment_id, effort.duration_seconds, effort.id));
-
-    let mut ranks = HashMap::<i32, i32>::new();
-    let mut current_segment_id = None::<i32>;
-    let mut current_rank = 0;
-
-    for effort in sorted_efforts {
-        let next_rank = if current_segment_id == Some(effort.segment_id) {
-            current_rank + 1
-        } else {
-            1
-        };
-
-        ranks.insert(effort.id, next_rank);
-        current_segment_id = Some(effort.segment_id);
-        current_rank = next_rank;
-    }
-
-    ranks
-}
-
-fn overall_ranks_by_effort_id(efforts: &[segment_efforts::Model]) -> HashMap<i32, i32> {
-    rank_efforts_by_segment(efforts.to_vec())
-}
-
-fn personal_ranks_by_effort_id(efforts: &[segment_efforts::Model], user_id: i32) -> HashMap<i32, i32> {
-    rank_efforts_by_segment(
-        efforts
-            .iter()
-            .filter(|effort| effort.user_id == user_id)
-            .cloned()
-            .collect(),
-    )
-}
-
-fn personal_best_duration_by_segment(efforts: &[segment_efforts::Model], user_id: i32) -> HashMap<i32, i32> {
-    efforts.iter().filter(|effort| effort.user_id == user_id).fold(
-        HashMap::<i32, i32>::new(),
-        |mut best_by_segment, effort| {
-            best_by_segment
-                .entry(effort.segment_id)
-                .and_modify(|best| {
-                    if effort.duration_seconds < *best {
-                        *best = effort.duration_seconds;
-                    }
-                })
-                .or_insert(effort.duration_seconds);
-
-            best_by_segment
-        },
-    )
-}
-
 async fn load_activity_segment_efforts(
     db: &sea_orm::DatabaseConnection,
     user_id: i32,
@@ -440,21 +385,13 @@ async fn load_activity_segment_efforts_by_activity_ids(
     if input.efforts.is_empty() {
         return Ok(HashMap::new());
     }
-    let rank_maps = activity_segment_effort_rank_maps(db, user_id, &input).await?;
-
-    Ok(group_activity_segment_efforts(input, rank_maps))
+    Ok(group_activity_segment_efforts(input))
 }
 
 struct ActivitySegmentEffortInput {
     efforts: Vec<segment_efforts::Model>,
     segments_by_id: HashMap<i32, segments::Model>,
     user_summary_by_segment: HashMap<i32, segment_user_summaries::Model>,
-}
-
-struct ActivitySegmentEffortRankMaps {
-    overall_ranks_by_effort_id: HashMap<i32, i32>,
-    personal_ranks_by_effort_id: HashMap<i32, i32>,
-    personal_best_duration_by_segment: HashMap<i32, i32>,
 }
 
 async fn load_activity_segment_effort_input(
@@ -506,69 +443,7 @@ async fn load_segments_by_id(
         .collect())
 }
 
-async fn activity_segment_effort_rank_maps(
-    db: &sea_orm::DatabaseConnection,
-    user_id: i32,
-    input: &ActivitySegmentEffortInput,
-) -> Result<ActivitySegmentEffortRankMaps, AppError> {
-    if can_use_cached_activity_segment_ranks(input) {
-        return Ok(cached_activity_segment_effort_rank_maps(input));
-    }
-
-    let segment_ids = unique_effort_segment_ids(&input.efforts);
-    let all_segment_efforts = segment_efforts::Model::list_by_segment_ids(db, &segment_ids).await?;
-
-    Ok(ActivitySegmentEffortRankMaps {
-        overall_ranks_by_effort_id: overall_ranks_by_effort_id(&all_segment_efforts),
-        personal_ranks_by_effort_id: personal_ranks_by_effort_id(&all_segment_efforts, user_id),
-        personal_best_duration_by_segment: personal_best_duration_by_segment(&all_segment_efforts, user_id),
-    })
-}
-
-fn can_use_cached_activity_segment_ranks(input: &ActivitySegmentEffortInput) -> bool {
-    input.efforts.iter().all(|effort| {
-        let Some(segment) = input.segments_by_id.get(&effort.segment_id) else {
-            return false;
-        };
-        let Some(user_summary) = input.user_summary_by_segment.get(&effort.segment_id) else {
-            return false;
-        };
-
-        effort.overall_rank.is_some()
-            && effort.user_rank.is_some()
-            && effort.updated_at >= segment.last_activity_change_at
-            && user_summary.updated_at >= segment.last_activity_change_at
-    })
-}
-
-fn cached_activity_segment_effort_rank_maps(input: &ActivitySegmentEffortInput) -> ActivitySegmentEffortRankMaps {
-    ActivitySegmentEffortRankMaps {
-        overall_ranks_by_effort_id: input
-            .efforts
-            .iter()
-            .filter_map(|effort| effort.overall_rank.map(|rank| (effort.id, rank)))
-            .collect(),
-        personal_ranks_by_effort_id: input
-            .efforts
-            .iter()
-            .filter_map(|effort| effort.user_rank.map(|rank| (effort.id, rank)))
-            .collect(),
-        personal_best_duration_by_segment: input
-            .user_summary_by_segment
-            .iter()
-            .filter_map(|(segment_id, summary)| {
-                summary
-                    .personal_best_duration_seconds
-                    .map(|duration| (*segment_id, duration))
-            })
-            .collect(),
-    }
-}
-
-fn group_activity_segment_efforts(
-    input: ActivitySegmentEffortInput,
-    rank_maps: ActivitySegmentEffortRankMaps,
-) -> HashMap<i32, Vec<ActivitySegmentEffort>> {
+fn group_activity_segment_efforts(input: ActivitySegmentEffortInput) -> HashMap<i32, Vec<ActivitySegmentEffort>> {
     let mut efforts_by_activity = HashMap::<i32, Vec<ActivitySegmentEffort>>::new();
 
     for effort in input.efforts {
@@ -590,12 +465,12 @@ fn group_activity_segment_efforts(
                 duration_seconds: effort.duration_seconds,
                 start_route_point_index: effort.start_route_point_index,
                 end_route_point_index: effort.end_route_point_index,
-                overall_rank: rank_maps.overall_ranks_by_effort_id.get(&effort.id).copied(),
-                personal_rank: rank_maps.personal_ranks_by_effort_id.get(&effort.id).copied(),
-                personal_best_duration_seconds: rank_maps
-                    .personal_best_duration_by_segment
+                overall_rank: effort.overall_rank,
+                personal_rank: effort.user_rank,
+                personal_best_duration_seconds: input
+                    .user_summary_by_segment
                     .get(&effort.segment_id)
-                    .copied(),
+                    .and_then(|summary| summary.personal_best_duration_seconds),
             });
     }
 
@@ -1386,74 +1261,6 @@ mod tests {
         assert!(resolve_activity_import_storage_path("/uploads", "/tmp/ride.fit").is_err());
     }
 
-    fn make_segment_effort_model(
-        id: i32,
-        user_id: i32,
-        segment_id: i32,
-        activity_id: i32,
-        duration_seconds: i32,
-    ) -> segment_efforts::Model {
-        let now = Utc::now();
-
-        segment_efforts::Model {
-            id,
-            user_id,
-            segment_id,
-            activity_id,
-            effort_index: 1,
-            start_route_point_index: 0,
-            end_route_point_index: 10,
-            start_elapsed_seconds: 0,
-            end_elapsed_seconds: duration_seconds,
-            duration_seconds,
-            distance_meters: Some(1000.0),
-            overall_rank: None,
-            user_rank: None,
-            created_at: now,
-            updated_at: now,
-        }
-    }
-
-    #[test]
-    fn ranks_segment_efforts_for_overall_and_personal_history() {
-        let efforts = vec![
-            make_segment_effort_model(1, 7, 11, 101, 320),
-            make_segment_effort_model(2, 7, 11, 102, 300),
-            make_segment_effort_model(3, 9, 11, 103, 290),
-            make_segment_effort_model(4, 7, 12, 201, 410),
-            make_segment_effort_model(5, 7, 12, 202, 390),
-        ];
-
-        let overall = overall_ranks_by_effort_id(&efforts);
-        let personal = personal_ranks_by_effort_id(&efforts, 7);
-
-        assert_eq!(overall.get(&3), Some(&1));
-        assert_eq!(overall.get(&2), Some(&2));
-        assert_eq!(overall.get(&1), Some(&3));
-        assert_eq!(personal.get(&2), Some(&1));
-        assert_eq!(personal.get(&1), Some(&2));
-        assert_eq!(personal.get(&5), Some(&1));
-        assert_eq!(personal.get(&4), Some(&2));
-        assert_eq!(personal.get(&3), None);
-    }
-
-    #[test]
-    fn loads_personal_best_duration_by_segment() {
-        let efforts = vec![
-            make_segment_effort_model(1, 7, 11, 101, 320),
-            make_segment_effort_model(2, 7, 11, 102, 300),
-            make_segment_effort_model(3, 9, 11, 103, 290),
-            make_segment_effort_model(4, 7, 12, 201, 410),
-            make_segment_effort_model(5, 7, 12, 202, 390),
-        ];
-
-        let personal_best = personal_best_duration_by_segment(&efforts, 7);
-
-        assert_eq!(personal_best.get(&11), Some(&300));
-        assert_eq!(personal_best.get(&12), Some(&390));
-        assert_eq!(personal_best.get(&13), None);
-    }
-
     #[test]
     fn paginated_activity_response_maps_models() {
         let now = Utc::now();
@@ -1663,3 +1470,7 @@ mod tests {
         assert!(sampled_elapsed_seconds.contains(&29));
     }
 }
+
+#[cfg(test)]
+#[path = "tests/activity_saved_ranks.rs"]
+mod saved_rank_tests;

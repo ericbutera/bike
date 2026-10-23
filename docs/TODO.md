@@ -29,6 +29,10 @@
 
 ## Activities
 
+- [x] **LOAD09:** Read saved activity effort ranks and personal-best summaries,
+      preserving nulls and stale saved values without history ranking or request
+      repair. See the [activity detail contract](specs/activity-details.md#route-map-and-matched-segments).
+
 - [x] Generate and persist ordered activity climbs in the upload/reprocessing DAG;
       include a one-off Temporal backfill for missing climb outputs. See the
       [stage rollout contract](specs/background-work.md#activity-climbs-and-stage-backfills).
