@@ -82,9 +82,8 @@ export default function SegmentDetailPanel({
     : null;
 
   async function handleUpdateSegmentMode(mode: SegmentMode) {
-    if (!segment || segment.mode === mode) {
-      return;
-    }
+    if (!segment?.can_manage) return;
+    if (segment.mode === mode) return;
 
     try {
       const updatedSegment = await updateSegmentMutation.updateAsync({
@@ -101,9 +100,7 @@ export default function SegmentDetailPanel({
   }
 
   async function handleDeleteSegment() {
-    if (!segment) {
-      return;
-    }
+    if (!segment?.can_manage) return;
 
     const confirmed =
       typeof globalThis.confirm === "function"
@@ -142,7 +139,6 @@ export default function SegmentDetailPanel({
       <SegmentDetailHeader
         segment={segment}
         metrics={routeMetrics}
-        performance={performance}
         editor={titleEditor}
         status={{
           isSavingSegment: updateSegmentMutation.isPending,

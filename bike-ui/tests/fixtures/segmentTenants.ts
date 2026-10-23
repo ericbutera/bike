@@ -1,3 +1,4 @@
+import type { Segment } from "../../lib/queries";
 import type { components } from "../../lib/openapi/react-query/api";
 import { overallAchievement, personalAchievement } from "./activitySegments";
 
@@ -93,5 +94,46 @@ export function segmentTenants() {
         )
         .map((entry) => entry.row),
     overallFor: (segmentId: number) => overall.get(segmentId) ?? [],
+  };
+}
+
+export function sharedSegmentFor(
+  viewerId: number,
+  segmentId = 1,
+): Segment & { can_manage: boolean } {
+  const creatorId = segmentId === 1 ? 7 : 8;
+  const canManage = viewerId === creatorId;
+  const scenario = segmentTenants();
+  const viewer = [
+    scenario.creator,
+    scenario.contributor,
+    scenario.spectator,
+  ].find((user) => user.id === viewerId)!;
+  const personal = scenario.personalFor(viewer, segmentId);
+  return {
+    id: segmentId,
+    title: segmentId === 1 ? "Shared climb" : "Shared sprint",
+    source: "activity_segment_builder",
+    mode: "xc",
+    can_manage: canManage,
+    starred: false,
+    original_filename: canManage ? "private-ride.gpx" : null,
+    format: "gpx",
+    distance_meters: 1000,
+    effort_count: segmentId === 1 ? 3 : 2,
+    best_duration_seconds: segmentId === 1 ? 100 : 50,
+    current_user_pr_duration_seconds: personal[0]?.duration_seconds ?? null,
+    created_at: "2026-05-07T07:00:00Z",
+    route_points: [],
+    efforts: [],
+    ...(canManage
+      ? {
+          builder_source: {
+            activity_id: 42,
+            start_route_point_index: 2,
+            end_route_point_index: 5,
+          },
+        }
+      : {}),
   };
 }

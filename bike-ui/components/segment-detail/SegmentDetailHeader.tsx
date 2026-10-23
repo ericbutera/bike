@@ -15,7 +15,6 @@ import { formatGradePercent } from "../../lib/segmentDetail";
 import { downloadSegmentGpx } from "../../lib/segmentGpx";
 import { AppCard } from "../ui/Card";
 import type {
-  SegmentPerformanceSummary,
   SegmentRouteMetrics,
   SegmentTitleEditor,
 } from "./useSegmentDetailState";
@@ -23,7 +22,6 @@ import type {
 type SegmentDetailHeaderProps = {
   segment: Segment;
   metrics: SegmentRouteMetrics;
-  performance: SegmentPerformanceSummary;
   editor: SegmentTitleEditor;
   status: {
     isSavingSegment: boolean;
@@ -41,7 +39,6 @@ type SegmentDetailHeaderProps = {
 export default function SegmentDetailHeader({
   segment,
   metrics,
-  performance,
   editor,
   status,
   links,
@@ -49,7 +46,6 @@ export default function SegmentDetailHeader({
 }: SegmentDetailHeaderProps) {
   const { routeDistanceMeters, routeGradePercent, routeNetElevationMeters } =
     metrics;
-  const { overallKom } = performance;
   const { isEditingTitle, draftTitle } = editor;
   const { isSavingSegment, isDeletingSegment } = status;
 
@@ -153,18 +149,20 @@ export default function SegmentDetailHeader({
 
         <div className="flex min-w-0 flex-col gap-3 sm:items-end lg:min-w-[16rem]">
           <div className="join self-start sm:self-end">
-            <select
-              aria-label="Segment mode"
-              className="select select-bordered select-sm join-item min-w-[6rem] bg-base-100"
-              value={segment.mode}
-              disabled={isSavingSegment || isDeletingSegment}
-              onChange={(event) => {
-                actions.changeSegmentMode(event.target.value as SegmentMode);
-              }}
-            >
-              <option value="xc">XC</option>
-              <option value="dh">DH</option>
-            </select>
+            {segment.can_manage && (
+              <select
+                aria-label="Segment mode"
+                className="select select-bordered select-sm join-item min-w-[6rem] bg-base-100"
+                value={segment.mode}
+                disabled={isSavingSegment || isDeletingSegment}
+                onChange={(event) => {
+                  actions.changeSegmentMode(event.target.value as SegmentMode);
+                }}
+              >
+                <option value="xc">XC</option>
+                <option value="dh">DH</option>
+              </select>
+            )}
 
             <div className="dropdown dropdown-end">
               <button
@@ -179,12 +177,12 @@ export default function SegmentDetailHeader({
                 tabIndex={0}
                 className="dropdown-content menu z-20 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
               >
-                {links.builderEditHref ? (
+                {segment.can_manage && links.builderEditHref ? (
                   <li>
                     <Link href={links.builderEditHref}>Edit in builder</Link>
                   </li>
                 ) : null}
-                {!isEditingTitle ? (
+                {segment.can_manage && !isEditingTitle ? (
                   <li>
                     <button type="button" onClick={editor.startEditingTitle}>
                       Rename
@@ -200,16 +198,18 @@ export default function SegmentDetailHeader({
                     Download segment
                   </button>
                 </li>
-                <li>
-                  <button
-                    type="button"
-                    className="text-error"
-                    onClick={actions.deleteSegment}
-                    disabled={isDeletingSegment}
-                  >
-                    {isDeletingSegment ? "Deleting..." : "Delete segment"}
-                  </button>
-                </li>
+                {segment.can_manage && (
+                  <li>
+                    <button
+                      type="button"
+                      className="text-error"
+                      onClick={actions.deleteSegment}
+                      disabled={isDeletingSegment}
+                    >
+                      {isDeletingSegment ? "Deleting..." : "Delete segment"}
+                    </button>
+                  </li>
+                )}
               </ul>
             </div>
           </div>
@@ -224,15 +224,14 @@ export default function SegmentDetailHeader({
                   className="h-3.5 w-3.5 text-warning"
                 />
                 <span>
-                  KOM {formatDuration(overallKom?.duration_seconds ?? null)}
+                  KOM {formatDuration(segment.best_duration_seconds ?? null)}
                 </span>
               </div>
               <div className="mt-2 font-semibold text-base-content">
-                {overallKom?.rider_name ?? "No efforts yet"}
+                Overall best
               </div>
               <div className="mt-1 text-sm text-base-content/65">
-                {overallKom?.activity_title ??
-                  "Waiting for the first matched effort"}
+                See overall standings for athlete results
               </div>
             </div>
           </div>

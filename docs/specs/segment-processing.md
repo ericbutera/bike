@@ -35,8 +35,21 @@ The segment builder records the source activity id and route-point start/end ind
   logout; see [authentication](authentication.md#browser-session-data).
 - Current standings and immutable activity awards are distinct; see
   [achievements](achievements.md).
-- Overall standings implement shared access. Remaining creator restrictions on
-  browsing and matching are tracked in the
+- Any authenticated athlete can list and open shared segments, including routes
+  they did not create and segments on which they have no efforts. The catalog
+  and overall summaries are global; PRs, yearly bests, comparisons, and analysis
+  remain scoped to the authenticated athlete. Global best times and badges use
+  saved overall results, never rankings inferred from the viewer's effort subset.
+- Responses expose `can_manage` from authenticated creator identity. Only the
+  creator may rename, change mode/starred state, edit the route, or delete a
+  segment. Other viewers see read-only controls and may download public geometry.
+  Creator-only starred state is hidden from other viewers; independent per-user
+  favorites remain a separate feature.
+- Builder source activity references and original upload filenames are visible
+  only to the creator. Public route geometry excludes recording heart rate and
+  speed; comparison effort samples remain private to their athlete.
+- Shared browsing has distinct creator, contributor, and spectator scenarios in
+  Rust and UI tests. Matching follow-up is tracked in the
   [segment backlog](../TODO.md#segments).
 
 ## Segment Mode

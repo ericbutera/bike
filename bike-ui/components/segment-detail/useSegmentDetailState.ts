@@ -13,6 +13,7 @@ import { type UnitSystem } from "../../lib/activityFormatting";
 import {
   useSegment,
   useSegmentComparison,
+  useSegmentOverallAchievements,
   type Segment,
   type SegmentEffort,
 } from "../../lib/queries";
@@ -22,7 +23,6 @@ import {
   PLAYBACK_END_EPSILON,
   fastestEffort,
   filterEffortsByTimeWindow,
-  overallEffortRanks,
   resolveRouteDistanceMeters,
   resolveRouteNetElevationMeters,
   type EffortTimeFilter,
@@ -46,7 +46,6 @@ export type SegmentPerformanceSummary = {
   currentUserPrDurationSeconds: number | null;
   currentUserPrLabel: string;
   currentUserPrDisplayName: string;
-  overallKom: SegmentEffort | null;
   overallRankByEffortId: Map<number, number>;
 };
 
@@ -445,8 +444,10 @@ export function useSegmentPerformanceSummary(
 ): SegmentPerformanceSummary {
   const currentRider = useCurrentSegmentRider();
   const allEfforts = segment?.efforts ?? EMPTY_EFFORTS;
-  const overallRankByEffortId = overallEffortRanks(allEfforts);
-  const overallKom = fastestEffort(allEfforts);
+  const overallQuery = useSegmentOverallAchievements(segment?.id);
+  const overallRankByEffortId = new Map(
+    (overallQuery.data ?? []).map((row) => [row.effort_id, row.position]),
+  );
   const currentUserPr = currentRiderFastestEffort(allEfforts, currentRider);
   const currentUserPrDurationSeconds =
     currentUserPr?.duration_seconds ??
@@ -464,7 +465,6 @@ export function useSegmentPerformanceSummary(
     currentUserPrLabel,
     currentUserPrDisplayName:
       currentUserPr?.rider_name ?? currentRider.name ?? "You",
-    overallKom,
     overallRankByEffortId,
   };
 }

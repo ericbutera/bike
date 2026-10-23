@@ -57,3 +57,36 @@ impl SharedSegments {
             .append_query_results([vec![reader.clone()]])
     }
 }
+
+impl SharedSegments {
+    pub fn detail_read_mock(&self, reader: &users::Model, segment: &segments::Model) -> MockDatabase {
+        segment_access_mock(reader, segment)
+            .append_query_results([vec![super::segment_summary()]])
+            .append_query_results([self.viewer_summaries(reader)])
+    }
+
+    pub fn catalog_read_mock(&self, reader: &users::Model) -> MockDatabase {
+        let summaries =
+            [self.segment.id, self.other_segment.id].map(|segment_id| crate::entities::segment_summaries::Model {
+                segment_id,
+                ..super::segment_summary()
+            });
+        postgres_mock()
+            .append_query_results([vec![reader.clone()]])
+            .append_query_results([vec![self.segment.clone(), self.other_segment.clone()]])
+            .append_query_results([summaries.to_vec()])
+            .append_query_results([self.viewer_summaries(reader)])
+    }
+
+    fn viewer_summaries(&self, reader: &users::Model) -> Vec<crate::entities::segment_user_summaries::Model> {
+        self.personal_standings_for(reader.id, self.segment.id)
+            .into_iter()
+            .filter(|row| row.position == 1)
+            .map(|row| crate::entities::segment_user_summaries::Model {
+                user_id: reader.id,
+                personal_best_duration_seconds: Some(row.duration_seconds),
+                ..super::segment_user_summary()
+            })
+            .collect()
+    }
+}
