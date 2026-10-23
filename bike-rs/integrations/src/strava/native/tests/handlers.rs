@@ -28,7 +28,7 @@ async fn activity_rebuild_clears_obsolete_cycling_results_and_keeps_affected_seg
     let transactions = operations.db.into_transaction_log();
     assert_eq!(transactions.len(), 1);
     let statements = transactions[0].statements();
-    for table in ["segment_efforts", "activity_analytics", "activity_training_analyses"] {
+    for table in ["segment_efforts", "activity_training_analyses"] {
         assert!(statements
             .iter()
             .any(|statement| statement.sql.starts_with(&format!("DELETE FROM \"{table}\""))));
@@ -36,6 +36,13 @@ async fn activity_rebuild_clears_obsolete_cycling_results_and_keeps_affected_seg
     assert!(statements
         .iter()
         .any(|statement| statement.sql.starts_with("UPDATE \"segments\"")));
+    let summary = statements
+        .iter()
+        .find(|s| s.sql.starts_with("INSERT INTO \"activity_analytics\""))
+        .unwrap();
+    assert!(summary.sql.contains("ON CONFLICT"));
+    assert!(!summary.sql.contains("achievement_highlights_json"));
+    assert_eq!(summary.values.as_ref().unwrap().0[2], 0.into());
     assert_eq!(statements.last().unwrap().sql, "COMMIT");
     assert!(fixture.provider.calls.lock().unwrap().is_empty());
 }
@@ -500,4 +507,46 @@ async fn remote_revocation_skips_webhooks_accepts_already_revoked_and_propagates
         .revoke_connection(event)
         .await
         .is_err());
+}
+
+#[tokio::test]
+async fn strava_segment_refresh_saves_the_first_award_decision_and_updates_the_summary() {
+    use bike_core::entities::{activity_award_outputs, activity_earned_awards, segment_efforts};
+    let fixture = HandlerFixture::new();
+    let activity = fixture.domain.activity();
+    let saved = fixtures::activity_award_output();
+    let db = fixtures::postgres_mock()
+        .append_query_results([vec![activity.clone()]])
+        .append_query_results([vec![fixtures::activity_id_row()]])
+        .append_query_results([Vec::<activity_award_outputs::Model>::new()])
+        .append_query_results([vec![fixtures::activity_analytics()]])
+        .append_query_results([Vec::<segment_efforts::Model>::new()])
+        .append_query_results([vec![fixtures::activity_id_row()]])
+        .append_query_results([vec![fixtures::activity_analytics()]])
+        .append_query_results([Vec::<segment_efforts::Model>::new()])
+        .append_query_results([vec![saved]])
+        .append_query_results([Vec::<activity_earned_awards::Model>::new()])
+        .append_exec_results((0..2).map(|_| fixtures::written()));
+    let operations = fixture.operations(db);
+    let mut change = fixture.domain.change(ActivityStatus::Applied);
+    change.bike_activity_id = Some(activity.id);
+    change.segment_ids.clear();
+    let rebuilt = operations.rebuild_segments(change.clone()).await.unwrap();
+    assert_eq!(rebuilt.bike_activity_id, change.bike_activity_id);
+    assert_eq!(rebuilt.status, change.status);
+    let log = operations.db.into_transaction_log();
+    let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
+    let saved = statements
+        .iter()
+        .position(|statement| statement.sql.starts_with("INSERT INTO \"activity_award_outputs\""))
+        .unwrap();
+    let summary = statements
+        .iter()
+        .position(|statement| statement.sql.starts_with("INSERT INTO \"activity_analytics\""))
+        .unwrap();
+    assert!(saved < summary);
+    assert_eq!(
+        statements[0].values.as_ref().unwrap().0[..2],
+        [activity.id.into(), activity.user_id.into()]
+    );
 }

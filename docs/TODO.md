@@ -71,6 +71,9 @@
       and segment-detail panel; see [achievements](specs/achievements.md#personal-api-and-ui).
 - [x] Persist and display overall achievements: a global top ten with one position per athlete;
       see [achievements](specs/achievements.md#overall-achievements).
+- [x] Preserve each activity's first earned-award decision, including no award,
+      in typed rows, with legacy-highlight conversion and a bounded backfill;
+      missing legacy results use live standings. See [earned awards](specs/achievements.md#earned-awards).
 - [x] Allow every authenticated athlete to read saved overall standings for a global
       segment, including athletes without an effort.
 - [ ] Remove remaining creator restrictions from shared segment browsing and

@@ -27,6 +27,23 @@ impl Model {
             .await
     }
 
+    pub(crate) async fn for_user_segments(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        segment_ids: &[i32],
+    ) -> Result<Vec<Self>, DbErr> {
+        if segment_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::SegmentId.is_in(segment_ids.iter().copied()))
+            .order_by_asc(Column::SegmentId)
+            .order_by_asc(Column::Position)
+            .all(db)
+            .await
+    }
+
     pub(crate) async fn replace_for_segment(
         db: &impl ConnectionTrait,
         segment_id: i32,

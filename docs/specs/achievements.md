@@ -82,10 +82,86 @@
 
 ## Earned awards
 
-- Current personal and overall positions are distinct from awards earned by an
-  activity. Historical award persistence remains a separate implementation slice.
-- Earned activity achievements are historical and immutable. Their original
-  segment award decisions are never modified or updated.
+- The existing `rebuild_activity_achievements` stage records an activity's awards
+  once, after its segment processing has refreshed live personal and overall
+  results. Strava calls the same operation after refreshing segment results.
+  Use those saved results directly; do not reconstruct past standings
+  from activity dates, timestamps, or processing versions.
+- An effort earns its saved overall position when it is the effort selected in
+  `segment_overall_achievements`, and its saved personal position when selected
+  in `segment_personal_achievements` for that rider. Other efforts earn no award.
+  Keep the existing display priority: KOM, overall top ten, PR, personal podium.
+- Load live award inputs with one overall-results query and one personal-results
+  query across the activity's distinct segment IDs. Both queries filter by rider
+  in the database. Do not query standings separately for every segment or load
+  other riders' overall rows just to discard them.
+- Save the existing highlight fields: segment ID and title, attempt number,
+  overall and personal positions, and the live personal-best duration. Preserve
+  repeated attempts in recording order.
+- `activity_award_outputs` stores the activity ID and rider once its decision
+  is saved. An output with no award rows means no award, including activities
+  with no efforts. No output row means unevaluated.
+- `activity_earned_awards` stores one row per earned attempt, with typed columns
+  for activity ID, recording-order position, display position, segment ID and
+  title, attempt number, overall and personal positions, and personal-best duration.
+  Its key is `(activity_id, position)`; each segment attempt and each display
+  position occurs once per output. Store no JSON, version, timestamp, or
+  processing-state fields in these tables.
+- The award-writing stage saves `display_position` for new decisions and legacy
+  conversion: KOM first, then overall top-ten positions ascending, PR, and personal
+  second/third. Equal category/rank retains numeric recording order. Segment titles
+  are display labels and never affect ordering. Recording `position` and attempt
+  numbers remain unchanged.
+- Activity responses expose `earned_awards` as an always-present array of typed
+  `activity_earned_awards` rows, including `activity_id`, recording `position`, and
+  `display_position`. List, detail, and update responses use the same row shape;
+  an activity with no saved award rows returns `[]`. Remove the old
+  `achievement_highlights` response field and highlight DTO rather than keeping
+  compatibility aliases.
+- API award queries order by saved `display_position`. The activity list loads
+  awards once for the page and groups the unchanged rows by activity. It does
+  not recalculate priority or sort by ranks/titles in application code. The UI
+  uses the generated award-row contract, preserves received order, and formats
+  labels. Retries and regeneration preserve both stored orders.
+- Retries, reprocessing, rematching, segment edits/deletion, and standings
+  rebuilds leave the saved rows unchanged. Deleting the activity cascades through
+  its output to its awards. Historical rows do not reference replaceable effort
+  rows or deleted segments.
+- Activity analytics rebuilds derive counts from these rows and refresh effort
+  counts. Activity API awards read these rows with the authenticated rider's
+  ownership scope. Neither operation decides awards from mutable effort ranks.
+- A refresh of multiple segments completes their current-result operations first,
+  then refreshes affected activity summaries once with deduplicated activity IDs.
+  Release segment transactions before acquiring activity-summary locks. An activity
+  shared by several affected segments must not reload its saved awards per segment.
+  If a segment operation fails, preserve the previous summaries until the batch
+  succeeds on retry; saved award decisions remain unchanged.
+- Before making a first live decision, the award operation converts any existing
+  `activity_analytics.achievement_highlights_json` into typed award rows, preserving
+  its values, order, and explicit empty outcome. Clear that legacy JSON in the
+  same transaction as recording the output. Failed conversions leave it available
+  for retry. Already saved outputs always win.
+- Analytics refreshes select only the previous activity IDs and owners, then
+  upsert scalar counts without reading, deserializing or replacing legacy JSON.
+  The JSON column remains conversion input only; it is not an API source.
+- Frontend activity award chips use `earned_awards` only. An empty award array
+  yields no chips; never fall back to current effort ranks or the removed highlight
+  response field.
+- Once an activity has a typed award output, NULL legacy JSON must not change
+  its awards, including empty outcomes, API reads, refreshes or retries. Preserve
+  unconverted input until conversion commits. Retiring the remaining conversion
+  reader and legacy column after rollout is required by
+  [PR 100](https://github.com/ericbutera/bike/pull/100) before the overall migration
+  is complete.
+- `backfill_earned_awards` accepts an integer activity-ID cursor starting at zero.
+  It selects activities without saved outputs in 16-activity ID pages, awaits the
+  existing award operation for each, and uses Continue-As-New after a full page.
+  Each operation also refreshes that activity's analytics. Repeating the backfill
+  skips saved decisions, including empty ones.
+- Missing legacy JSON uses the ordinary first decision from current saved live
+  results. Converting retained JSON preserves only the last stored outcome;
+  historical outcomes already overwritten by mutable recalculation cannot be
+  recovered. The backfill does not reparse original recordings or rematch segments.
 
 See [segment processing](segment-processing.md) for efforts and
 [background work](background-work.md) for Temporal execution.

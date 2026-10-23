@@ -376,3 +376,84 @@ mod overall_tests {
         mock.assert_failure_message("overall achievements failed");
     }
 }
+
+#[workflow]
+#[derive(Default)]
+pub struct BackfillEarnedAwards;
+
+#[workflow_methods]
+impl BackfillEarnedAwards {
+    #[run(name = "backfill_earned_awards")]
+    pub async fn run(ctx: &mut WorkflowContext<Self>, mut after_id: i32) -> WorkflowResult<()> {
+        let tasks = options::run(
+            ctx,
+            BatchActivities::pending_earned_awards,
+            after_id,
+            options::activity(Priority::Background, "earned-awards-backfill".into()),
+        )
+        .await?;
+        let full = tasks.len() == 16;
+        for task in tasks {
+            let completed_id = task.activity_id;
+            let user_id = task.user_id;
+            options::run(
+                ctx,
+                DerivedActivities::rebuild_activity_achievements,
+                task,
+                options::activity(Priority::Background, format!("user-{user_id}")),
+            )
+            .await?;
+            after_id = completed_id;
+        }
+        if full {
+            return ctx
+                .continue_as_new(after_id, Default::default())
+                .map(|never| match never {});
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod earned_award_tests {
+    use super::*;
+    use bike_core::test_support as fixtures;
+    use workflow_test_support::WorkflowMock;
+
+    #[test]
+    fn full_pages_await_award_recording_before_continuing_and_partial_pages_finish() {
+        let tasks: Vec<_> = (1..=16)
+            .map(|activity_id| ActivityTask {
+                activity_id,
+                priority: Priority::Background,
+                ..fixtures::activity_task()
+            })
+            .collect();
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillEarnedAwards>(0);
+        mock.activity("pending_earned_awards", &0_i32, &tasks);
+        for task in &tasks {
+            mock.activity("rebuild_activity_achievements", task, &());
+        }
+        assert_eq!(mock.continued_input::<i32>(), 16);
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillEarnedAwards>(16);
+        let task = fixtures::activity_task();
+        mock.activity("pending_earned_awards", &16_i32, &vec![task.clone()]);
+        mock.activity("rebuild_activity_achievements", &task, &());
+        mock.result::<()>();
+    }
+
+    #[test]
+    fn empty_pages_finish_and_failed_awards_stop_before_the_next_activity() {
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillEarnedAwards>(0);
+        mock.activity("pending_earned_awards", &0_i32, &Vec::<ActivityTask>::new());
+        mock.result::<()>();
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillEarnedAwards>(0);
+        mock.activity(
+            "pending_earned_awards",
+            &0_i32,
+            &vec![fixtures::activity_task(), fixtures::activity_task()],
+        );
+        mock.fail_activity("rebuild_activity_achievements", "award failed");
+        mock.assert_failure_message("award failed");
+    }
+}

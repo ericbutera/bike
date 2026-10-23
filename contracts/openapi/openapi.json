@@ -5347,62 +5347,6 @@
           }
         }
       },
-      "ActivityAchievementHighlight": {
-        "type": "object",
-        "required": [
-          "segment_id",
-          "segment_title",
-          "effort_index"
-        ],
-        "properties": {
-          "effort_index": {
-            "type": "integer",
-            "format": "int32",
-            "example": 1
-          },
-          "overall_rank": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "example": 3
-          },
-          "personal_best_duration_seconds": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "example": 355
-          },
-          "personal_rank": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "example": 1
-          },
-          "segment_id": {
-            "type": "integer",
-            "format": "int32",
-            "example": 7
-          },
-          "segment_title": {
-            "type": "string",
-            "example": "Riverfront climb"
-          }
-        },
-        "example": {
-          "effort_index": 1,
-          "overall_rank": 3,
-          "personal_best_duration_seconds": 355,
-          "personal_rank": 1,
-          "segment_id": 7,
-          "segment_title": "Riverfront climb"
-        }
-      },
       "ActivityAction": {
         "type": "string",
         "enum": [
@@ -5664,6 +5608,63 @@
           "heart_rate_bpm": 148,
           "power_watts": 235,
           "speed_mps": 6.4
+        }
+      },
+      "ActivityEarnedAward": {
+        "type": "object",
+        "required": [
+          "activity_id",
+          "position",
+          "display_position",
+          "segment_id",
+          "segment_title",
+          "effort_index"
+        ],
+        "properties": {
+          "activity_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "display_position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "effort_index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "overall_rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "personal_best_duration_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "personal_rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "segment_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "segment_title": {
+            "type": "string"
+          }
         }
       },
       "ActivityGear": {
@@ -5980,15 +5981,10 @@
           "sport",
           "source",
           "activity_type",
-          "started_at"
+          "started_at",
+          "earned_awards"
         ],
         "properties": {
-          "achievement_highlights": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ActivityAchievementHighlight"
-            }
-          },
           "activity_import_id": {
             "type": [
               "integer",
@@ -6067,6 +6063,12 @@
             ],
             "format": "double",
             "example": 25430.5
+          },
+          "earned_awards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityEarnedAward"
+            }
           },
           "elevation_gain_meters": {
             "type": [
@@ -8659,15 +8661,10 @@
                 "sport",
                 "source",
                 "activity_type",
-                "started_at"
+                "started_at",
+                "earned_awards"
               ],
               "properties": {
-                "achievement_highlights": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ActivityAchievementHighlight"
-                  }
-                },
                 "activity_import_id": {
                   "type": [
                     "integer",
@@ -8746,6 +8743,12 @@
                   ],
                   "format": "double",
                   "example": 25430.5
+                },
+                "earned_awards": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ActivityEarnedAward"
+                  }
                 },
                 "elevation_gain_meters": {
                   "type": [

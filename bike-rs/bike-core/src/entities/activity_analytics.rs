@@ -2,7 +2,8 @@ use crate::activity_achievements::StoredActivityAchievementHighlights;
 use crate::analytics::ActivityAnalyticsAccumulator;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, Set};
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, QueryFilter, QuerySelect, Set};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -21,6 +22,7 @@ pub struct Model {
     pub top_10_count: i32,
     #[sea_orm(default_value = 0)]
     pub pr_count: i32,
+    /// Legacy conversion input only; award writers and API reads use typed award rows.
     pub achievement_highlights_json: Option<StoredActivityAchievementHighlights>,
     #[sea_orm(default_expr = "Expr::current_timestamp()")]
     pub created_at: DateTime<Utc>,
@@ -40,7 +42,43 @@ impl Entity {
 
 crate::timestamps::impl_timestamps!(ActiveModel);
 
+#[derive(Debug, FromQueryResult)]
+pub(crate) struct ActivityOwner {
+    pub activity_id: i32,
+    pub user_id: i32,
+}
+
 impl Model {
+    pub(crate) async fn owners_for_activities(
+        db: &impl ConnectionTrait,
+        activity_ids: &[i32],
+    ) -> Result<Vec<ActivityOwner>, DbErr> {
+        Entity::find()
+            .select_only()
+            .columns([Column::ActivityId, Column::UserId])
+            .filter(Column::ActivityId.is_in(activity_ids.iter().copied()))
+            .into_model::<ActivityOwner>()
+            .all(db)
+            .await
+    }
+
+    pub(crate) async fn clear_legacy_highlights(
+        db: &impl ConnectionTrait,
+        activity_id: i32,
+        user_id: i32,
+    ) -> Result<(), DbErr> {
+        Entity::update_many()
+            .col_expr(
+                Column::AchievementHighlightsJson,
+                Expr::value(sea_orm::Value::Json(None)),
+            )
+            .filter(Column::ActivityId.eq(activity_id))
+            .filter(Column::UserId.eq(user_id))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
     pub async fn delete_by_activity_ids<C>(db: &C, activity_ids: &[i32]) -> Result<(), DbErr>
     where
         C: ConnectionTrait,
@@ -89,6 +127,19 @@ impl Model {
         // holding the projection's activity locks. The caller owns the transaction.
         for batch in rows.chunks(500) {
             Entity::insert_many(batch.iter().cloned())
+                .on_conflict(
+                    OnConflict::column(Column::ActivityId)
+                        .update_columns([
+                            Column::UserId,
+                            Column::SegmentEffortCount,
+                            Column::AchievementCount,
+                            Column::KomCount,
+                            Column::Top10Count,
+                            Column::PrCount,
+                        ])
+                        .value(Column::UpdatedAt, Expr::current_timestamp())
+                        .to_owned(),
+                )
                 .exec_without_returning(db)
                 .await?;
         }
@@ -106,9 +157,6 @@ impl ActiveModel {
             kom_count: Set(analytics.kom_count),
             top_10_count: Set(analytics.top_10_count),
             pr_count: Set(analytics.pr_count),
-            achievement_highlights_json: Set(Some(StoredActivityAchievementHighlights::from_items(
-                analytics.achievement_highlights,
-            ))),
             ..Default::default()
         }
     }
@@ -148,7 +196,7 @@ mod tests {
                 statement.values.as_ref().unwrap().0.len()
             })
             .collect();
-        assert_eq!(lengths, vec![500 * 8, 8]);
+        assert_eq!(lengths, vec![500 * 7, 7]);
     }
 
     #[tokio::test]

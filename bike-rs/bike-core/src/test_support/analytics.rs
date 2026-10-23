@@ -81,3 +81,26 @@ pub fn activity_analytics() -> crate::entities::activity_analytics::Model {
 pub fn activity_id_row() -> std::collections::BTreeMap<String, sea_orm::Value> {
     [("id".into(), super::activity().id.into())].into()
 }
+
+pub fn activity_award_output() -> crate::entities::activity_award_outputs::Model {
+    let activity = super::activity();
+    crate::entities::activity_award_outputs::Model {
+        activity_id: activity.id,
+        user_id: activity.user_id,
+    }
+}
+
+pub fn activity_earned_awards() -> crate::entities::activity_earned_awards::Model {
+    let effort = segment_effort();
+    crate::entities::activity_earned_awards::Model {
+        activity_id: effort.activity_id,
+        position: 1,
+        display_position: 1,
+        segment_id: effort.segment_id,
+        segment_title: "Riverfront climb".into(),
+        effort_index: effort.effort_index,
+        overall_rank: Some(1),
+        personal_rank: Some(1),
+        personal_best_duration_seconds: Some(effort.duration_seconds),
+    }
+}

@@ -181,7 +181,10 @@ impl HandlerFixture {
     }
 
     pub fn activity_rebuild_mock(&self, activity: &activities::Model) -> MockDatabase {
-        use bike_core::{entities::segment_efforts, test_support as fixture};
+        use bike_core::{
+            entities::{activity_award_outputs, activity_earned_awards, segment_efforts},
+            test_support as fixture,
+        };
         fixture::postgres_mock()
             .append_query_results([vec![self.domain.connection.clone()]])
             .append_query_results([vec![self.domain.activity_state()]])
@@ -189,7 +192,10 @@ impl HandlerFixture {
             .append_query_results([fixture::segment_id_rows(&[4])])
             .append_query_results([fixture::segment_id_rows(&[])])
             .append_query_results([vec![fixture::activity_id_row()]])
+            .append_query_results([vec![fixture::activity_analytics()]])
             .append_query_results([Vec::<segment_efforts::Model>::new()])
+            .append_query_results([Vec::<activity_award_outputs::Model>::new()])
+            .append_query_results([Vec::<activity_earned_awards::Model>::new()])
     }
 
     pub async fn sources(&self) -> ActivitySources {

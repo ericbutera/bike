@@ -2,6 +2,9 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ActivityStream from "../ActivityStream";
+import type { Activity } from "../../lib/queries";
+import { activityEarnedAward } from "../../tests/fixtures/activities";
+import { activityAchievements } from "../activity-stream/activityAchievements";
 import RequireAuth from "../RequireAuth";
 import { formatActivityTimestamp } from "../../lib/activityFormatting";
 
@@ -47,47 +50,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-function makeActivity(
-  overrides: Partial<{
-    id: number;
-    title: string;
-    sport: string;
-    source: string;
-    original_filename: string | null;
-    format: string | null;
-    started_at: string;
-    location: string | null;
-    route_points: Array<{
-      elapsed_seconds: number;
-      latitude: number;
-      longitude: number;
-    }>;
-    distance_meters: number | null;
-    moving_time_seconds: number | null;
-    total_time_seconds: number | null;
-    elevation_gain_meters: number | null;
-    max_heart_rate_bpm: number | null;
-    achievement_highlights: Array<{
-      segment_id: number;
-      segment_title: string;
-      effort_index: number;
-      overall_rank?: number | null;
-      personal_rank?: number | null;
-      personal_best_duration_seconds?: number | null;
-    }>;
-    segment_efforts: Array<{
-      segment_id: number;
-      segment_title: string;
-      effort_index: number;
-      duration_seconds: number;
-      start_route_point_index: number;
-      end_route_point_index: number;
-      overall_rank?: number | null;
-      personal_rank?: number | null;
-      personal_best_duration_seconds?: number | null;
-    }>;
-  }> = {},
-) {
+function makeActivity(overrides: Partial<Activity> = {}): Activity {
   return {
     id: 7,
     title: "Morning Ride",
@@ -115,7 +78,7 @@ function makeActivity(
     average_cadence_rpm: 86,
     max_cadence_rpm: 104,
     calories: 860,
-    achievement_highlights: [],
+    earned_awards: [],
     segment_efforts: [],
     ...overrides,
   };
@@ -288,36 +251,96 @@ describe("ActivityStream", () => {
     });
   });
 
+  it("does not derive awards from current ranks when saved awards are empty", () => {
+    const activity = makeActivity({
+      segment_efforts: [
+        {
+          segment_id: 11,
+          segment_title: "North Climb",
+          effort_index: 1,
+          duration_seconds: 60,
+          start_route_point_index: 0,
+          end_route_point_index: 1,
+          overall_rank: 1,
+          personal_rank: 1,
+        },
+      ],
+    });
+    expect(activityAchievements(activity)).toEqual([]);
+  });
+
+  it("preserves the saved award order without sorting by rank or title", () => {
+    const base = activityEarnedAward({
+      activity_id: 7,
+      position: 2,
+      display_position: 1,
+      segment_id: 11,
+      segment_title: "Zulu Climb",
+      overall_rank: null,
+    });
+    const achievements = activityAchievements(
+      makeActivity({
+        earned_awards: [
+          base,
+          {
+            ...base,
+            position: 1,
+            display_position: 2,
+            segment_id: 12,
+            segment_title: "Alpha Climb",
+            overall_rank: 1,
+          },
+        ],
+      }),
+    );
+    expect(
+      achievements.map(({ label, segmentTitle }) => [label, segmentTitle]),
+    ).toEqual([
+      ["PR", "Zulu Climb"],
+      ["KOM", "Alpha Climb"],
+    ]);
+  });
+
   it("shows segment achievements on the activity list", () => {
     mocks.useActivities.mockReturnValue({
       data: [
         makeActivity({
           id: 2,
           title: "Latest Effort",
-          achievement_highlights: [
-            {
+          earned_awards: [
+            activityEarnedAward({
+              activity_id: 2,
+              position: 1,
+              display_position: 1,
               segment_id: 11,
               segment_title: "North Climb",
               effort_index: 1,
               overall_rank: 1,
               personal_rank: 1,
               personal_best_duration_seconds: 312,
-            },
-            {
+            }),
+            activityEarnedAward({
+              activity_id: 2,
+              position: 2,
+              display_position: 2,
               segment_id: 12,
               segment_title: "Bridge Sprint",
               effort_index: 1,
               overall_rank: 7,
               personal_rank: 1,
               personal_best_duration_seconds: 48,
-            },
-            {
+            }),
+            activityEarnedAward({
+              activity_id: 2,
+              position: 3,
+              display_position: 3,
               segment_id: 13,
               segment_title: "Park Loop",
               effort_index: 1,
+              overall_rank: null,
               personal_rank: 2,
               personal_best_duration_seconds: 134,
-            },
+            }),
           ],
         }),
       ],

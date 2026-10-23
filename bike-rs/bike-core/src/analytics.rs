@@ -1,7 +1,7 @@
-use crate::activity_achievements::ActivityAchievementHighlight;
+use crate::activity_achievements::{activity_achievement_kind, ActivityAchievementKind};
 use crate::entities::{
-    activities, activity_analytics, analytics_user_states, fitness_freshness_daily, segment_efforts, segment_summaries,
-    segment_user_summaries, segments,
+    activities, activity_analytics, activity_award_outputs, activity_earned_awards, analytics_user_states,
+    fitness_freshness_daily, segment_efforts, segment_summaries, segment_user_summaries, segments,
 };
 use crate::training_data::{
     deserialize_activity_heart_rate_zones, weighted_zone_intensity, StoredActivityHeartRateZones,
@@ -54,15 +54,6 @@ pub(crate) struct ActivityAnalyticsAccumulator {
     pub(crate) kom_count: i32,
     pub(crate) top_10_count: i32,
     pub(crate) pr_count: i32,
-    pub(crate) achievement_highlights: Vec<ActivityAchievementHighlight>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActivityAchievementKind {
-    Kom,
-    Top10,
-    Pr,
-    PersonalPodium,
 }
 
 trait ActivityTrainingLoadRowExt {
@@ -337,18 +328,21 @@ pub async fn rebuild_segment_analytics_cache<C>(db: &C, segment_ids: &[i32]) -> 
 where
     C: ConnectionTrait + TransactionTrait,
 {
+    let mut activity_ids = Vec::new();
     for id in normalized_positive_ids(segment_ids) {
-        rebuild_one_segment_cache(db, id).await?;
+        activity_ids.extend(rebuild_one_segment_cache(db, id).await?);
     }
-    Ok(())
+    // Segments can share activities. Refresh their saved-award counts once,
+    // after all segment and current-standings transactions have committed.
+    rebuild_activity_analytics_cache(db, &activity_ids).await
 }
 
-async fn rebuild_one_segment_cache<C>(db: &C, id: i32) -> Result<(), sea_orm::DbErr>
+async fn rebuild_one_segment_cache<C>(db: &C, id: i32) -> Result<Vec<i32>, sea_orm::DbErr>
 where
     C: ConnectionTrait + TransactionTrait,
 {
     let Some(segment) = segments::Model::find_by_id(db, id).await? else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     let input = load_segment_analytics_input(db, &[id]).await?;
     let activity_ids = input.activity_ids.clone();
@@ -358,16 +352,13 @@ where
     if current.is_none_or(|current| {
         current.last_activity_change_at != segment.last_activity_change_at || current.updated_at != segment.updated_at
     }) {
-        return Ok(());
+        return Ok(Vec::new());
     }
     persist_segment_analytics_rebuild(&txn, &[id], rebuild).await?;
     txn.commit().await?;
-    // Different segments share activity summaries. Release segment/rank
-    // locks before acquiring activity locks and reading their current ranks.
-    rebuild_activity_analytics_cache(db, &activity_ids).await?;
     crate::personal_achievements::rebuild(db, id).await?;
     crate::overall_achievements::rebuild(db, id).await?;
-    Ok(())
+    Ok(activity_ids)
 }
 
 struct SegmentAnalyticsInput {
@@ -554,15 +545,15 @@ where
     activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
     let input = load_activity_analytics_input(&txn, &activity_ids).await?;
     let analytics_by_activity_id = build_activity_analytics(input);
-    activity_analytics::Model::delete_by_activity_ids(&txn, &activity_ids).await?;
     activity_analytics::Model::store_summaries(&txn, analytics_by_activity_id).await?;
     txn.commit().await
 }
 
 struct ActivityAnalyticsInput {
+    previous: Vec<activity_analytics::ActivityOwner>,
     efforts: Vec<segment_efforts::Model>,
-    segment_title_by_id: HashMap<i32, String>,
-    personal_best_by_key: HashMap<(i32, i32), Option<i32>>,
+    outputs: Vec<activity_award_outputs::Model>,
+    awards: Vec<activity_earned_awards::Model>,
 }
 
 async fn load_activity_analytics_input<C>(
@@ -572,55 +563,40 @@ async fn load_activity_analytics_input<C>(
 where
     C: ConnectionTrait,
 {
+    let previous = activity_analytics::Model::owners_for_activities(db, activity_ids).await?;
     let efforts = segment_efforts::Model::list_for_activity_analytics(db, activity_ids).await?;
-    let segment_ids = unique_effort_segment_ids(&efforts);
-    let user_ids = unique_effort_user_ids(&efforts);
-    let segment_title_by_id = segment_titles_by_id(db, &segment_ids).await?;
-    let personal_best_by_key = segment_personal_bests_by_key(db, &segment_ids, &user_ids).await?;
-
+    let outputs = activity_award_outputs::Model::for_activities(db, activity_ids).await?;
+    let awards = activity_earned_awards::Model::for_activities(db, activity_ids).await?;
     Ok(ActivityAnalyticsInput {
+        previous,
         efforts,
-        segment_title_by_id,
-        personal_best_by_key,
+        outputs,
+        awards,
     })
 }
 
 fn build_activity_analytics(input: ActivityAnalyticsInput) -> HashMap<i32, ActivityAnalyticsAccumulator> {
     let mut analytics_by_activity_id = HashMap::<i32, ActivityAnalyticsAccumulator>::new();
-
-    for effort in input.efforts {
-        apply_effort_to_activity_analytics(
-            &mut analytics_by_activity_id,
-            &input.segment_title_by_id,
-            &input.personal_best_by_key,
-            effort,
-        );
+    for row in input.previous {
+        analytics_by_activity_id.entry(row.activity_id).or_default().user_id = Some(row.user_id);
     }
-
+    for effort in input.efforts {
+        let analytics = analytics_by_activity_id.entry(effort.activity_id).or_default();
+        analytics.user_id = Some(effort.user_id);
+        analytics.segment_effort_count += 1;
+    }
+    for output in input.outputs {
+        let analytics = analytics_by_activity_id.entry(output.activity_id).or_default();
+        analytics.user_id = Some(output.user_id);
+    }
+    for award in input.awards {
+        let analytics = analytics_by_activity_id.entry(award.activity_id).or_default();
+        if let Some(kind) = activity_achievement_kind(award.overall_rank, award.personal_rank) {
+            analytics.achievement_count += 1;
+            apply_achievement_count(analytics, kind);
+        }
+    }
     analytics_by_activity_id
-}
-
-fn apply_effort_to_activity_analytics(
-    analytics_by_activity_id: &mut HashMap<i32, ActivityAnalyticsAccumulator>,
-    segment_title_by_id: &HashMap<i32, String>,
-    personal_best_by_key: &HashMap<(i32, i32), Option<i32>>,
-    effort: segment_efforts::Model,
-) {
-    let analytics = analytics_by_activity_id.entry(effort.activity_id).or_default();
-    analytics.user_id = Some(effort.user_id);
-    analytics.segment_effort_count += 1;
-
-    let Some(kind) = activity_achievement_kind(effort.overall_rank, effort.user_rank) else {
-        return;
-    };
-
-    analytics.achievement_count += 1;
-    apply_achievement_count(analytics, kind);
-    analytics.achievement_highlights.push(activity_achievement_highlight(
-        &effort,
-        segment_title_by_id,
-        personal_best_by_key,
-    ));
 }
 
 fn apply_achievement_count(analytics: &mut ActivityAnalyticsAccumulator, kind: ActivityAchievementKind) {
@@ -630,60 +606,6 @@ fn apply_achievement_count(analytics: &mut ActivityAnalyticsAccumulator, kind: A
         ActivityAchievementKind::Pr => analytics.pr_count += 1,
         ActivityAchievementKind::PersonalPodium => {}
     }
-}
-
-fn activity_achievement_highlight(
-    effort: &segment_efforts::Model,
-    segment_title_by_id: &HashMap<i32, String>,
-    personal_best_by_key: &HashMap<(i32, i32), Option<i32>>,
-) -> ActivityAchievementHighlight {
-    ActivityAchievementHighlight {
-        segment_id: effort.segment_id,
-        segment_title: segment_title_by_id
-            .get(&effort.segment_id)
-            .cloned()
-            .unwrap_or_else(|| format!("Segment {}", effort.segment_id)),
-        effort_index: effort.effort_index,
-        overall_rank: effort.overall_rank,
-        personal_rank: effort.user_rank,
-        personal_best_duration_seconds: personal_best_by_key
-            .get(&(effort.segment_id, effort.user_id))
-            .copied()
-            .flatten(),
-    }
-}
-
-async fn segment_titles_by_id<C>(db: &C, segment_ids: &[i32]) -> Result<HashMap<i32, String>, sea_orm::DbErr>
-where
-    C: ConnectionTrait,
-{
-    Ok(segments::Model::titles_by_ids(db, segment_ids)
-        .await?
-        .into_iter()
-        .map(|segment| (segment.id, segment.title))
-        .collect())
-}
-
-async fn segment_personal_bests_by_key<C>(
-    db: &C,
-    segment_ids: &[i32],
-    user_ids: &[i32],
-) -> Result<HashMap<(i32, i32), Option<i32>>, sea_orm::DbErr>
-where
-    C: ConnectionTrait,
-{
-    Ok(
-        segment_user_summaries::Model::list_by_segment_and_user_ids(db, segment_ids, user_ids)
-            .await?
-            .into_iter()
-            .map(|summary| {
-                (
-                    (summary.segment_id, summary.user_id),
-                    summary.personal_best_duration_seconds,
-                )
-            })
-            .collect(),
-    )
 }
 
 fn normalized_positive_ids(ids: &[i32]) -> Vec<i32> {
@@ -696,36 +618,6 @@ fn normalized_positive_ids(ids: &[i32]) -> Vec<i32> {
 fn unique_effort_activity_ids(efforts: &[segment_efforts::Model]) -> Vec<i32> {
     let ids = efforts.iter().map(|effort| effort.activity_id).collect::<Vec<_>>();
     normalized_positive_ids(&ids)
-}
-
-fn unique_effort_segment_ids(efforts: &[segment_efforts::Model]) -> Vec<i32> {
-    let ids = efforts.iter().map(|effort| effort.segment_id).collect::<Vec<_>>();
-    normalized_positive_ids(&ids)
-}
-
-fn unique_effort_user_ids(efforts: &[segment_efforts::Model]) -> Vec<i32> {
-    let ids = efforts.iter().map(|effort| effort.user_id).collect::<Vec<_>>();
-    normalized_positive_ids(&ids)
-}
-
-fn activity_achievement_kind(overall_rank: Option<i32>, personal_rank: Option<i32>) -> Option<ActivityAchievementKind> {
-    if overall_rank == Some(1) {
-        return Some(ActivityAchievementKind::Kom);
-    }
-
-    if overall_rank.is_some_and(|rank| (2..=10).contains(&rank)) {
-        return Some(ActivityAchievementKind::Top10);
-    }
-
-    if personal_rank == Some(1) {
-        return Some(ActivityAchievementKind::Pr);
-    }
-
-    if personal_rank.is_some_and(|rank| (2..=3).contains(&rank)) {
-        return Some(ActivityAchievementKind::PersonalPodium);
-    }
-
-    None
 }
 
 fn estimated_heart_rate_ratio_from_fields(average_heart_rate_bpm: Option<i32>, max_heart_rate_bpm: Option<i32>) -> f64 {
