@@ -83,20 +83,24 @@ freshly verified remote head. Honor explicit instructions such as "do not
 commit", "commit locally", or "do not push". Merge or deploy only when the
 user authorizes those actions.
 
-### Completion and CI/CD
+### Local checks and PR handoff
 
-- After every push, inspect CI/CD for the PR branch's current head commit and
-  stay on the task until all required checks finish successfully.
-- Inspect actual remote results and failed step logs. A process ending,
-  successful push, passing local checks, or open PR does not mean CI/CD passed.
-- Queued, pending, running, missing, cancelled, or failing required checks mean
-  unfinished work. Do not call the work done, complete, ready, or verified, or
-  give a completion handoff while the PR branch is still building or failing.
-- Fix failures within the authorized scope, push corrections, and wait for
-  checks on the new head. A successful run for an earlier commit is insufficient.
-- When the user asks for status or an external blocker prevents progress, report
-  the exact unfinished status and link the relevant run. Do not weaken checks,
-  bypass failures, or merge or deploy without user authorization.
+- Before pushing, run the relevant mise tests, formatting, lint, type checks,
+  and builds locally inside the checks container. Fix failures, warnings, and
+  notices before publishing to give CI/CD a high chance of passing.
+- Push the finalized work and create or update its PR. Verify the published
+  head matches the intended commit, then check GitHub once for merge conflicts.
+- If there are conflicts, rebase onto the latest base branch, resolve them,
+  rerun affected local checks, push, and check mergeability again.
+- After publishing a conflict-free PR, hand off and stop. Do not poll or wait
+  for CI/CD, restart pipelines, or make follow-up changes to chase CI/CD results
+  unless the user explicitly requests that work. Pending or running CI/CD does
+  not block this handoff.
+- If reporting CI/CD status, use only observed results for the current head
+  and distinguish them from local checks. Never claim unobserved checks passed.
+  Keep test results and CI/CD status out of the PR description.
+- Do not weaken checks, bypass failures, or merge or deploy without the user's
+  authorization.
 
 Always use conventional commit format.
 
