@@ -6,7 +6,7 @@ run_auto_install = false
 mise_version = "2026.10.3"
 mise_image = "ghcr.io/jdx/mise:{{vars.mise_version}}-debian@sha256:58c4c847f5518a9a87a9a582886a485443dbca5eb024426577f58d586a0990c6"
 node_version = "24.21.0"
-npm_version = "12.2.0"
+npm_version = "12.2.1"
 pnpm_version = "12.10.1"
 rust_version = "1.99.0"
 protoc_version = "36.2"
@@ -212,11 +212,6 @@ description = "Require 80% changed-line coverage independently for each service"
 depends = ["coverage:tools"]
 run = "mise exec pipx:diff-cover jq -- bash scripts/coverage-check.sh"
 
-[tasks."coverage:test"]
-description = "Verify the coverage gate with isolated Git and LCOV fixtures"
-depends = ["coverage:tools"]
-run = ["mise install go go:github.com/jandelgado/gcov2lcov", "mise exec pipx:diff-cover jq go go:github.com/jandelgado/gcov2lcov -- bash scripts/coverage-test.sh"]
-
 [tasks."coverage:site"]
 description = "Assemble browsable reports and overall coverage history"
 run = ["mise install jq", "mise exec jq -- bash scripts/coverage-site.sh"]
@@ -276,7 +271,7 @@ run = ["mise install aqua:docker/buildx jq", "mise exec aqua:docker/buildx jq --
 
 [tasks."ci:check"]
 description = "Validate the workflow using the native Woodpecker CLI"
-run = ["woodpecker-cli lint --strict .woodpecker", "mise install aqua:mikefarah/yq", "mise run ci:test"]
+run = ["woodpecker-cli lint --strict .woodpecker"]
 
 [tasks."ci:rust"]
 description = "Run native Rust lint, unit coverage and doctests"
@@ -293,7 +288,7 @@ run = ["mise install node npm:npm npm:prettier go golangci-lint protoc go:google
 
 [tasks."ci:runtime"]
 description = "Check owning CI and shell orchestration before image builds"
-run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run runtime:check", "mise run images:plan", "mise run coverage:test", "mise run storage:test"]
+run = ["mise install shellcheck aqua:woodpecker-ci/woodpecker/woodpecker-cli aqua:docker/buildx", "mise run lint:sh", "mise run ci:check", "mise run runtime:check", "mise run images:plan"]
 
 [tasks."ci:deploy"]
 description = "Clone Bike infrastructure once and apply the single Pulumi project"
@@ -392,10 +387,6 @@ run = ["mise run compose:config", "mise run e2e:config"]
 description = "Test this revision's prepared registry images on the job-local engine"
 run = ["mise install aqua:docker/cli aqua:docker/buildx jq", "mise exec aqua:docker/cli aqua:docker/buildx jq -- bash scripts/ci-e2e.sh"]
 
-[tasks."ci:test"]
-description = "Verify release gating and credential restrictions with unsafe workflow fixtures"
-run = "mise exec aqua:mikefarah/yq -- bash scripts/check-ci-test.sh"
-
 [tasks."ci:docker:prepare"]
 description = "Install the pinned Docker CLI and Compose plugin for native CI steps"
 run = ["mise install aqua:docker/cli aqua:docker/compose", 'mkdir -p "${DOCKER_CONFIG:?}/cli-plugins"', 'ln -sf "$(mise which docker-cli-plugin-docker-compose)" "$DOCKER_CONFIG/cli-plugins/docker-compose"']
@@ -407,10 +398,6 @@ run = "bash scripts/storage-local.sh"
 [tasks."storage:ci"]
 description = "Require fresh server storage measurements and build headroom"
 run = ["mise install jq", "mise exec jq -- bash scripts/storage-ci.sh"]
-
-[tasks."storage:test"]
-description = "Exercise image storage capacity and safe-cleanup fixtures"
-run = "bash scripts/storage-test.sh"
 
 [tasks."staging:fixtures"]
 description = "Export browser fixtures for the staging SSO account"

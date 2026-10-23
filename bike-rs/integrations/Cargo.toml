@@ -16,7 +16,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-tracing-opentelemetry = { workspace = true }
 utoipa = { workspace = true }
 uuid = { workspace = true }
 temporalio-client = { workspace = true }
@@ -36,9 +35,6 @@ strava-sdk = { path = "../strava-sdk" }
 url = "2.5"
 bike-core = { path = "../bike-core", features = ["test-fixtures"] }
 object_store = { version = "0.14.2", default-features = false, features = ["fs"] }
-opentelemetry = { workspace = true }
-opentelemetry_sdk = { workspace = true, features = ["testing"] }
-tracing-subscriber = { workspace = true }
 tempfile = "3.27.0"
 tokio-stream = { version = "0.1", features = ["net"] }
 sea-orm = { workspace = true, features = ["mock"] }

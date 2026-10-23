@@ -1,4 +1,4 @@
-use super::{fixture::Fixture, logging::Logs, runtime::WorkflowMock};
+use super::{fixture::Fixture, runtime::WorkflowMock};
 use crate::activities::StravaActivities;
 use crate::workflows::*;
 use integrations::strava::native::ActivityStatus;
@@ -229,14 +229,9 @@ fn provider_failure_stops_before_persistence_and_publication() {
 #[test]
 fn cancellation_cannot_be_reported_as_success() {
     let fixture = Fixture::reconciling(StravaOperation::Upsert);
-    let logs = Logs::default();
-    logs.capture(|| {
-        let mut workflow = WorkflowMock::new::<ReconcileActivity>(fixture.event);
-        workflow.cancel_activity(StravaActivities::fetch_activity.name());
-        workflow.assert_cancelled();
-    });
-    assert_eq!(logs.workflow("unit-workflow", "cancelled")["level"], "INFO");
-    assert!(logs.rows().iter().all(|row| row["fields"]["status"] != "completed"));
+    let mut workflow = WorkflowMock::new::<ReconcileActivity>(fixture.event);
+    workflow.cancel_activity(StravaActivities::fetch_activity.name());
+    workflow.assert_cancelled();
 }
 
 #[test]

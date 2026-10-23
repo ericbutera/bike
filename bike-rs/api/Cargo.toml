@@ -63,5 +63,4 @@ bike-core = { path = "../bike-core", features = ["test-fixtures"] }
 tonic = { version = "0.14.6", features = ["transport"] }
 tempfile = "3.27.0"
 sea-orm = { workspace = true, features = ["mock"] }
-opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tower = { version = "0.5", features = ["util"] }

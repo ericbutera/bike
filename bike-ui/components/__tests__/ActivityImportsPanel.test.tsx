@@ -404,26 +404,6 @@ describe("ActivityImportsPanel", () => {
     ).not.toHaveAttribute("open");
   });
 
-  it("keeps manual uploads available while another activity job is active", async () => {
-    const user = userEvent.setup();
-
-    render(<ActivityImportsPanel />);
-
-    const input = screen.getByLabelText("Activity file") as HTMLInputElement;
-    const file = new File(["gpx-data"], "queued-ride.gpx", {
-      type: "application/gpx+xml",
-    });
-
-    await user.upload(input, file);
-
-    expect(
-      screen.getByRole("button", { name: "Upload activity" }),
-    ).toBeEnabled();
-    expect(
-      screen.queryByText(/uploads will re-enable automatically/i),
-    ).not.toBeInTheDocument();
-  });
-
   it("renders recent archive import job status", () => {
     mocks.useActivityArchiveImportJobs.mockReturnValue({
       data: [

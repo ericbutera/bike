@@ -147,6 +147,10 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
   Express ownership and identity policy through named model predicates.
 - Use third party SDKs instead of writing custom clients
 - Verify changed behavior with focused happy-path coverage
+- Unit tests exercise core application behavior with shared fixtures and mocks.
+  Follow the [test boundary](docs/specs/ci-checks.md#checks-and-coverage): do not
+  introduce tests for infrastructure, scaffolding, test helpers, tracing,
+  metrics, environment configuration, or service startup/shutdown.
 - Bugs must have a unit test added before fixing to prevent future regressions
 - Use conventional `#[cfg(test)] mod tests` modules, `tests.rs`, or descriptive
   files inside `tests/`. Do not introduce `_unit.rs` or `_tests.rs` filenames.
@@ -157,7 +161,7 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
 - Keep prek commands, filters, tool/version pins, and required hook stages
   aligned with mise tasks and CI. Update affected enforcement in the same
   change as quality tooling; validate and run hooks without bypassing them.
-- Keep provider calls behind the generated SDK wrapper and use fixtures/fakes for ordinary workflow checks. Native HTTP integration tests live in `bike-rs/api/tests`; browser tests belong to `bike-ui/tests/e2e`. Reserve Playwright for focused activity, segment, and race-viewer flows; use owning unit, functional, or SQL suites for workflow rules.
+- Keep provider calls behind the generated SDK wrapper and use fixtures/fakes for ordinary workflow checks. Native HTTP integration tests live in `bike-rs/api/tests`; browser tests belong to `bike-ui/tests/e2e`. Reserve Playwright for focused activity, segment, and race-viewer flows; use owning unit tests for workflow rules.
 
 These repository instructions and the
 [model and fixture specification](docs/specs/model-boundaries.md) define the

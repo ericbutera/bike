@@ -11,7 +11,7 @@ path = "src/lib.rs"
 workspace = true
 
 [features]
-test-fixtures = ["sea-orm/mock", "opentelemetry_sdk/testing"]
+test-fixtures = ["sea-orm/mock"]
 
 [dependencies]
 async-trait = { workspace = true }
@@ -67,6 +67,5 @@ tonic-prost-build = "0.14.6"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 sea-orm = { workspace = true, features = ["mock"] }

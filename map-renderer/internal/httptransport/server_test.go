@@ -1,13 +1,11 @@
 package httptransport
 
 import (
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/ericbutera/bike/map-renderer/internal/observability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,9 +31,5 @@ func TestChromiumAssetsAreExplicitAndRenderingIsNotHTTP(t *testing.T) {
 			require.Equal(t, "fixture asset", response.Body.String())
 		}
 	}
-	metrics := MetricsHandler(observability.NewMetrics())
-	response := httptest.NewRecorder()
-	metrics.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	require.Equal(t, 200, response.Code)
-	require.Contains(t, response.Body.String(), "bike_maps_render_queue_depth")
+
 }

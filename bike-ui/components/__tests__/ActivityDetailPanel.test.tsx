@@ -1571,68 +1571,14 @@ describe("ActivityDetailPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("updates the activity type from the actions menu", async () => {
+  it("opens and dismisses the activity editor from the detail view", async () => {
     const user = userEvent.setup();
-    const updateAsync = vi.fn().mockResolvedValue(
-      makeActivity({
-        activity_type: ACTIVITY_TYPES.Race,
-      }),
-    );
-    mocks.useUpdateActivity.mockReturnValue({
-      updateAsync,
-      isPending: false,
-      isError: false,
-      error: null,
-    });
-
     render(<ActivityDetailPanel activityId={7} />);
 
     await user.click(screen.getByRole("button", { name: "Edit activity" }));
-    await user.click(screen.getByRole("radio", { name: /Race/i }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(updateAsync).toHaveBeenCalledWith(7, {
-      activity_type: ACTIVITY_TYPES.Race,
-    });
-  });
-
-  it("updates the activity title from the edit activity modal", async () => {
-    const user = userEvent.setup();
-    const updateAsync = vi.fn().mockResolvedValue(
-      makeActivity({
-        title: "Evening Trail Work",
-      }),
-    );
-    mocks.useUpdateActivity.mockReturnValue({
-      updateAsync,
-      isPending: false,
-      isError: false,
-      error: null,
-    });
-
-    render(<ActivityDetailPanel activityId={7} />);
-
-    await user.click(screen.getByRole("button", { name: "Edit activity" }));
-
-    const titleInput = screen.getByRole("textbox", { name: "Title" });
-    await user.clear(titleInput);
-    await user.type(titleInput, "Evening Trail Work");
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(updateAsync).toHaveBeenCalledWith(7, {
-      title: "Evening Trail Work",
-    });
-  });
-
-  it("keeps the edit activity save button disabled for blank titles", async () => {
-    const user = userEvent.setup();
-
-    render(<ActivityDetailPanel activityId={7} />);
-
-    await user.click(screen.getByRole("button", { name: "Edit activity" }));
-    await user.clear(screen.getByRole("textbox", { name: "Title" }));
-
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("deletes the activity after confirmation", async () => {

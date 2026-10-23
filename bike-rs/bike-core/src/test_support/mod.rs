@@ -43,7 +43,6 @@ pub use reprocessing::{
 mod persistence;
 pub use persistence::{insert, update};
 mod segments;
-pub mod trace;
 pub use segments::{personal_achievement, segment, segment_summary, segment_user_summary};
 
 pub use accounts::{auth_event, connection, customer, new_connection, new_customer, refresh_token};
@@ -127,40 +126,4 @@ pub fn new_activity() -> activities::ActiveModel {
     let mut active: activities::ActiveModel = activity().into();
     active.id = NotSet;
     active
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn model_fixtures_share_a_stable_owner_and_clock() {
-        let customer = customer();
-        let connection = connection();
-        let activity = activity();
-        let import = activity_import();
-        let artifact = import_artifact();
-        let archive = archive_import_job();
-        let state = analytics_user_state();
-        let day = fitness_day();
-        let effort = segment_effort();
-        assert_eq!(activity.user_id, customer.id);
-        assert_eq!(import.user_id, customer.id);
-        assert_eq!(connection.user_id, customer.id);
-        assert_eq!(artifact.user_id, customer.id);
-        assert_eq!(artifact.activity_import_id, import.id);
-        assert_eq!(archive.user_id, customer.id);
-        assert_eq!(state.user_id, customer.id);
-        assert_eq!(day.user_id, customer.id);
-        assert_eq!(effort.user_id, customer.id);
-        assert_eq!(activity.created_at, customer.created_at);
-        assert_eq!(import.created_at, customer.created_at);
-        assert_eq!(artifact.created_at, customer.created_at);
-        assert_eq!(archive.created_at, customer.created_at);
-        assert_eq!(state.created_at, customer.created_at);
-        assert_eq!(day.created_at, customer.created_at);
-        assert_eq!(effort.created_at, customer.created_at);
-        assert_eq!(activity, super::activity());
-        assert_eq!(import, activity_import());
-    }
 }

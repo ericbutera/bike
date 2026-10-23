@@ -1,4 +1,4 @@
-use super::{fixture::Fixture, logging::Logs, runtime::WorkflowMock};
+use super::{fixture::Fixture, runtime::WorkflowMock};
 use crate::activities::StravaActivities;
 use crate::workflows::{ScheduledSync, SyncActivities};
 use integrations::strava::{events::StravaOperation, native::*};
@@ -60,51 +60,31 @@ fn failed_customer_does_not_prevent_later_customers_or_scan_pages() {
     other.connection_id = 10;
     other.strava_athlete_id = 124;
     other.strava_event_id = uuid::Uuid::from_u128(3);
-    let other_id = other.workflow_id();
-    let logs = Logs::default();
-    logs.capture(|| {
-        let mut workflow = WorkflowMock::new::<ScheduledSync>(Some(request.clone()));
-        workflow.activity(
-            StravaActivities::scan_connections.name(),
-            &request,
-            &ScanPage {
-                events: vec![fixture.event.clone(), other.clone()],
-                next_connection_id: Some(20),
-            },
-        );
-        let failed = workflow.start_child(SyncActivities::run.name(), &fixture.event);
-        let succeeded = workflow.start_child(SyncActivities::run.name(), &other);
-        workflow.fail_child(failed);
-        workflow.complete_child(
-            succeeded,
-            &CollectionResult {
-                event: other,
-                imported: 1,
-                unchanged: 0,
-                last_started_at: None,
-            },
-        );
-        let continued = workflow.continued_input::<Option<ScanRequest>>().unwrap();
-        assert_eq!(continued.failed_customers, 1);
-        assert_eq!(continued.after_connection_id, 20);
-        assert_eq!(continued.correlation_id, request.correlation_id);
-    });
-    let failed = logs.workflow(&fixture.event.workflow_id(), "failed");
-    let succeeded = logs.workflow(&other_id, "completed");
-    for row in [failed, succeeded] {
-        assert_eq!(row["span"]["correlation_id"], request.correlation_id.to_string());
-        assert_eq!(row["span"]["parent_temporal_workflow_id"], "unit-workflow");
-        assert_eq!(
-            row["span"]["parent_temporal_run_id"],
-            "00000000-0000-4000-8000-000000000099"
-        );
-        assert_eq!(row["span"]["request_id"], "fixture-request");
-        assert_eq!(row["span"]["trace_id"], "12345678901234567890123456789012");
-    }
-    assert_eq!(
-        logs.workflow("unit-workflow", "continued")["span"]["correlation_id"],
-        request.correlation_id.to_string()
+    let mut workflow = WorkflowMock::new::<ScheduledSync>(Some(request.clone()));
+    workflow.activity(
+        StravaActivities::scan_connections.name(),
+        &request,
+        &ScanPage {
+            events: vec![fixture.event.clone(), other.clone()],
+            next_connection_id: Some(20),
+        },
     );
+    let failed = workflow.start_child(SyncActivities::run.name(), &fixture.event);
+    let succeeded = workflow.start_child(SyncActivities::run.name(), &other);
+    workflow.fail_child(failed);
+    workflow.complete_child(
+        succeeded,
+        &CollectionResult {
+            event: other,
+            imported: 1,
+            unchanged: 0,
+            last_started_at: None,
+        },
+    );
+    let continued = workflow.continued_input::<Option<ScanRequest>>().unwrap();
+    assert_eq!(continued.failed_customers, 1);
+    assert_eq!(continued.after_connection_id, 20);
+    assert_eq!(continued.correlation_id, request.correlation_id);
 }
 
 #[test]

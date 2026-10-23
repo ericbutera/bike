@@ -1,6 +1,5 @@
 use super::{cache::Cache, types::RenderRequest};
 use super::{types::MapImageError, MapImageService, MapOptions, Theme, Variant};
-use crate::test_support::trace::{attribute, capture, stage};
 use std::{
     fs::{self, File, FileTimes},
     time::{Duration, SystemTime},
@@ -56,19 +55,12 @@ async fn image_workflow_reuses_cache_without_contacting_worker() {
         .write(request.cache_key(), b"\x89PNG\r\n\x1a\ncached-png".to_vec())
         .await
         .unwrap();
-    let trace = capture(async {
-        let image = service
-            .image(&database(Some(activity)), 1, 7, Variant::Full, "1", options)
-            .await
-            .unwrap();
-        assert!(image.cache_hit);
-        assert!(image.etag.starts_with('"'));
-    })
-    .await;
-    let image = stage(&trace, "map.image");
-    assert_eq!(attribute(&image, "bike.operation"), &"map.image".into());
-    assert_eq!(attribute(&image, "cache.hit"), &true.into());
-    assert!(!trace.spans().iter().any(|span| span.name == "bike.maps.snapshot"));
+    let image = service
+        .image(&database(Some(activity)), 1, 7, Variant::Full, "1", options)
+        .await
+        .unwrap();
+    assert!(image.cache_hit);
+    assert!(image.etag.starts_with('"'));
     service.prune().await.unwrap();
     assert!(matches!(
         service.image(&database(None), 1, 7, Variant::Full, "1", options).await,
@@ -103,34 +95,25 @@ async fn hiking_feed_map_calls_and_caches_authenticated_snapshot_worker() {
         .await
         .unwrap(),
     );
-    let trace = capture(async {
-        let image = service
-            .image(
-                &database(Some(crate::entities::activities::Model {
-                    sport: "hike".into(),
-                    ..activity_fixture()
-                })),
-                1,
-                7,
-                Variant::Thumbnail,
-                "1",
-                MapOptions {
-                    theme: Theme::Light,
-                    dpr: 1,
-                },
-            )
-            .await
-            .unwrap();
-        assert!(!image.cache_hit);
-        assert_eq!(image.png, b"\x89PNG\r\n\x1a\nworker-png");
-    })
-    .await;
-    let image = stage(&trace, "map.image");
-    assert_eq!(attribute(&image, "cache.hit"), &false.into());
-    let spans = trace.spans();
-    let snapshot = spans.iter().find(|span| span.name == "bike.maps.snapshot").unwrap();
-    assert_eq!(snapshot.parent_span_id, image.span_context.span_id());
-    assert_eq!(attribute(snapshot, "bike.operation"), &"map.render".into());
+    let image = service
+        .image(
+            &database(Some(crate::entities::activities::Model {
+                sport: "hike".into(),
+                ..activity_fixture()
+            })),
+            1,
+            7,
+            Variant::Thumbnail,
+            "1",
+            MapOptions {
+                theme: Theme::Light,
+                dpr: 1,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!image.cache_hit);
+    assert_eq!(image.png, b"\x89PNG\r\n\x1a\nworker-png");
     service.maintain();
     tokio::task::yield_now().await;
     task.abort();

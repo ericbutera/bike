@@ -73,28 +73,6 @@ fn row(event: &StravaEvent) -> bike_core::entities::strava_events::Model {
     fixture.row(integrations::strava::native::ActivityStatus::Pending)
 }
 
-#[test]
-fn configuration_uses_defaults_or_explicit_values_without_mutating_process_environment() {
-    let defaults = TemporalConfig::from_lookup(|_| None);
-    assert_eq!(defaults.address, "http://temporal:7233");
-    assert_eq!(defaults.namespace, "bike");
-    assert_eq!(defaults.task_queue, "bike-strava");
-    let custom = TemporalConfig::from_lookup(|name| Some(name.to_lowercase()));
-    assert_eq!(custom.address, "temporal_address");
-    assert_eq!(custom.namespace, "temporal_namespace");
-    assert_eq!(custom.task_queue, "temporal_task_queue");
-    let options = connection_options(&config()).unwrap();
-    assert_eq!(options.identity, "bike-strava-temporal");
-    assert_eq!(options.connect_timeout, Some(Duration::from_secs(10)));
-}
-
-#[tokio::test]
-async fn invalid_address_is_rejected_before_connection() {
-    let mut config = config();
-    config.address = "not a URL".into();
-    assert!(connect(&config).await.is_err());
-}
-
 #[tokio::test]
 async fn each_operation_starts_its_own_workflow_with_correlated_input_and_duplicate_protection() {
     let mock = Arc::new(MockTemporal::default());
@@ -231,15 +209,4 @@ async fn submission_record_failure_is_returned_after_a_successful_start() {
         mock.requests.lock().unwrap().last().unwrap().rpc,
         "StartWorkflowExecution"
     );
-}
-
-#[tokio::test]
-async fn native_worker_registers_without_contacting_a_real_service() {
-    let mock = Arc::new(MockTemporal::default());
-    let client = mock.client().await;
-    let runtime = Runtime::from_current_tokio(Default::default()).unwrap();
-    let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
-    let worker = worker(&runtime, client, &config(), db).unwrap();
-    worker.shutdown_handle()();
-    assert_eq!(mock.requests.lock().unwrap().len(), 1);
 }
