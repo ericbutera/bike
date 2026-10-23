@@ -15,11 +15,15 @@ it.each(["/api", "https://api.example.test/api/"])(
   async (apiUrl) => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          providers: [{ id: "sso", label: "Continue with SSO" }],
-        }),
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = input instanceof Request ? input.url : String(input);
+        return Response.json(
+          url.endsWith("/auth/current")
+            ? null
+            : {
+                providers: [{ id: "sso", label: "Continue with SSO" }],
+              },
+        );
       }),
     );
     render(

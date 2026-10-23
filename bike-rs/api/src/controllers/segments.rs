@@ -432,11 +432,13 @@ pub async fn get_segment_comparison(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<SegmentComparisonResponse>, AppError> {
-    let segment = segments::Model::find_owned(&state.db, id, user.id)
+    let segment = segments::Model::find_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
 
-    Ok(Json(load_segment_comparison_response(&state.db, &segment).await?))
+    Ok(Json(
+        load_segment_comparison_response(&state.db, &segment, user.id).await?,
+    ))
 }
 
 #[utoipa::path(
@@ -816,10 +818,11 @@ async fn load_segment_summary_response(
 async fn load_segment_comparison_response(
     db: &sea_orm::DatabaseConnection,
     segment: &segments::Model,
+    user_id: i32,
 ) -> Result<SegmentComparisonResponse, AppError> {
     let route_points =
         segment_route_point_responses(&deserialize_segment_route_points(segment.route_data_json.as_ref()));
-    let efforts = load_effort_responses(db, &[segment.id]).await?;
+    let efforts = load_effort_responses(db, user_id, segment.id).await?;
 
     Ok(SegmentComparisonResponse {
         segment_id: segment.id,
@@ -843,7 +846,7 @@ async fn load_segment_yearly_bests_response(
     }
 
     let activity_ids = efforts.iter().map(|effort| effort.activity_id).collect::<Vec<_>>();
-    let activity_models = activities::Model::effort_summaries(db, &activity_ids).await?;
+    let activity_models = activities::Model::effort_summaries(db, user_id, &activity_ids).await?;
     let activities_by_id = activity_models
         .into_iter()
         .map(|activity| (activity.id, activity))
@@ -919,7 +922,7 @@ async fn load_segment_effort_analysis_response(
     }
 
     let activity_ids = efforts.iter().map(|effort| effort.activity_id).collect::<Vec<_>>();
-    let activity_models = activities::Model::effort_sources(db, &activity_ids).await?;
+    let activity_models = activities::Model::effort_sources(db, user_id, &activity_ids).await?;
     let activities_by_id = activity_models
         .into_iter()
         .map(|activity| (activity.id, activity))
@@ -1576,16 +1579,16 @@ async fn load_segment_user_summaries(
 
 async fn load_effort_responses(
     db: &sea_orm::DatabaseConnection,
-    segment_ids: &[i32],
+    user_id: i32,
+    segment_id: i32,
 ) -> Result<Vec<SegmentEffortResponse>, AppError> {
-    if segment_ids.is_empty() {
+    let efforts = segment_efforts::Model::ranked_for_user_segment(db, user_id, segment_id).await?;
+    if efforts.is_empty() {
         return Ok(Vec::new());
     }
-
-    let efforts = segment_efforts::Model::ranked_for_segments(db, segment_ids).await?;
     let activity_ids = efforts.iter().map(|effort| effort.activity_id).collect::<Vec<_>>();
     let rider_user_ids = efforts.iter().map(|effort| effort.user_id).collect::<Vec<_>>();
-    let activity_models = activities::Model::effort_sources(db, &activity_ids).await?;
+    let activity_models = activities::Model::effort_sources(db, user_id, &activity_ids).await?;
     let rider_models = users::Model::rider_names(db, &rider_user_ids).await?;
     let activities_by_id = activity_models
         .into_iter()

@@ -152,6 +152,9 @@ Do not start commits with the word add (eg: `feat: added architecture diagram`),
   Express ownership and identity policy through named model predicates.
 - Use third party SDKs instead of writing custom clients
 - Verify changed behavior with focused happy-path coverage
+- User-scoped features must verify isolation with multiple users and unrelated
+  records in Rust and UI tests. Derive ownership from authenticated identity;
+  expose cross-user data only through explicitly global operations.
 - Give each unit test a clear behavioral purpose and a title that explains what
   a failure means. Use multiple assertions when they support the same outcome;
   split unrelated failure causes and keep fixture setup minimal.

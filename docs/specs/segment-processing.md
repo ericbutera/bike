@@ -24,12 +24,19 @@ The segment builder records the source activity id and route-point start/end ind
   restrict access to global standings.
 - Any authenticated athlete can read a segment's saved overall achievements,
   including athletes without an effort on that segment. A missing segment is 404.
-- Each athlete's efforts and personal positions belong to that athlete. Those
-  same efforts also contribute to the segment's global standings.
+- Personal achievement reads scope saved positions to the authenticated athlete
+  and requested segment. Comparison, yearly-best, and analysis queries scope
+  efforts and source activity metadata to that athlete. Other athletes' efforts,
+  recording samples, and activity details never become personal results.
+- Any authenticated athlete may read their own personal achievements and
+  comparison results for an existing shared segment. No efforts returns an
+  empty personal list, while overall standings still include all athletes.
+- Browser sessions isolate cached personal data across account changes and
+  logout; see [authentication](authentication.md#browser-session-data).
 - Current standings and immutable activity awards are distinct; see
   [achievements](achievements.md).
 - Overall standings implement shared access. Remaining creator restrictions on
-  browsing, personal-result access, and matching are tracked in the
+  browsing and matching are tracked in the
   [segment backlog](../TODO.md#segments).
 
 ## Segment Mode

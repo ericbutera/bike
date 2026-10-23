@@ -22,6 +22,9 @@ mod integration_events_tests;
 #[cfg(test)]
 mod model_boundary_tests;
 #[cfg(test)]
+#[path = "tests/segment_tenants.rs"]
+mod segment_tenants;
+#[cfg(test)]
 #[path = "tests/fixture.rs"]
 mod test_support;
 #[cfg(test)]

@@ -33,7 +33,7 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const CURRENT_USER_QUERY_KEY = ["get", "/auth/current"] as const;
+export const CURRENT_USER_QUERY_KEY = ["get", "/auth/current"] as const;
 
 export function AuthProvider({
   config: authConfig = {},
@@ -92,9 +92,8 @@ export const authApiClient = {
     return useMutation({
       mutationFn: () => fetchWithCredentials(`${config.API_URL}/auth/logout`),
       onSuccess: async () => {
-        await queryClient.invalidateQueries({
-          queryKey: CURRENT_USER_QUERY_KEY,
-        });
+        await queryClient.cancelQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+        queryClient.setQueriesData({ queryKey: CURRENT_USER_QUERY_KEY }, null);
       },
     });
   },
