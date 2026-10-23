@@ -88,7 +88,6 @@ use utoipa::OpenApi;
         crate::controllers::segment_overall_achievements::get_overall_achievements,
         segments::get_segment_effort_analysis,
         segments::update_segment,
-        segments::update_segment_from_activity,
         segments::delete_segment,
         segments::import_segment,
         segments::create_segment_from_activity,

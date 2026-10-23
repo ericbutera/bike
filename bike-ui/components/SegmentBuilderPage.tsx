@@ -2,9 +2,10 @@
 
 import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { useActivity, useSegment } from "../lib/queries";
+import { useActivity } from "../lib/queries";
 import SegmentBuilderWorkspace from "./SegmentBuilderWorkspace";
 import { AppCard } from "./ui/Card";
+import { ErrorCard } from "./ui/QueryState";
 
 function parseNumericId(rawValue: string | null) {
   const parsed = Number(rawValue);
@@ -16,13 +17,7 @@ function parseNumericId(rawValue: string | null) {
   return parsed;
 }
 
-function SegmentBuilderPageShell({
-  isEditingExistingSegment,
-  children,
-}: {
-  isEditingExistingSegment: boolean;
-  children: ReactNode;
-}) {
+function SegmentBuilderPageShell({ children }: { children: ReactNode }) {
   return (
     <section className="space-y-6">
       <AppCard bodyClassName="gap-4">
@@ -44,35 +39,10 @@ function NewSegmentBuilderPage({ activityId }: { activityId: number | null }) {
   const activityQuery = useActivity(activityId);
 
   return (
-    <SegmentBuilderPageShell isEditingExistingSegment={false}>
+    <SegmentBuilderPageShell>
       <SegmentBuilderWorkspace
-        segment={null}
         activity={activityQuery.data}
         isLoading={activityQuery.isLoading}
-      />
-    </SegmentBuilderPageShell>
-  );
-}
-
-function EditSegmentBuilderPage({ segmentId }: { segmentId: number }) {
-  const segmentQuery = useSegment(segmentId);
-  const selectedActivityId =
-    segmentQuery.data?.builder_source?.activity_id ?? null;
-  const activityQuery = useActivity(selectedActivityId);
-  const builderStateError =
-    segmentQuery.data && !segmentQuery.data.builder_source
-      ? new Error(
-          "This segment cannot be reopened in the builder because it was not created from a ride crop.",
-        )
-      : null;
-
-  return (
-    <SegmentBuilderPageShell isEditingExistingSegment>
-      <SegmentBuilderWorkspace
-        segment={segmentQuery.data ?? null}
-        activity={activityQuery.data}
-        isLoading={segmentQuery.isLoading || activityQuery.isLoading}
-        unavailableMessage={builderStateError?.message}
       />
     </SegmentBuilderPageShell>
   );
@@ -84,7 +54,9 @@ export default function SegmentBuilderPage() {
   const requestedActivityId = parseNumericId(searchParams.get("activityId"));
 
   return selectedSegmentId != null ? (
-    <EditSegmentBuilderPage segmentId={selectedSegmentId} />
+    <SegmentBuilderPageShell>
+      <ErrorCard fallback="Saved segment geometry is locked. Rename the segment from its detail page." />
+    </SegmentBuilderPageShell>
   ) : (
     <NewSegmentBuilderPage activityId={requestedActivityId} />
   );

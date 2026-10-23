@@ -4,7 +4,7 @@ Segments let a rider define a route slice, match it against uploaded activities,
 
 ## Product Intent
 
-Segment workflows must feel responsive. Creating or editing a segment should validate and persist the segment quickly, then queue background matching. Long route-matching jobs should be observable and restartable enough to debug, but they should not make the request path or UI feel stuck.
+Segment workflows must feel responsive. Creating a segment should validate and persist it quickly, then queue background matching. Long route-matching jobs should be observable and restartable enough to debug, but they should not make the request path or UI feel stuck.
 
 The system favors simple, reliable processing over clever spatial optimization until profiling proves the simple path is insufficient.
 
@@ -16,7 +16,24 @@ Manual segment import requires explicit route coordinates. FIT remains supported
 
 Doogal Segment Explorer is a practical source for GPX exports when a rider wants to import an existing public route segment. The app should not require Strava API keys or OAuth just to create manual segments.
 
-The segment builder records the source activity id and route-point start/end indexes so the UI can return to and edit the chosen route slice.
+The segment builder records the source activity id and route-point start/end indexes as creation provenance.
+
+### Fixed geometry and creator renaming
+
+- Geometry, start, finish, distance, and builder source are fixed after creation.
+  A different route requires a new segment.
+- Only the creator may rename a segment. Renaming trims and validates the title
+  and updates metadata without matching, replacing efforts, recalculating ranks
+  or standings, rebuilding activity analytics, or changing earned awards.
+- Mode and starred state remain creator metadata controls with no matching effect.
+- The API rejects route fields on metadata updates and provides no saved-route
+  replacement endpoint. The builder creates new segments only; old builder edit
+  links show that the saved route is locked.
+- Creating a duplicate returns the existing segment without renaming it or
+  replacing its stored builder source. Renaming uses the creator metadata action.
+- This is the first stream 1 slice of PR 100. LOAD05, LOAD06, and LOAD19 remain
+  follow-up work for stable effort persistence, lock order, and historical matching;
+  no data conversion or backfill is needed to retire route replacement.
 
 ## Segment Ownership And Visibility
 
@@ -41,7 +58,7 @@ The segment builder records the source activity id and route-point start/end ind
   remain scoped to the authenticated athlete. Global best times and badges use
   saved overall results, never rankings inferred from the viewer's effort subset.
 - Responses expose `can_manage` from authenticated creator identity. Only the
-  creator may rename, change mode/starred state, edit the route, or delete a
+  creator may rename, change mode/starred state, or delete a
   segment. Other viewers see read-only controls and may download public geometry.
   Creator-only starred state is hidden from other viewers; independent per-user
   favorites remain a separate feature.
@@ -68,7 +85,7 @@ Segments can also be starred. Starred state is a user-facing organization signal
 Segment upload and segment-builder requests should:
 
 1. validate the input;
-2. persist the segment or route changes;
+2. persist the fixed segment;
 3. enqueue effort regeneration;
 4. return the segment with queued task id/status when available.
 
@@ -207,7 +224,7 @@ The segment UI should support:
 - segment list with mode, starred state, summary stats, and processing state;
 - upload panel for GPX or TCX segment files;
 - segment detail with route, efforts, personal-best context, and editable title/mode/starred state;
-- segment builder create/edit flow from activity route points;
+- segment builder creation from activity route points;
 - race/comparison view for selected efforts.
 
 Queued matching should be presented as expected progress, not as an error.

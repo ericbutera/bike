@@ -125,18 +125,12 @@ async fn segment_deletion_locks_affected_activities_before_deleting_efforts() {
 }
 
 #[tokio::test]
-async fn segment_title_changes_lock_affected_activities_before_the_segment() {
-    let db = segment_mutation_scope()
+async fn segment_title_changes_do_not_refresh_activity_projections() {
+    let db = MockDatabase::new(DatabaseBackend::Postgres)
         .append_query_results([vec![segments::Model {
             title: "Renamed segment".into(),
             ..fixtures::segment()
         }]])
-        .append_query_results([vec![fixtures::activity_id_row()]])
-        .append_query_results([vec![fixtures::activity_analytics()]])
-        .append_query_results([Vec::<segment_efforts::Model>::new()])
-        .append_query_results([Vec::<activity_award_outputs::Model>::new()])
-        .append_query_results([Vec::<activity_earned_awards::Model>::new()])
-        .append_exec_results([written()])
         .into_connection();
     let segment = fixtures::segment()
         .update_details(&db, Some("Renamed segment"), None, None)
@@ -145,16 +139,8 @@ async fn segment_title_changes_lock_affected_activities_before_the_segment() {
     assert_eq!(segment.title, "Renamed segment");
     let log = db.into_transaction_log();
     let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
-    let lock = statements
-        .iter()
-        .position(|statement| statement.sql.ends_with("FOR UPDATE"))
-        .unwrap();
-    let update = statements
-        .iter()
-        .position(|statement| statement.sql.starts_with("UPDATE \"segments\""))
-        .unwrap();
-    assert!(lock < update);
-    assert_eq!(statements.last().unwrap().sql, "COMMIT");
+    assert_eq!(statements.len(), 1);
+    assert!(statements[0].sql.starts_with("UPDATE \"segments\""));
 }
 
 #[tokio::test]

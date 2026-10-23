@@ -352,6 +352,7 @@ pub struct CreateSegmentFromActivityRequest {
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[schema(example = json!({"title": "Riverfront climb","mode": "xc","starred": true}))]
+#[serde(deny_unknown_fields)]
 pub struct UpdateSegmentRequest {
     #[schema(example = "Riverfront climb")]
     pub title: Option<String>,
@@ -558,51 +559,6 @@ pub async fn update_segment(
 }
 
 #[utoipa::path(
-    put,
-    path = "/segments/{id}/from-activity",
-    params(
-        ("id" = i32, Path, description = "Segment ID", example = 7)
-    ),
-    request_body(content = CreateSegmentFromActivityRequest, example = json!({"activity_id": 42,"title": "Riverfront climb","start_route_point_index": 120,"end_route_point_index": 280})),
-    responses(
-        (status = 200, description = "Updated segment route from an activity slice", body = SegmentResponse, example = json!({"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}})),
-        (status = 400, description = "Invalid activity slice", body = ApiErrorResponse),
-        (status = 401, description = "Not authenticated"),
-        (status = 404, description = "Segment or activity not found", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
-    ),
-    tag = "segments",
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn update_segment_from_activity(
-    Path(id): Path<i32>,
-    UserContext { user, .. }: UserContext<AppStorage>,
-    State(state): State<Arc<AppStorage>>,
-    Json(payload): Json<CreateSegmentFromActivityRequest>,
-) -> Result<Json<SegmentResponse>, AppError> {
-    let segment = segments::Model::find_owned(&state.db, id, user.id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Segment not found"))?;
-    let source = ActivitySegmentSource::load(
-        &state.db,
-        user.id,
-        payload.activity_id,
-        &payload.title,
-        payload.start_route_point_index,
-        payload.end_route_point_index,
-    )
-    .await?;
-    let updated_segment = segment.replace_from_activity(&state.db, &source).await?;
-    let processing_task = enqueue_segment_effort_regeneration(&state, updated_segment.id).await?;
-    Ok(Json(load_light_segment_response(
-        &updated_segment,
-        Some(&processing_task),
-    )))
-}
-
-#[utoipa::path(
     delete,
     path = "/segments/{id}",
     params(
@@ -668,8 +624,6 @@ pub async fn create_segment_from_activity(
     if let Some(existing_segment) =
         segments::Model::find_duplicate(&state.db, user.id, source.distance_meters(), source.route_points()).await?
     {
-        let existing_segment = existing_segment.adopt_builder_source(&state.db, &source).await?;
-
         return Ok((
             StatusCode::OK,
             Json(load_segment_summary_response(&state.db, &existing_segment, user.id).await?),

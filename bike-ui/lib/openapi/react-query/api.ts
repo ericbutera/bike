@@ -826,22 +826,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/segments/{id}/from-activity": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put: operations["update_segment_from_activity"];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/segments/{id}/overall-achievements": {
     parameters: {
       query?: never;
@@ -8162,97 +8146,6 @@ export interface operations {
         content?: never;
       };
       /** @description Segment or reference effort not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-    };
-  };
-  update_segment_from_activity: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /**
-         * @description Segment ID
-         * @example 7
-         */
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        /**
-         * @example {
-         *       "activity_id": 42,
-         *       "end_route_point_index": 280,
-         *       "start_route_point_index": 120,
-         *       "title": "Riverfront climb"
-         *     }
-         */
-        "application/json": components["schemas"]["CreateSegmentFromActivityRequest"];
-      };
-    };
-    responses: {
-      /** @description Updated segment route from an activity slice */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "best_duration_seconds": 340,
-           *       "builder_source": {
-           *         "activity_id": 42,
-           *         "end_route_point_index": 280,
-           *         "start_route_point_index": 120
-           *       },
-           *       "created_at": "2026-09-26T14:25:00Z",
-           *       "current_user_pr_duration_seconds": 355,
-           *       "distance_meters": 1500.5,
-           *       "effort_count": 8,
-           *       "id": 7,
-           *       "mode": "xc",
-           *       "source": "activity_segment_builder",
-           *       "starred": true,
-           *       "title": "Riverfront climb"
-           *     }
-           */
-          "application/json": components["schemas"]["SegmentResponse"];
-        };
-      };
-      /** @description Invalid activity slice */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ApiErrorResponse"];
-        };
-      };
-      /** @description Not authenticated */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Segment or activity not found */
       404: {
         headers: {
           [name: string]: unknown;
