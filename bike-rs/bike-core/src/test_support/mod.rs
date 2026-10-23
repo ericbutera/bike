@@ -42,8 +42,12 @@ pub use reprocessing::{
 };
 mod persistence;
 pub use persistence::{insert, update};
+mod segment_mocks;
 mod segments;
+pub use segment_mocks::{saved_overall_achievements_db, segment_access_mock, segment_rebuild_mock};
+mod shared_segments;
 pub use segments::{overall_achievement, personal_achievement, segment, segment_summary, segment_user_summary};
+pub use shared_segments::{distinct_athlete_efforts, shared_segment_efforts, shared_segments, SharedSegments};
 
 pub use accounts::{auth_event, connection, customer, new_connection, new_customer, refresh_token};
 pub use imports::{activity_upload, archive_import_job, artifact_payload, import_artifact};

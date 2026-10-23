@@ -67,6 +67,10 @@
       and segment-detail panel; see [achievements](specs/achievements.md#personal-api-and-ui).
 - [x] Persist and display overall achievements: a global top ten with one position per athlete;
       see [achievements](specs/achievements.md#overall-achievements).
+- [x] Allow every authenticated athlete to read saved overall standings for a global
+      segment, including athletes without an effort.
+- [ ] Remove remaining creator restrictions from shared segment browsing, personal
+      result access, and matching; see [segment visibility](specs/segment-processing.md#segment-ownership-and-visibility).
 
 - [x] Support individual GPX downloads from segment detail; see the
       [download contract](specs/segment-processing.md#segment-downloads).

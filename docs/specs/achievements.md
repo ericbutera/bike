@@ -67,7 +67,7 @@
   all segments in 16-segment ID pages, awaits each replacement, and uses
   Continue-As-New after a full page. Repeating it replaces the same saved rows.
 - `GET /segments/{id}/overall-achievements` requires authentication and the
-  existing segment ownership check. Return the saved rows ordered by position,
+  [shared segment access policy](segment-processing.md#segment-ownership-and-visibility). Return the saved rows ordered by position,
   including athlete ID, profile display name, effort ID, and duration; missing
   output returns `[]`. Profile names enrich saved positions without filtering
   or recalculating them; a missing name leaves the position intact.
@@ -83,8 +83,8 @@
 
 - Current personal and overall positions are distinct from awards earned by an
   activity. Historical award persistence remains a separate implementation slice.
-- Previously earned awards remain attached to their effort when current
-  standings change.
+- Earned activity achievements are historical and immutable. Their original
+  segment award decisions are never modified or updated.
 
 See [segment processing](segment-processing.md) for efforts and
 [background work](background-work.md) for Temporal execution.

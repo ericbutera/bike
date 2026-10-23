@@ -20,9 +20,17 @@ The segment builder records the source activity id and route-point start/end ind
 
 ## Segment Ownership And Visibility
 
-Segments are user-owned. List, detail, edit, delete, matching, and summaries are scoped to the authenticated user unless a future product decision explicitly introduces cross-user leaderboards.
-
-Existing cross-user leaderboard semantics should not be inferred from implementation details. User-owned manual segments are the current contract.
+- Segments are global, shared route definitions. The stored creator ID does not
+  restrict access to global standings.
+- Any authenticated athlete can read a segment's saved overall achievements,
+  including athletes without an effort on that segment. A missing segment is 404.
+- Each athlete's efforts and personal positions belong to that athlete. Those
+  same efforts also contribute to the segment's global standings.
+- Current standings and immutable activity awards are distinct; see
+  [achievements](achievements.md).
+- Overall standings implement shared access. Remaining creator restrictions on
+  browsing, personal-result access, and matching are tracked in the
+  [segment backlog](../TODO.md#segments).
 
 ## Segment Mode
 

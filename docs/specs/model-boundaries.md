@@ -100,9 +100,24 @@ on `activities::Entity`, and deleting the import stays on `activity_imports::Ent
 
 ## Shared fixture contract
 
+- Name each test for its behavior, relevant condition, and expected result, so
+  a failure identifies the broken contract without reconstructing its intent.
+- Multiple assertions may verify one coherent outcome. Split tests when their
+  failure causes are unrelated; assertion count alone does not justify a split.
+- Pass dependencies through explicit owning boundaries and supply mocks or fakes
+  for collaborators that perform I/O. Keep fixtures focused on data and setup;
+  helpers must not silently start services, mutate global state, or assemble
+  unrelated workflows.
+- Shared segment scenarios include three distinct users, efforts on different
+  segments, and independently specified saved standings. Never calculate
+  expected standings with the production ranking operation.
+
 - Use fixture factories with shared test helpers. Keep routine setup shared so
   each test shows only its meaningful inputs, actions, and assertions.
-- Cross-crate Rust model fixtures live in `bike-core::test_support`.
+- Reusable Rust scenario data, effort factories, and database mock builders live
+  in `bike-core::test_support`, shared by core, API, and worker tests.
+- API router, AppStorage, and HTTP request helpers stay in API test support;
+  shared core fixtures must not depend on the API crate.
 - Shared activity recordings and segment files live in `bike-rs/tests/fixtures`.
   Expose reusable recording bytes through `bike_core::test_support::recordings`
   so consumers do not depend on another crate's test directory or relative paths.
@@ -111,8 +126,9 @@ on `activities::Entity`, and deleting the import stays on `activity_imports::Ent
   Other crates enable that feature in dev-dependencies.
 - Fixtures provide valid, reusable defaults with fixed timestamps and coherent
   owner IDs. Preserve existing provider-specific identities when adapting them.
-- Override only fields relevant to the scenario, using struct updates. A local
-  helper may describe a scenario but must build on the shared default.
+- Override only fields relevant to the scenario, using struct updates. Keep
+  reusable data and mock query setup in shared support. Local helpers may
+  express the feature's action or assertion, building on the shared defaults.
 - Insert fixtures with `test_support::insert(&db, fixture_with_overrides).await`.
   Use Rust's `ActiveModel { field: Set(value), ..fixture() }` struct-update syntax
   to combine fixture fields and explicit overrides without a runtime field map

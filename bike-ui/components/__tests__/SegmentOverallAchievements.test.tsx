@@ -1,7 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { overallAchievement } from "../../tests/fixtures/activitySegments";
-import { useSegmentOverallAchievements } from "../../lib/queries";
+import {
+  useSegmentOverallAchievements,
+  type OverallAchievement,
+} from "../../lib/queries";
 import SegmentOverallAchievements from "../segment-detail/SegmentOverallAchievements";
 
 const mocks = vi.hoisted(() => ({ useQuery: vi.fn() }));
@@ -15,59 +18,48 @@ beforeEach(() => {
   });
 });
 
+function renderStandings(data: OverallAchievement[] = [overallAchievement()]) {
+  mocks.useQuery.mockReturnValue({ data, isLoading: false, isError: false });
+  render(<SegmentOverallAchievements segmentId={11} />);
+}
+
+function QueryProbe({ id }: { id: number | string | null | undefined }) {
+  useSegmentOverallAchievements(id);
+  return null;
+}
+
 describe("SegmentOverallAchievements", () => {
-  it("shows stored positions and times for different athletes without renumbering", () => {
-    mocks.useQuery.mockReturnValue({
-      data: [
-        overallAchievement(),
-        overallAchievement({
-          position: 7,
-          user_id: 8,
-          rider_name: "Other Rider",
-          effort_id: 91,
-          duration_seconds: 355,
-        }),
-      ],
-      isLoading: false,
-      isError: false,
-    });
-    render(<SegmentOverallAchievements segmentId="11" />);
-    const table = screen.getByRole("table", { name: "Overall top ten" });
-    const rows = within(table).getAllByRole("row");
-    expect(rows).toHaveLength(3);
+  it("preserves stored positions without renumbering", () => {
+    renderStandings([overallAchievement({ position: 7 })]);
+    expect(screen.getByRole("cell", { name: "7" })).toBeInTheDocument();
+  });
+
+  it("displays the athlete's profile name", () => {
+    renderStandings([overallAchievement({ rider_name: "Other Rider" })]);
     expect(
-      within(rows[1])
-        .getAllByRole("cell")
-        .map((cell) => cell.textContent),
-    ).toEqual(["1", "Fixture Rider", "5m 12s"]);
-    expect(
-      within(rows[2])
-        .getAllByRole("cell")
-        .map((cell) => cell.textContent),
-    ).toEqual(["7", "Other Rider", "5m 55s"]);
+      screen.getByRole("cell", { name: "Other Rider" }),
+    ).toBeInTheDocument();
+  });
+
+  it("formats the saved effort duration", () => {
+    renderStandings([overallAchievement({ duration_seconds: 355 })]);
+    expect(screen.getByRole("cell", { name: "5m 55s" })).toBeInTheDocument();
+  });
+
+  it("describes the standings as all time and one effort per athlete", () => {
+    render(<SegmentOverallAchievements segmentId={11} />);
     expect(
       screen.getByText("All time · Fastest effort per athlete"),
     ).toBeInTheDocument();
-    expect(mocks.useQuery).toHaveBeenCalledWith(
-      "get",
-      "/segments/{id}/overall-achievements",
-      { params: { path: { id: 11 } } },
-      { enabled: true },
-    );
   });
 
-  it("retains a stored position when its profile name is unavailable", () => {
-    mocks.useQuery.mockReturnValue({
-      data: [overallAchievement({ rider_name: null })],
-      isLoading: false,
-      isError: false,
-    });
-    render(<SegmentOverallAchievements segmentId={11} />);
+  it("uses an athlete label when the profile name is unavailable", () => {
+    renderStandings([overallAchievement({ rider_name: null })]);
     expect(screen.getByRole("cell", { name: "Athlete" })).toBeInTheDocument();
   });
 
   it("shows an empty state when no positions are stored", () => {
-    render(<SegmentOverallAchievements segmentId={11} />);
+    renderStandings([]);
     expect(screen.getByText("No overall standings yet.")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
@@ -88,15 +80,23 @@ describe("SegmentOverallAchievements", () => {
       "Unable to load overall standings.",
     );
   });
+});
+
+describe("useSegmentOverallAchievements", () => {
+  it("requests standings for the selected segment", () => {
+    render(<QueryProbe id="11" />);
+    expect(mocks.useQuery).toHaveBeenCalledWith(
+      "get",
+      "/segments/{id}/overall-achievements",
+      { params: { path: { id: 11 } } },
+      { enabled: true },
+    );
+  });
 
   it.each([null, undefined, "bad-id", 0, -1])(
     "disables the query for invalid segment %s",
     (id) => {
-      function QueryProbe() {
-        useSegmentOverallAchievements(id);
-        return null;
-      }
-      render(<QueryProbe />);
+      render(<QueryProbe id={id} />);
       expect(mocks.useQuery).toHaveBeenLastCalledWith(
         "get",
         "/segments/{id}/overall-achievements",
