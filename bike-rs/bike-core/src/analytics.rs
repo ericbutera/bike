@@ -14,6 +14,10 @@ use std::collections::{BTreeMap, HashMap};
 #[path = "analytics_projection_tests.rs"]
 mod projection_tests;
 
+#[cfg(test)]
+#[path = "analytics/tests.rs"]
+mod segment_tests;
+
 pub const FITNESS_WINDOW_DAYS: f64 = 42.0;
 pub const FATIGUE_WINDOW_DAYS: f64 = 7.0;
 const DEFAULT_HEART_RATE_RATIO: f64 = 0.6;
@@ -367,16 +371,10 @@ struct SegmentAnalyticsInput {
     activity_started_at_by_id: HashMap<i32, DateTime<Utc>>,
 }
 
-struct SegmentEffortRankUpdate {
-    effort: segment_efforts::Model,
-    overall_rank: i32,
-    user_rank: i32,
-}
-
 struct SegmentAnalyticsRebuild {
     segment_summary_by_id: HashMap<i32, SegmentSummaryAccumulator>,
     segment_user_summary_by_key: HashMap<(i32, i32), SegmentUserSummaryAccumulator>,
-    effort_updates: Vec<SegmentEffortRankUpdate>,
+    effort_updates: Vec<segment_efforts::RankUpdate>,
 }
 
 async fn load_segment_analytics_input<C>(db: &C, segment_ids: &[i32]) -> Result<SegmentAnalyticsInput, sea_orm::DbErr>
@@ -444,8 +442,8 @@ fn apply_segment_effort_to_rebuild(
             .or_default(),
         &effort,
     );
-    rebuild.effort_updates.push(SegmentEffortRankUpdate {
-        effort,
+    rebuild.effort_updates.push(segment_efforts::RankUpdate {
+        effort_id: effort.id,
         overall_rank,
         user_rank,
     });
@@ -503,9 +501,7 @@ where
         + rebuild.effort_updates.len() as u64
         + segment_ids.len() as u64
         + rebuild.segment_user_summary_by_key.len() as u64;
-    for update in rebuild.effort_updates {
-        update_segment_effort_ranks(db, update).await?;
-    }
+    segment_efforts::Model::set_ranks_batch(db, &rebuild.effort_updates).await?;
 
     for segment_id in segment_ids.iter().copied() {
         let summary = rebuild.segment_summary_by_id.remove(&segment_id).unwrap_or_default();
@@ -513,22 +509,9 @@ where
         segment_summaries::Model::store_summary(db, segment_id, summary).await?;
     }
 
-    for ((segment_id, user_id), summary) in rebuild.segment_user_summary_by_key {
-        segment_user_summaries::Model::store_summary(db, segment_id, user_id, summary).await?;
-    }
+    segment_user_summaries::Model::store_summaries(db, rebuild.segment_user_summary_by_key).await?;
 
     Ok(written)
-}
-
-async fn update_segment_effort_ranks<C>(db: &C, update: SegmentEffortRankUpdate) -> Result<(), sea_orm::DbErr>
-where
-    C: ConnectionTrait,
-{
-    update
-        .effort
-        .set_ranks(db, update.overall_rank, update.user_rank)
-        .await?;
-    Ok(())
 }
 
 #[tracing::instrument(name = "achievements.rebuild", skip_all, fields(bike.operation = "achievements.rebuild", activity_count = activity_ids.len() as i64))]

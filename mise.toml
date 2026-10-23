@@ -233,8 +233,8 @@ description = "Generate Next.js unit-test coverage reports"
 run = "mise --cd bike-ui run coverage"
 
 [tasks."renderer:check"]
-description = "Check renderer lint and unit tests"
-run = ["mise run lint:maps", "mise --cd map-renderer run check", "npm --prefix map-renderer audit"]
+description = "Check renderer audit, lint, and unit tests"
+run = ["mise run lint:maps", "mise --cd map-renderer run check"]
 
 [tasks."renderer:deps"]
 description = "Install locked renderer application and lint dependencies"
@@ -278,7 +278,7 @@ description = "Run native Rust lint, unit coverage and doctests"
 run = ["mise install rust protoc aqua:taiki-e/cargo-llvm-cov", "mise run lint:rs", "mise --cd bike-rs run coverage:unit", "mise --cd bike-rs run test:non-unit"]
 
 [tasks."ci:ui:unit"]
-description = "Install UI tooling and run lint, type, unit, format, and audit checks"
+description = "Install UI tooling and run audit, lint, type, format, and unit checks"
 run = ["mise install jq", "mise --cd bike-ui install node npm:npm pnpm npm:prettier", "mise --cd bike-ui run check"]
 
 [tasks."ci:renderer"]
@@ -355,12 +355,12 @@ description = "Check Go formatting, vet, and golangci-lint"
 run = ["mise --cd map-renderer run lint:go"]
 
 [tasks."lint:ui"]
-description = "Check UI ESLint, TypeScript, and formatting"
+description = "Check UI dependency audit, ESLint, TypeScript, and formatting"
 run = "mise --cd bike-ui run lint:check"
 
 [tasks."lint:maps"]
-description = "Check renderer and shared JavaScript"
-run = ["mise run renderer:deps", "map-renderer/node_modules/.bin/eslint --config map-renderer/eslint.config.mjs map-renderer --max-warnings=0", "mise run format:check"]
+description = "Audit renderer dependencies, lint JavaScript, and check formatting"
+run = ["mise run renderer:deps", "npm --prefix map-renderer audit", "map-renderer/node_modules/.bin/eslint --config map-renderer/eslint.config.mjs map-renderer --max-warnings=0", "mise run format:check"]
 
 [tasks."e2e:build"]
 description = "Build the local Playwright tools adapter"

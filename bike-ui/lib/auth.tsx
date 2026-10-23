@@ -60,12 +60,11 @@ export function useAuthConfig() {
 }
 
 function useCurrentUser() {
-  const response = $typedApi.useQuery("get", "/auth/current", {
-    options: {
-      retry: false,
-      staleTime: 30 * 60 * 1000,
-      gcTime: 60 * 60 * 1000,
-    },
+  const response = $typedApi.useQuery("get", "/auth/current", undefined, {
+    retry: false,
+    retryOnMount: false,
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
   });
   const rawUser = response.isError ? null : response.data;
   return {

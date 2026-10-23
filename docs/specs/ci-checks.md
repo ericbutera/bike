@@ -19,6 +19,9 @@
   acceptance applies real migrations when starting its application database.
   UI and renderer checks retain lint, types, tests, formatting, audit and
   generated-contract checks. Warnings fail checks.
+- Dependency audits and UI peer checks run in the initial lint phase, after
+  locked dependencies are installed and before unit tests or coverage. Local
+  lint tasks and hooks use the same checks as CI and fail on audit errors.
 - The committed Cargo workspace and lockfile are the build inputs. The release
   Dockerfile uses the pinned Rust compiler and protoc, copies source, and runs
   one `cargo build --locked --release` for `api`, `temporal-worker`, `migration`,

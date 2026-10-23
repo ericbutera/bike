@@ -40,6 +40,18 @@ Do not link or mount Docker caches into host `.cache`, `.scratch`, or
 of Docker, without removing configuration or breaking local development.
 Remove task scratch when work finishes or its PR merges; preserve only
 requested deliverables and output belonging to active work.
+
+Stop and remove agent-created containers as soon as the task no longer needs
+them, and before handing off. Include checks containers, browsers, previews,
+and temporary helpers, even when the PR remains open. Do not leave
+`sleep infinity` containers running between tasks. Use explicit container names
+or the task's Compose project and profiles. Preserve shared services, active
+tasks, source worktrees, build caches, databases, uploads, and persistent
+volumes; do not use global pruning or delete volumes for routine cleanup.
+Verify with `docker ps --all` that no containers owned by the finished task
+remain, including stopped containers. Report any unfinished cleanup and its
+specific blocker.
+
 Run Playwright/Chromium, visual previews, screenshots, and one-off browser checks
 in the pinned browser container. Keep browser warnings and errors fatal. Retiring
 cross-implementation parity does not retire the current UI's light/dark appearance
