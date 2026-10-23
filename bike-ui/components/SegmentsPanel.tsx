@@ -104,32 +104,34 @@ export default function SegmentsPanel() {
       render: (segment) => (
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className={`btn btn-ghost btn-xs btn-square ${
-                segment.starred ? "text-warning" : "text-base-content/45"
-              }`}
-              aria-label={`${
-                segment.starred ? "Unstar" : "Star"
-              } ${segment.title}`}
-              aria-pressed={!!segment.starred}
-              disabled={updateSegmentMutation.isPending}
-              onClick={() => {
-                void updateSegmentMutation.updateAsync({
-                  id: segment.id,
-                  starred: !segment.starred,
-                });
-              }}
-            >
-              <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
-            </button>
+            {segment.can_manage && (
+              <button
+                type="button"
+                className={`btn btn-ghost btn-xs btn-square ${
+                  segment.starred ? "text-warning" : "text-base-content/45"
+                }`}
+                aria-label={`${
+                  segment.starred ? "Unstar" : "Star"
+                } ${segment.title}`}
+                aria-pressed={!!segment.starred}
+                disabled={updateSegmentMutation.isPending}
+                onClick={() => {
+                  void updateSegmentMutation.updateAsync({
+                    id: segment.id,
+                    starred: !segment.starred,
+                  });
+                }}
+              >
+                <FontAwesomeIcon icon={faStar} className="h-3.5 w-3.5" />
+              </button>
+            )}
             <Link
               href={`/segments/${segment.id}`}
               className="font-medium text-base-content transition hover:text-primary"
             >
               {segment.title}
             </Link>
-            <SegmentRenameModal segment={segment} />
+            {segment.can_manage && <SegmentRenameModal segment={segment} />}
           </div>
           <div className="mt-1 text-xs text-base-content/60">
             Imported from {segment.source}

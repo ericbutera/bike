@@ -38,6 +38,8 @@ struct SegmentUploadForm {
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(example = json!({"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}}))]
 pub struct SegmentResponse {
+    /// Whether the authenticated viewer may modify this shared segment.
+    pub can_manage: bool,
     #[schema(example = 7)]
     pub id: i32,
     #[schema(example = "Riverfront climb")]
@@ -70,6 +72,18 @@ pub struct SegmentResponse {
     pub route_points: Vec<SegmentRoutePointResponse>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub efforts: Vec<SegmentEffortResponse>,
+}
+
+impl SegmentResponse {
+    fn for_viewer(mut self, creator_id: i32, viewer_id: i32) -> Self {
+        self.can_manage = creator_id == viewer_id;
+        if !self.can_manage {
+            self.original_filename = None;
+            self.builder_source = None;
+            self.starred = false;
+        }
+        self
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -351,7 +365,7 @@ pub struct UpdateSegmentRequest {
     get,
     path = "/segments",
     responses(
-        (status = 200, description = "Recent segments for the authenticated user", body = [SegmentResponse], example = json!([{"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}}])),
+        (status = 200, description = "Global shared segment catalog", body = [SegmentResponse], example = json!([{"id": 7,"title": "Riverfront climb","source": "activity_segment_builder","mode": "xc","starred": true,"distance_meters": 1500.5,"effort_count": 8,"best_duration_seconds": 340,"current_user_pr_duration_seconds": 355,"created_at": "2026-09-26T14:25:00Z","builder_source": {"activity_id": 42,"start_route_point_index": 120,"end_route_point_index": 280}}])),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -364,7 +378,7 @@ pub async fn list_segments(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<Vec<SegmentResponse>>, AppError> {
-    let mut segment_rows = segments::Model::list_for_user(&state.db, user.id).await?;
+    let mut segment_rows = segments::Model::list_shared(&state.db).await?;
     let segment_ids = segment_rows.iter().map(|segment| segment.id).collect::<Vec<_>>();
     let summary_by_segment_id = load_segment_summaries(&state.db, &segment_ids).await?;
     sort_segment_rows_by_latest_activity_started_at(&mut segment_rows, &summary_by_segment_id);
@@ -379,6 +393,7 @@ pub async fn list_segments(
         segment_rows,
         &summary_by_segment_id,
         &user_summary_by_segment_id,
+        user.id,
     )))
 }
 
@@ -404,7 +419,7 @@ pub async fn get_segment(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<SegmentResponse>, AppError> {
-    let segment = segments::Model::find_owned(&state.db, id, user.id)
+    let segment = segments::Model::find_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
     Ok(Json(load_segment_summary_response(&state.db, &segment, user.id).await?))
@@ -463,7 +478,7 @@ pub async fn get_segment_yearly_bests(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<SegmentYearlyBestsResponse>, AppError> {
-    let segment = segments::Model::find_owned(&state.db, id, user.id)
+    let segment = segments::Model::find_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
 
@@ -497,7 +512,7 @@ pub async fn get_segment_effort_analysis(
     UserContext { user, .. }: UserContext<AppStorage>,
     State(state): State<Arc<AppStorage>>,
 ) -> Result<Json<SegmentEffortAnalysisResponse>, AppError> {
-    let segment = segments::Model::find_owned(&state.db, id, user.id)
+    let segment = segments::Model::find_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::not_found("Segment not found"))?;
 
@@ -795,6 +810,7 @@ async fn load_segment_summary_response(
     let user_summary = user_summary_by_segment_id.get(&segment.id);
 
     Ok(SegmentResponse {
+        can_manage: false,
         id: segment.id,
         title: segment.title.clone(),
         source: segment.source.clone(),
@@ -812,7 +828,8 @@ async fn load_segment_summary_response(
         builder_source: segment_builder_source_from_model(segment),
         route_points: Vec::new(),
         efforts: Vec::new(),
-    })
+    }
+    .for_viewer(segment.user_id, user_id))
 }
 
 async fn load_segment_comparison_response(
@@ -821,7 +838,7 @@ async fn load_segment_comparison_response(
     user_id: i32,
 ) -> Result<SegmentComparisonResponse, AppError> {
     let route_points =
-        segment_route_point_responses(&deserialize_segment_route_points(segment.route_data_json.as_ref()));
+        public_segment_route_point_responses(&deserialize_segment_route_points(segment.route_data_json.as_ref()));
     let efforts = load_effort_responses(db, user_id, segment.id).await?;
 
     Ok(SegmentComparisonResponse {
@@ -957,7 +974,7 @@ async fn load_segment_effort_analysis_response(
     segment_effort_analysis_from_sources(
         segment.id,
         segment.title.clone(),
-        segment_route_point_responses(&deserialize_segment_route_points(segment.route_data_json.as_ref())),
+        public_segment_route_point_responses(&deserialize_segment_route_points(segment.route_data_json.as_ref())),
         effort_sources,
         query.reference_effort_id,
         split_count,
@@ -1378,6 +1395,17 @@ fn round_metric(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
 }
 
+fn public_segment_route_point_responses(route_points: &[ActivityRoutePoint]) -> Vec<SegmentRoutePointResponse> {
+    segment_route_point_responses(route_points)
+        .into_iter()
+        .map(|mut point| {
+            point.speed_mps = None;
+            point.heart_rate_bpm = None;
+            point
+        })
+        .collect()
+}
+
 fn segment_route_point_responses(route_points: &[ActivityRoutePoint]) -> Vec<SegmentRoutePointResponse> {
     route_points
         .iter()
@@ -1404,6 +1432,7 @@ fn load_light_segment_response(
     processing_task: Option<&QueuedTaskReference>,
 ) -> SegmentResponse {
     SegmentResponse {
+        can_manage: true,
         id: segment.id,
         title: segment.title.clone(),
         source: segment.source.clone(),
@@ -1503,13 +1532,14 @@ fn segment_list_responses(
     segment_rows: Vec<SegmentListRow>,
     summary_by_segment_id: &HashMap<i32, segment_summaries::Model>,
     user_summary_by_segment_id: &HashMap<i32, segment_user_summaries::Model>,
+    user_id: i32,
 ) -> Vec<SegmentResponse> {
     segment_rows
         .into_iter()
         .map(|segment| {
             let summary = summary_by_segment_id.get(&segment.id);
             let user_summary = user_summary_by_segment_id.get(&segment.id);
-            segment_list_response_from_row(segment, summary, user_summary)
+            segment_list_response_from_row(segment, summary, user_summary, user_id)
         })
         .collect()
 }
@@ -1518,8 +1548,11 @@ fn segment_list_response_from_row(
     segment: SegmentListRow,
     summary: Option<&segment_summaries::Model>,
     user_summary: Option<&segment_user_summaries::Model>,
+    user_id: i32,
 ) -> SegmentResponse {
+    let creator_id = segment.user_id;
     SegmentResponse {
+        can_manage: false,
         id: segment.id,
         title: segment.title,
         source: segment.source,
@@ -1542,6 +1575,7 @@ fn segment_list_response_from_row(
         route_points: Vec::new(),
         efforts: Vec::new(),
     }
+    .for_viewer(creator_id, user_id)
 }
 
 async fn load_segment_summaries(

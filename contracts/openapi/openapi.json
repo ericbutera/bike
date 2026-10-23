@@ -3594,7 +3594,7 @@
         "operationId": "list_segments",
         "responses": {
           "200": {
-            "description": "Recent segments for the authenticated user",
+            "description": "Global shared segment catalog",
             "content": {
               "application/json": {
                 "schema": {
@@ -10717,6 +10717,7 @@
       "SegmentResponse": {
         "type": "object",
         "required": [
+          "can_manage",
           "id",
           "title",
           "source",
@@ -10743,6 +10744,10 @@
                 "$ref": "#/components/schemas/SegmentBuilderSourceResponse"
               }
             ]
+          },
+          "can_manage": {
+            "type": "boolean",
+            "description": "Whether the authenticated viewer may modify this shared segment."
           },
           "created_at": {
             "type": "string",

@@ -73,8 +73,10 @@
       see [achievements](specs/achievements.md#overall-achievements).
 - [x] Allow every authenticated athlete to read saved overall standings for a global
       segment, including athletes without an effort.
-- [ ] Remove remaining creator restrictions from shared segment browsing and
-      matching; see [segment visibility](specs/segment-processing.md#segment-ownership-and-visibility).
+- [x] Allow authenticated users to browse shared segments through the API and UI,
+      with personal results, private source metadata, and creator writes isolated.
+- [ ] Match activities across global segments in both activity and segment
+      regeneration; see [segment visibility](specs/segment-processing.md#segment-ownership-and-visibility).
 
 - [x] Support individual GPX downloads from segment detail; see the
       [download contract](specs/segment-processing.md#segment-downloads).

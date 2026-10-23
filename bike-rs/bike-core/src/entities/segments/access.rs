@@ -5,6 +5,7 @@ use crate::segment_support::deserialize_segment_route_points;
 const SEGMENT_DEDUPE_DISTANCE_BUCKET_METERS: f64 = 5.0;
 #[derive(Clone, Debug, sea_orm::FromQueryResult)]
 pub struct SegmentListRow {
+    pub user_id: i32,
     pub id: i32,
     pub title: String,
     pub source: String,
@@ -67,10 +68,11 @@ impl Model {
 
         Ok(None)
     }
-    pub async fn list_for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<SegmentListRow>, DbErr> {
+    pub async fn list_shared(db: &impl ConnectionTrait) -> Result<Vec<SegmentListRow>, DbErr> {
         Entity::find()
             .select_only()
             .column(Column::Id)
+            .column(Column::UserId)
             .column(Column::Title)
             .column(Column::Source)
             .column(Column::Mode)
@@ -83,7 +85,6 @@ impl Model {
             .column(Column::SourceEndRoutePointIndex)
             .column(Column::LastActivityChangeAt)
             .column(Column::CreatedAt)
-            .filter(Column::UserId.eq(user_id))
             .into_model::<SegmentListRow>()
             .all(db)
             .await

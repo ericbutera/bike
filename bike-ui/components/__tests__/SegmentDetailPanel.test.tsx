@@ -2,8 +2,15 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  sharedSegmentFor,
+  segmentTenants,
+} from "../../tests/fixtures/segmentTenants";
 import RequireAuth from "../RequireAuth";
-import { personalAchievement } from "../../tests/fixtures/activitySegments";
+import {
+  personalAchievement,
+  overallAchievement,
+} from "../../tests/fixtures/activitySegments";
 import SegmentDetailPanel from "../SegmentDetailPanel";
 import { ComparisonGapChartTooltip } from "../segment-detail/SegmentDetailComparisonSection";
 
@@ -36,11 +43,7 @@ const mocks = vi.hoisted(() => ({
   useSegment: vi.fn(),
   useSegmentComparison: vi.fn(),
   useSegmentPersonalAchievements: vi.fn(),
-  useSegmentOverallAchievements: vi.fn(() => ({
-    data: [],
-    isLoading: false,
-    isError: false,
-  })),
+  useSegmentOverallAchievements: vi.fn(),
   useUpdateSegment: vi.fn(),
   useDeleteSegment: vi.fn(),
   renderMapLibreRouteMap: vi.fn(),
@@ -117,6 +120,7 @@ function makeRoutePoint(
 function makeSegment() {
   return {
     id: 14,
+    can_manage: true,
     title: "North Climb",
     source: "manual_upload",
     mode: "xc",
@@ -214,6 +218,19 @@ describe("SegmentDetailPanel", () => {
       isError: false,
       error: null,
     });
+    mocks.useSegmentOverallAchievements.mockReturnValue({
+      data: [
+        overallAchievement({ effort_id: 2, user_id: 2, duration_seconds: 300 }),
+        overallAchievement({
+          position: 2,
+          effort_id: 1,
+          user_id: 1,
+          duration_seconds: 312,
+        }),
+      ],
+      isLoading: false,
+      isError: false,
+    });
     mocks.useSegmentPersonalAchievements.mockReturnValue({
       data: [personalAchievement()],
       isLoading: false,
@@ -252,6 +269,89 @@ describe("SegmentDetailPanel", () => {
       </RequireAuth>,
     );
   }
+
+  function openSharedSegment(viewerId: number) {
+    const scenario = segmentTenants();
+    const viewer = [
+      scenario.creator,
+      scenario.contributor,
+      scenario.spectator,
+    ].find((user) => user.id === viewerId)!;
+    mocks.useCurrentUser.mockReturnValue({ user: viewer, isLoading: false });
+    mocks.useSegment.mockReturnValue({
+      data: sharedSegmentFor(viewerId),
+      isLoading: false,
+    });
+    mocks.useSegmentPersonalAchievements.mockReturnValue({
+      data: scenario.personalFor(viewer, 1),
+      isLoading: false,
+    });
+    mocks.useSegmentOverallAchievements.mockReturnValue({
+      data: scenario.overallFor(1),
+      isLoading: false,
+      isError: false,
+    });
+    renderSegmentDetailPanel({ segmentId: 1 });
+  }
+
+  it("lets the creator open a shared segment with management controls", () => {
+    openSharedSegment(7);
+    expect(
+      screen.getByRole("heading", { name: "Shared climb" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete segment" }),
+    ).toBeInTheDocument();
+  });
+
+  it("lets a contributor open another athlete's segment and see both global riders", () => {
+    openSharedSegment(8);
+    const table = screen.getByRole("table", { name: "Overall top ten" });
+    expect(within(table).getByText("Rider 7")).toBeInTheDocument();
+    expect(within(table).getByText("Rider 8")).toBeInTheDocument();
+  });
+
+  it("lets a spectator open shared standings without showing another rider's personal awards", () => {
+    openSharedSegment(9);
+    expect(
+      screen.getByText("No personal achievements yet."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("table", { name: "Overall top ten" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the saved global best instead of deriving KOM from the viewer's attempts", () => {
+    openSharedSegment(8);
+    expect(screen.getByText("KOM 1m 40s")).toBeInTheDocument();
+  });
+
+  it("does not invent a global KOM from personal comparisons when saved standings are empty", () => {
+    mocks.useSegmentOverallAchievements.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+    });
+    renderSegmentDetailPanel();
+    expect(screen.queryByText("KOM")).not.toBeInTheDocument();
+    expect(screen.queryByText("Top 2")).not.toBeInTheDocument();
+  });
+
+  it("keeps another athlete's segment read-only in the detail view", () => {
+    openSharedSegment(8);
+    expect(
+      screen.queryByRole("button", { name: "Rename" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Delete segment" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Edit in builder" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Segment mode" }),
+    ).not.toBeInTheDocument();
+  });
 
   it.each(["manual_segment_import", "activity_segment_builder"])(
     "downloads a %s segment from the actions menu above Delete segment",
@@ -323,7 +423,6 @@ describe("SegmentDetailPanel", () => {
     expect(screen.getByText("Athletes")).toBeInTheDocument();
     expect(screen.getAllByText("Speed").length).toBeGreaterThan(0);
     expect(screen.getByText("HR")).toBeInTheDocument();
-    expect(screen.getByText("KOM 5m 00s")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Your PR 5m 12s" }),
     ).toBeInTheDocument();

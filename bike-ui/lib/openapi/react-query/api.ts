@@ -3551,6 +3551,8 @@ export interface components {
       best_duration_seconds?: number | null;
       builder_source?:
         null | components["schemas"]["SegmentBuilderSourceResponse"];
+      /** @description Whether the authenticated viewer may modify this shared segment. */
+      can_manage: boolean;
       /**
        * Format: date-time
        * @example 2026-09-26T14:25:00Z
@@ -7606,7 +7608,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Recent segments for the authenticated user */
+      /** @description Global shared segment catalog */
       200: {
         headers: {
           [name: string]: unknown;

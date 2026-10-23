@@ -2259,7 +2259,7 @@ paths:
       operationId: list_segments
       responses:
         '200':
-          description: Recent segments for the authenticated user
+          description: Global shared segment catalog
           content:
             application/json:
               schema:
@@ -7309,6 +7309,7 @@ components:
     SegmentResponse:
       type: object
       required:
+      - can_manage
       - id
       - title
       - source
@@ -7327,6 +7328,9 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/SegmentBuilderSourceResponse'
+        can_manage:
+          type: boolean
+          description: Whether the authenticated viewer may modify this shared segment.
         created_at:
           type: string
           format: date-time
