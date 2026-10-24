@@ -8,6 +8,7 @@ pub mod activity_earned_awards;
 pub mod activity_event_history;
 pub mod activity_import_artifacts;
 pub mod activity_imports;
+pub mod activity_metadata;
 pub mod activity_recordings;
 pub mod activity_training_analyses;
 pub mod analytics_user_states;

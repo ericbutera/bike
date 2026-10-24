@@ -101,6 +101,7 @@ impl Model {
         } else {
             active.insert(db).await?
         };
+        crate::entities::activity_metadata::Model::store(db, &saved).await?;
         crate::entities::activity_recordings::Model::store_reference(db, &saved, recording).await?;
         Ok(saved)
     }

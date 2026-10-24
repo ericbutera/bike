@@ -35,6 +35,7 @@ impl Model {
         let before = Self::import_target(&txn, execution).await?;
         if before.is_none() {
             if let Some(duplicate) = Self::duplicate_import(&txn, &import, parsed).await? {
+                crate::entities::activity_metadata::Model::store(&txn, &duplicate).await?;
                 crate::entities::activity_recordings::Model::store(&txn, objects, &duplicate).await?;
                 txn.commit().await?;
                 return Ok(duplicate);
@@ -45,6 +46,7 @@ impl Model {
             Some(activity) => activity.clone().update_parsed(&txn, artifact, parsed, data).await?,
             None => Self::insert_parsed(&txn, &import, artifact, parsed, data, None).await?,
         };
+        crate::entities::activity_metadata::Model::store(&txn, &saved).await?;
         crate::entities::activity_recordings::Model::store(&txn, objects, &saved).await?;
         let dirty_from = before.as_ref().map_or(saved.started_at.date_naive(), |activity| {
             activity.started_at.date_naive().min(saved.started_at.date_naive())

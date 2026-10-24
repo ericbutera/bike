@@ -87,6 +87,7 @@ impl Model {
             });
         }
         let after = active.update(&transaction).await?;
+        crate::entities::activity_metadata::Model::sync_edit(&transaction, &before, &after).await?;
         if let Some(location) = location {
             crate::entities::activity_cards::Model::set_location(&transaction, after.id, location).await?;
         }

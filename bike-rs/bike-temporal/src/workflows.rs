@@ -2,12 +2,15 @@
 mod activity_archive_import;
 mod activity_pages;
 mod children;
+mod metadata;
 pub(crate) mod options;
 mod prepare_heatmap;
 mod process_activity_import;
 mod rebuild_fitness_freshness;
 mod rebuild_segment_analytics;
 mod reconcile_heatmaps;
+pub use metadata::BackfillActivityMetadata;
+pub(crate) use metadata::MetadataActivities;
 mod recordings;
 pub use recordings::BackfillActivityRecordings;
 pub(crate) use recordings::RecordingActivities;

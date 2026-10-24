@@ -127,6 +127,7 @@ async fn a_new_import_reuses_its_existing_activity_after_a_lost_completion() {
             fixtures::written(),
             fixtures::written(),
         ])
+        .append_exec_results((0..3).map(|_| fixtures::written()))
         .into_connection();
     let mut execution = fixtures::reprocess_execution();
     execution.command.target = ImportTarget::NewActivity;
@@ -159,6 +160,7 @@ async fn a_new_import_saves_the_activity_and_links_its_import() {
             fixtures::written(),
             fixtures::written(),
         ])
+        .append_exec_results((0..3).map(|_| fixtures::written()))
         .into_connection();
     let mut execution = fixtures::reprocess_execution();
     execution.command.target = ImportTarget::NewActivity;
@@ -314,6 +316,7 @@ async fn another_recording_of_the_same_ride_reuses_the_activity() {
         .append_query_results([vec![fixtures::reprocess_import()]])
         .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
         .append_exec_results([fixtures::written()])
+        .append_exec_results((0..3).map(|_| fixtures::written()))
         .into_connection();
     let mut execution = fixtures::reprocess_execution();
     execution.command.target = ImportTarget::NewActivity;
@@ -341,6 +344,7 @@ async fn recording_publication_failure_rolls_back_before_import_completion_and_a
         .append_query_results([vec![fixtures::reprocess_activity()]])
         .append_query_results([vec![fixture::saved_activity()]])
         .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
+        .append_exec_results((0..3).map(|_| fixtures::written()))
         .append_exec_errors([sea_orm::DbErr::Custom("recording reference unavailable".into())])
         .into_connection();
     assert_eq!(fixture::apply(&db).await.unwrap_err().status.as_u16(), 500);
@@ -371,6 +375,7 @@ async fn duplicate_recordings_publish_merged_evidence_without_replacing_the_orig
         .append_query_results([vec![fixtures::reprocess_import()]])
         .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
         .append_exec_results([fixtures::written(), fixtures::written()])
+        .append_exec_results((0..3).map(|_| fixtures::written()))
         .into_connection();
     let objects = fixture::objects();
     let mut execution = fixtures::reprocess_execution();
