@@ -144,6 +144,89 @@ update the remote PR branch under the standing authorization above.
 
 Do not start commits with the word add (eg: `feat: added architecture diagram`), instead use `feat: architecture diagram`.
 
+## Parallel feature integration
+
+When parallel feature work is requested, use one integration owner and at most
+three short-lived feature lanes. Each lane owns one bounded task. The integration
+owner may also own validation. Keep the baseline SHA, file assignments, dependencies,
+failure owners, and validation results in existing task notes or
+`/cache/scratch/bike-<task>/`; reconcile durable work in `docs/TODO.md`.
+
+### Establish a tested baseline
+
+- Before starting a wave, test one exact current `main` revision inside Docker
+  with the relevant owning mise tasks and record its SHA and results.
+- Reproduce each failure on that revision. Classify it as application behavior,
+  fixture/contract mismatch, dependency audit, or execution environment. Record
+  the reproducing command, evidence, and one responsible owner.
+- Resolve blocking failures through their owners and retest the resulting baseline
+  before launching lanes. The integration owner coordinates shared tooling repairs;
+  feature owners must not repair shared tooling independently.
+
+### Assign features and files
+
+- Assign each lane its feature, explicit files, dependencies, and behavioral
+  assertions before implementation. Give every shared file one owner.
+- The integration owner owns shared registries, generated contracts, lockfiles,
+  and backlog reconciliation. Assign ownership for shared specs, test modules,
+  and fixtures whenever lanes overlap.
+- Feature owners supply required shared-file changes as patches or explicit change
+  requests. The integrator incorporates them into each complete PR, including
+  spec changes before implementation and contracts and fixtures before validation.
+  File ownership must not leave a feature PR incomplete.
+
+### Keep lanes short-lived
+
+- Branch each wave's lanes from the same accepted `main` SHA. Land prerequisites
+  through separately authorized merges before starting dependent lanes; establish
+  the next wave's baseline after those prerequisites land.
+- Keep no more than three feature lanes active. Avoid stacked PR chains and
+  repeated rebases while implementation is changing. Integrate the next completed
+  candidate, then retire its lane after handoff.
+
+### Serialize shared writable checks
+
+- Assign one validation owner to schedule checks across active worktrees.
+  Serialize commands that write the same output, including dependency installs,
+  builds, tests, coverage, browser runs, and hooks that invoke those commands.
+  Feature owners request validation through that owner.
+- Inspect current [checks mounts](compose.checks.yaml) and
+  [output paths](docker/checks.env) before scheduling. Separate worktrees and
+  containers do not isolate shared Cargo targets/coverage, dependency directories,
+  or UI build output.
+- Shared writes are a concrete collision risk. Do not attribute an observed
+  failure to them without reproducing it and establishing that cause.
+- Retain shared download caches and the existing single storage quota. Follow
+  Docker/mise and storage rules; do not create per-lane cache volumes or a
+  separate validation orchestration system.
+
+### Validate the final composition
+
+- Integrate one candidate at a time. Rebase onto current `main`, incorporate
+  shared-file changes, regenerate affected contracts, and update corresponding
+  unit and browser fixtures from the final contract.
+- The validation owner runs relevant owning mise formatting, lint, type, test,
+  changed-line coverage, and affected build checks inside Docker against that
+  composition. Use existing coverage tasks and affected connected acceptance
+  where needed; earlier lane results do not establish a pass.
+- Record the tested revision and subsequent edits. Later changes or conflict
+  resolution invalidate affected results: regenerate affected output and rerun
+  affected checks before publishing.
+
+### Assert behavior at the owning boundary
+
+- Reuse existing fixtures and mocks for focused unit assertions of changed
+  behavior. Cover applicable ownership/isolation, mixed inputs, retry/idempotency,
+  explicit empty outputs, failure ordering before dependent side effects, and
+  batch boundaries.
+- Use existing connected acceptance when real persistence, transactions, or locking
+  needs proof. Mock transaction logs alone cannot prove concurrent database behavior.
+
+Publish each finalized candidate once and follow
+[Local checks and PR handoff](#local-checks-and-pr-handoff): verify the remote SHA
+and mergeability once, then hand off. Routine implementation must not poll CI or
+chase unrelated failures. Merging and deploying require separate authorization.
+
 ## PR reviews
 
 Use the repository [Bike PR review skill](.agents/skills/bike-pr-review/SKILL.md)
