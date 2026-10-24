@@ -1,21 +1,21 @@
 {
-  "commit": "175ad92160267e95c5e17e44d02c0fecfcfde4c3",
-  "created_at": "2026-10-24T18:42:06Z",
-  "base_revision": "ee96f2889d30e18f4fe3cd9355239da407b6da9b",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/814",
+  "commit": "29e5ee2f1ea624dbf3c486a816562497c6aaa342",
+  "created_at": "2026-10-24T20:19:29Z",
+  "base_revision": "02b6c648340c26af077702f775a062a30c5c54dc",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/829",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
       "name": "Bike API",
       "language": "Rust",
       "source": "bike-rs/api",
-      "lines": 6041,
-      "covered": 4478,
-      "percent": 74.12680019864261,
+      "lines": 6378,
+      "covered": 4570,
+      "percent": 71.65255566008153,
       "changed": {
-        "lines": 0,
-        "covered": 0,
-        "percent": 100.0
+        "lines": 101,
+        "covered": 82,
+        "percent": 81.19
       }
     },
     "worker": {
@@ -61,22 +61,22 @@
       "name": "Shared Bike core",
       "language": "Rust",
       "source": "bike-rs/bike-core",
-      "lines": 28492,
-      "covered": 21758,
-      "percent": 76.36529552154991,
+      "lines": 29241,
+      "covered": 22654,
+      "percent": 77.47341062207175,
       "changed": {
-        "lines": 28,
-        "covered": 28,
-        "percent": 100.0
+        "lines": 334,
+        "covered": 332,
+        "percent": 99.4
       }
     },
     "bike-temporal": {
       "name": "Bike Temporal workflows",
       "language": "Rust",
       "source": "bike-rs/bike-temporal",
-      "lines": 1585,
-      "covered": 1503,
-      "percent": 94.82649842271292,
+      "lines": 1765,
+      "covered": 1679,
+      "percent": 95.12747875354108,
       "changed": {
         "lines": 0,
         "covered": 0,
