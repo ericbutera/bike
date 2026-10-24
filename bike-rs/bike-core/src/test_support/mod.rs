@@ -131,3 +131,23 @@ pub fn new_activity() -> activities::ActiveModel {
     active.id = NotSet;
     active
 }
+
+pub fn activity_card_row(
+    activity: &activities::Model,
+    location: Option<String>,
+) -> std::collections::BTreeMap<String, sea_orm::Value> {
+    [
+        ("id".into(), activity.id.into()),
+        ("title".into(), activity.title.clone().into()),
+        ("sport".into(), activity.sport.clone().into()),
+        ("started_at".into(), activity.started_at.into()),
+        ("location".into(), location.into()),
+        ("distance_meters".into(), activity.distance_meters.into()),
+        ("moving_time_seconds".into(), activity.moving_time_seconds.into()),
+        ("total_time_seconds".into(), activity.total_time_seconds.into()),
+        ("elevation_gain_meters".into(), activity.elevation_gain_meters.into()),
+        ("average_speed_mps".into(), activity.average_speed_mps.into()),
+        ("average_heart_rate_bpm".into(), activity.average_heart_rate_bpm.into()),
+    ]
+    .into()
+}

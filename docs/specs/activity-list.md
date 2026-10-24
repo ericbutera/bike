@@ -30,3 +30,43 @@
 - Route previews follow the [map image contract](maps.md#rider-experience).
   Sport visibility follows [supported activities](supported-activities.md).
 - Selecting an activity opens its [activity details](activity-details.md).
+
+## Saved card reads
+
+- The feed queries only the authenticated rider's paginated activity scalar
+  columns, saved card location, ordered preview points, and saved award rows.
+  Do not select recording or heart-rate-zone JSON, expand a recording, reverse
+  geocode, calculate ranks, or enqueue repair from the list GET.
+- Activity metrics and editable titles/sports remain in their existing typed
+  activity columns. `activity_cards` saves the route-derived location and
+  displayed location. `activity_card_preview_points` saves at most 24 ordered
+  latitude/longitude/elapsed-time samples per activity.
+- The `rebuild_activity_card` processing operation reads the saved recording
+  once. Reuse the existing preview selection: retain endpoints and coordinate
+  extrema, then fill evenly sampled positions in original recording order.
+  Produce cards for every supported sport, including successful empty previews.
+- Save the card and its preview together after locking and checking the owned
+  activity's source. A retry replaces the same keyed output; changed or deleted
+  source data cannot publish an older result.
+- Manual location edits update the displayed card location in the activity edit
+  transaction. Clearing a manual location uses the already saved route location.
+  Other metadata edits do not regenerate previews.
+- Imports and reprocessing call the card operation as an independent derived
+  branch. Preserve replay of histories recorded before this step was introduced.
+- For the rollout, start `backfill_activity_cards` on `bike-tasks` in the `bike`
+  namespace with JSON input `0`, using the existing Temporal UI or CLI. It pages
+  all existing activities in ID order, at most 16 per page, and Continues-As-New
+  only after each full page settles.
+  It prepares cards without rematching, recalculating standings or changing
+  saved awards. Repeat runs remain idempotent.
+- Return currently saved values without timestamp/version gates. Activities with
+  no saved card still appear with their scalar metrics, a null location and an
+  empty preview until processing runs; a GET never invents missing output.
+- The compact feed response contains card fields and saved earned awards.
+  Detail-only recordings, laps, charts, training results and private metadata
+  remain on the activity-detail endpoint. Preserve pagination, sport filtering,
+  preview styling, and saved award-chip order.
+
+LOAD14 owns this card cutover. LOAD15 separately owns prepared map images and
+their compact ownership/cache lookup; card image requests are not part of this
+read-model change.

@@ -74,6 +74,7 @@ mod m20261022_000001_personal_achievements;
 mod m20261022_000002_saved_climb_details;
 mod m20261023_000001_overall_achievements;
 mod m20261023_000002_activity_earned_awards;
+mod m20261023_000003_activity_cards;
 
 pub struct Migrator;
 
@@ -88,6 +89,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261022_000002_saved_climb_details::Migration),
             Box::new(m20261023_000001_overall_achievements::Migration),
             Box::new(m20261023_000002_activity_earned_awards::Migration),
+            Box::new(m20261023_000003_activity_cards::Migration),
             Box::new(m20261021_000001_activity_climbs::Migration),
             Box::new(m20261017_000001_retire_sql_worker::Migration),
             Box::new(m20261017_000002_strava_provider_watermark::Migration),

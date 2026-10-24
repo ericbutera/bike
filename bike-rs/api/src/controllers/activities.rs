@@ -6,6 +6,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use bike_core::activity_cards::ActivityCardPreviewPoint;
 use bike_core::activity_details::{
     deserialize_derived_activity_data, ActivityChartPoint, ActivityDerivedData, ActivityLap, ActivityRoutePoint,
 };
@@ -18,18 +19,17 @@ use bike_core::activity_type::ActivityType;
 use bike_core::analytics::{estimated_training_load, mark_segment_activity_changes, mark_user_fitness_dirty};
 use bike_core::auth::UserContext;
 use bike_core::entities::{
-    activities, activity_earned_awards, activity_import_artifacts, segment_efforts, segment_user_summaries, segments,
+    activities, activity_cards, activity_earned_awards, activity_import_artifacts, segment_efforts,
+    segment_user_summaries, segments,
 };
 use bike_core::platform::data::pagination::{PaginatedResponse, PaginationParams};
 use bike_core::training_profile::{deserialize_activity_heart_rate_zones, ActivityHeartRateZoneSummary};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::path::{Component, Path as FsPath, PathBuf};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
-
-const MAX_ACTIVITY_STREAM_ROUTE_POINTS: usize = 24;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -84,6 +84,48 @@ where
     match StringOrInt::deserialize(deserializer)? {
         StringOrInt::String(value) => value.parse().map_err(serde::de::Error::custom),
         StringOrInt::Int(value) => Ok(value),
+    }
+}
+
+/// Compact saved inputs for one activity-stream card.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ActivityCardResponse {
+    pub id: i32,
+    pub title: String,
+    pub sport: String,
+    pub started_at: DateTime<Utc>,
+    pub location: Option<String>,
+    pub distance_meters: Option<f64>,
+    pub moving_time_seconds: Option<i32>,
+    pub total_time_seconds: Option<i32>,
+    pub elevation_gain_meters: Option<f64>,
+    pub average_speed_mps: Option<f64>,
+    pub average_heart_rate_bpm: Option<i32>,
+    pub route_points: Vec<ActivityCardPreviewPoint>,
+    pub earned_awards: Vec<activity_earned_awards::Model>,
+}
+
+impl ActivityCardResponse {
+    fn from_saved(
+        card: activity_cards::CardRow,
+        route_points: Vec<ActivityCardPreviewPoint>,
+        earned_awards: Vec<activity_earned_awards::Model>,
+    ) -> Self {
+        Self {
+            id: card.id,
+            title: card.title,
+            sport: card.sport,
+            started_at: card.started_at,
+            location: card.location,
+            distance_meters: card.distance_meters,
+            moving_time_seconds: card.moving_time_seconds,
+            total_time_seconds: card.total_time_seconds,
+            elevation_gain_meters: card.elevation_gain_meters,
+            average_speed_mps: card.average_speed_mps,
+            average_heart_rate_bpm: card.average_heart_rate_bpm,
+            route_points,
+            earned_awards,
+        }
     }
 }
 
@@ -204,16 +246,6 @@ fn is_false(value: &bool) -> bool {
 }
 
 impl ActivityResponse {
-    fn from_summary_with_earned_awards(
-        model: activities::Model,
-        earned_awards: Vec<activity_earned_awards::Model>,
-    ) -> Self {
-        let derived_data = summary_derived_data(model.derived_data_json.as_ref());
-        let location = location_from_derived_json(model.derived_data_json.as_ref());
-
-        Self::from_model(model, derived_data, location, earned_awards, Vec::new(), false)
-    }
-
     fn from_detail(model: activities::Model, segment_efforts: Vec<ActivitySegmentEffort>) -> Self {
         let can_regenerate = model.activity_import_id.is_some();
         let derived_data = deserialize_derived_activity_data(model.derived_data_json.as_ref());
@@ -286,76 +318,6 @@ impl ActivityResponse {
             can_download_source_file: can_regenerate,
         }
     }
-}
-
-fn summary_derived_data(raw: Option<&bike_core::activity_details::StoredActivityDerivedData>) -> ActivityDerivedData {
-    let derived_data = deserialize_derived_activity_data(raw);
-
-    ActivityDerivedData {
-        route_points: preview_route_points(&derived_data.route_points),
-        ..Default::default()
-    }
-}
-
-fn preview_route_points(route_points: &[ActivityRoutePoint]) -> Vec<ActivityRoutePoint> {
-    if route_points.len() <= MAX_ACTIVITY_STREAM_ROUTE_POINTS {
-        return route_points.to_vec();
-    }
-
-    let last_index = route_points.len().saturating_sub(1);
-    let mut selected_indexes = BTreeSet::from([
-        0,
-        last_index,
-        route_points
-            .iter()
-            .enumerate()
-            .min_by(|(_, left), (_, right)| left.latitude.total_cmp(&right.latitude))
-            .map(|(index, _)| index)
-            .unwrap_or(0),
-        route_points
-            .iter()
-            .enumerate()
-            .max_by(|(_, left), (_, right)| left.latitude.total_cmp(&right.latitude))
-            .map(|(index, _)| index)
-            .unwrap_or(last_index),
-        route_points
-            .iter()
-            .enumerate()
-            .min_by(|(_, left), (_, right)| left.longitude.total_cmp(&right.longitude))
-            .map(|(index, _)| index)
-            .unwrap_or(0),
-        route_points
-            .iter()
-            .enumerate()
-            .max_by(|(_, left), (_, right)| left.longitude.total_cmp(&right.longitude))
-            .map(|(index, _)| index)
-            .unwrap_or(last_index),
-    ]);
-
-    for sample_index in 0..MAX_ACTIVITY_STREAM_ROUTE_POINTS {
-        if selected_indexes.len() >= MAX_ACTIVITY_STREAM_ROUTE_POINTS {
-            break;
-        }
-
-        let point_index = sample_index * last_index / (MAX_ACTIVITY_STREAM_ROUTE_POINTS.saturating_sub(1));
-        selected_indexes.insert(point_index);
-    }
-
-    if selected_indexes.len() < MAX_ACTIVITY_STREAM_ROUTE_POINTS {
-        for point_index in 0..route_points.len() {
-            if selected_indexes.len() >= MAX_ACTIVITY_STREAM_ROUTE_POINTS {
-                break;
-            }
-
-            selected_indexes.insert(point_index);
-        }
-    }
-
-    selected_indexes
-        .into_iter()
-        .take(MAX_ACTIVITY_STREAM_ROUTE_POINTS)
-        .map(|index| route_points[index].clone())
-        .collect()
 }
 
 fn relative_effort(model: &activities::Model) -> Option<i32> {
@@ -495,7 +457,7 @@ async fn load_activity_earned_awards_by_activity_ids(
     path = "/activities",
     params(ActivityListParams),
     responses(
-        (status = 200, description = "Recent activities for the authenticated user", body = PaginatedResponse<ActivityResponse>, example = json!({"data": [{"id": 42,"title": "Saturday hill repeats","sport": "ride","source": "manual_upload","activity_type": "training","started_at": "2026-09-26T13:00:00Z","distance_meters": 25430.5}],"metadata": {"page": 1,"per_page": 20,"total": 1,"total_pages": 1}})),
+        (status = 200, description = "Recent activities for the authenticated user", body = PaginatedResponse<ActivityCardResponse>, example = json!({"data": [{"id": 42, "title": "Saturday hill repeats", "sport": "ride", "started_at": "2026-09-26T13:00:00Z", "location": "Detroit, Michigan", "distance_meters": 25430.5, "moving_time_seconds": 4200, "total_time_seconds": 4320, "elevation_gain_meters": 312.4, "average_speed_mps": 6.05, "average_heart_rate_bpm": 148, "route_points": [{"elapsed_seconds": 900, "latitude": 42.3314, "longitude": -83.0458}], "earned_awards": []}], "metadata": {"page": 1, "per_page": 20, "total": 1, "total_pages": 1}})),
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     ),
@@ -509,18 +471,21 @@ pub async fn list_activities(
     UserContext { user, .. }: UserContext<AppStorage>,
     Query(params): Query<ActivityListParams>,
     State(state): State<Arc<AppStorage>>,
-) -> Result<Json<PaginatedResponse<ActivityResponse>>, AppError> {
+) -> Result<Json<PaginatedResponse<ActivityCardResponse>>, AppError> {
     let pagination = params.pagination();
-    let activities = activities::Model::paginate_for_user(&state.db, user.id, &pagination, params.sport).await?;
+    let activities = activity_cards::Model::paginate_for_user(&state.db, user.id, &pagination, params.sport).await?;
 
     let activity_ids = activities.data.iter().map(|activity| activity.id).collect::<Vec<_>>();
     let mut earned_awards_by_activity =
         load_activity_earned_awards_by_activity_ids(&state.db, user.id, &activity_ids).await?;
+    let mut previews =
+        activity_cards::preview_points::Model::for_owned_activities(&state.db, user.id, &activity_ids).await?;
 
     Ok(Json(activities.map(|activity| {
         let earned_awards = earned_awards_by_activity.remove(&activity.id).unwrap_or_default();
 
-        ActivityResponse::from_summary_with_earned_awards(activity, earned_awards)
+        let route_points = previews.remove(&activity.id).unwrap_or_default();
+        ActivityCardResponse::from_saved(activity, route_points, earned_awards)
     })))
 }
 
@@ -872,7 +837,7 @@ mod tests {
             .unwrap()
             .is_empty());
         assert!(db.into_transaction_log().is_empty());
-        let response = ActivityResponse::from_summary_with_earned_awards(fixtures::activity(), Vec::new());
+        let response = ActivityResponse::from_detail(fixtures::activity(), Vec::new());
         let json = serde_json::to_value(response).unwrap();
         assert_eq!(json["earned_awards"], json!([]));
         assert!(json.get("achievement_highlights").is_none());
@@ -880,7 +845,6 @@ mod tests {
 
     use bike_core::activity_details::{serialize_derived_activity_data, StoredActivityDerivedData};
     use bike_core::activity_training_analysis::ActivityTrainingAnalysisResponse;
-    use bike_core::platform::data::pagination::PaginatedResponse;
     use serde_json::json;
 
     #[test]
@@ -1029,7 +993,7 @@ mod tests {
     }
 
     #[test]
-    fn feed_and_detail_keep_source_description_and_gear() {
+    fn detail_keeps_source_description_and_gear() {
         let mut model = activity_response_test_model(Utc::now());
         let metadata = bike_core::activity_data::ActivitySourceMetadata {
             location: None,
@@ -1041,13 +1005,10 @@ mod tests {
             }),
         };
         model.derived_data_json = Some(activity_response_derived_data_json().with_source_metadata(metadata.clone()));
-        let summary = ActivityResponse::from_summary_with_earned_awards(model.clone(), vec![]);
-        let detail = ActivityResponse::from_detail(model, vec![]);
-        for response in [summary, detail] {
-            assert_eq!(response.description, metadata.description);
-            assert_eq!(response.private_notes, metadata.private_notes);
-            assert_eq!(response.gear, metadata.gear);
-        }
+        let response = ActivityResponse::from_detail(model, vec![]);
+        assert_eq!(response.description, metadata.description);
+        assert_eq!(response.private_notes, metadata.private_notes);
+        assert_eq!(response.gear, metadata.gear);
     }
 
     #[test]
@@ -1261,213 +1222,108 @@ mod tests {
         assert!(resolve_activity_import_storage_path("/uploads", "/tmp/ride.fit").is_err());
     }
 
-    #[test]
-    fn paginated_activity_response_maps_models() {
-        let now = Utc::now();
-        let response = PaginatedResponse::new(
-            vec![activities::Model {
-                id: 7,
-                user_id: 8,
-                activity_import_id: Some(9),
-                title: "Morning Ride".to_string(),
-                sport: "ride".to_string(),
-                source: "manual_upload".to_string(),
-                original_filename: Some("morning-ride.gpx".to_string()),
-                format: Some("gpx".to_string()),
-                activity_type: bike_core::activity_type::ActivityType::Training.as_str().to_string(),
-                started_at: now,
-                ended_at: Some(now),
-                distance_meters: Some(40200.0),
-                moving_time_seconds: Some(3600),
-                total_time_seconds: Some(3900),
-                elevation_gain_meters: Some(520.0),
-                elevation_loss_meters: Some(515.0),
-                average_speed_mps: Some(9.5),
-                max_speed_mps: Some(16.2),
-                average_heart_rate_bpm: Some(142),
-                max_heart_rate_bpm: Some(171),
-                average_cadence_rpm: Some(86),
-                max_cadence_rpm: Some(104),
-                calories: Some(860),
-                derived_data_json: Some(
-                    serialize_derived_activity_data(&ActivityDerivedData {
-                        recording: Default::default(),
-                        laps: Vec::new(),
-                        chart_points: Vec::new(),
-                        route_points: vec![ActivityRoutePoint {
-                            elapsed_seconds: 0,
-                            latitude: 45.0,
-                            longitude: -122.0,
-                            distance_meters: Some(0.0),
-                            elevation_meters: Some(100.0),
-                            speed_mps: Some(0.0),
-                            heart_rate_bpm: Some(130),
-                            cadence_rpm: Some(82),
-                            power_watts: None,
-                        }],
-                    })
-                    .expect("serialize derived activity data"),
-                ),
-                created_at: now,
-                updated_at: now,
-                ..bike_core::test_support::activity()
-            }],
-            2,
-            10,
-            24,
-        )
-        .map(|model| ActivityResponse::from_summary_with_earned_awards(model, Vec::new()));
-
-        assert_eq!(response.data.len(), 1);
-        assert_eq!(response.data[0].title, "Morning Ride");
-        assert!(response.data[0].location.is_some());
-        assert_eq!(response.metadata.page, 2);
-        assert_eq!(response.metadata.per_page, 10);
-        assert_eq!(response.metadata.total, 24);
-        assert_eq!(response.metadata.total_pages, 3);
+    #[tokio::test]
+    async fn feed_returns_only_saved_card_inputs_and_preserves_each_riders_award_order() {
+        use crate::controllers::test_support as http;
+        use bike_core::test_support as fixtures;
+        for (user_id, activity_id) in [(7, 42), (8, 77)] {
+            let user = bike_core::auth::entities::users::Model {
+                id: user_id,
+                ..fixtures::customer()
+            };
+            let activity = activities::Model {
+                id: activity_id,
+                user_id,
+                distance_meters: Some(4200.0),
+                ..fixtures::activity()
+            };
+            let first = activity_earned_awards::Model {
+                activity_id,
+                position: 2,
+                display_position: 1,
+                ..fixtures::activity_earned_awards()
+            };
+            let second = activity_earned_awards::Model {
+                position: 1,
+                display_position: 2,
+                ..first.clone()
+            };
+            let point = activity_cards::preview_points::Model {
+                activity_id,
+                point_number: 1,
+                elapsed_seconds: 10,
+                latitude: 45.5,
+                longitude: -122.5,
+            };
+            let db = fixtures::postgres_mock()
+                .append_query_results([vec![user]])
+                .append_query_results([vec![fixtures::count_row(1)]])
+                .append_query_results([vec![fixtures::activity_card_row(&activity, Some("Saved city".into()))]])
+                .append_query_results([vec![first, second]])
+                .append_query_results([vec![point]])
+                .into_connection();
+            let json = http::local_user_json(db.clone(), "/api/activities?per_page=1", 200).await;
+            let card = &json["data"][0];
+            assert_eq!(card["id"], activity_id);
+            assert_eq!(card["location"], "Saved city");
+            assert_eq!(card["distance_meters"], 4200.0);
+            assert_eq!(
+                card["route_points"],
+                json!([{
+                    "elapsed_seconds": 10, "latitude":45.5, "longitude":-122.5
+                }])
+            );
+            assert_eq!(card["earned_awards"][0]["position"], 2);
+            assert_eq!(card["earned_awards"][1]["position"], 1);
+            for field in [
+                "description",
+                "private_notes",
+                "gear",
+                "chart_points",
+                "laps",
+                "heart_rate_zones",
+                "segment_efforts",
+                "climb_output",
+                "relative_effort",
+                "source",
+            ] {
+                assert!(card.get(field).is_none(), "Feed included {field}");
+            }
+            let log = db.into_transaction_log();
+            assert_eq!(log.len(), 5);
+            let sql = format!("{log:?}");
+            assert!(!sql.contains("derived_data_json"));
+            assert!(!sql.contains("heart_rate_zones_json"));
+            assert!(!sql.contains("INSERT"));
+            assert!(!sql.contains("UPDATE"));
+        }
     }
 
-    #[test]
-    fn summary_response_downsamples_route_points_for_stream_preview() {
-        let now = Utc::now();
-        let route_points = (0..40)
-            .map(|index| ActivityRoutePoint {
-                elapsed_seconds: index,
-                latitude: 45.0 + (index as f64 * 0.001),
-                longitude: -122.0 + (index as f64 * 0.001),
-                distance_meters: Some(index as f64 * 100.0),
-                elevation_meters: Some(100.0 + index as f64),
-                speed_mps: Some(5.0 + index as f64 * 0.1),
-                heart_rate_bpm: Some(120 + index),
-                cadence_rpm: Some(80),
-                power_watts: None,
-            })
-            .collect::<Vec<_>>();
-        let response = ActivityResponse::from_summary_with_earned_awards(
-            activities::Model {
-                id: 7,
-                user_id: 8,
-                activity_import_id: Some(9),
-                title: "Morning Ride".to_string(),
-                sport: "ride".to_string(),
-                source: "manual_upload".to_string(),
-                original_filename: Some("morning-ride.gpx".to_string()),
-                format: Some("gpx".to_string()),
-                activity_type: bike_core::activity_type::ActivityType::Training.as_str().to_string(),
-                started_at: now,
-                ended_at: Some(now),
-                distance_meters: Some(40200.0),
-                moving_time_seconds: Some(3600),
-                total_time_seconds: Some(3900),
-                elevation_gain_meters: Some(520.0),
-                elevation_loss_meters: Some(515.0),
-                average_speed_mps: Some(9.5),
-                max_speed_mps: Some(16.2),
-                average_heart_rate_bpm: Some(142),
-                max_heart_rate_bpm: Some(171),
-                average_cadence_rpm: Some(86),
-                max_cadence_rpm: Some(104),
-                calories: Some(860),
-                derived_data_json: Some(
-                    serialize_derived_activity_data(&ActivityDerivedData {
-                        recording: Default::default(),
-                        laps: Vec::new(),
-                        chart_points: Vec::new(),
-                        route_points,
-                    })
-                    .expect("serialize derived activity data"),
-                ),
-                created_at: now,
-                updated_at: now,
-                ..bike_core::test_support::activity()
-            },
-            Vec::new(),
-        );
-
-        assert_eq!(response.route_points.len(), MAX_ACTIVITY_STREAM_ROUTE_POINTS);
-        assert_eq!(
-            response.route_points.first().map(|point| point.elapsed_seconds),
-            Some(0)
-        );
-        assert_eq!(
-            response.route_points.last().map(|point| point.elapsed_seconds),
-            Some(39)
-        );
-    }
-
-    #[test]
-    fn summary_response_preserves_route_extrema_for_stream_preview() {
-        let now = Utc::now();
-        let mut route_points = (0..40)
-            .map(|index| ActivityRoutePoint {
-                elapsed_seconds: index,
-                latitude: 45.0 + (index as f64 * 0.001),
-                longitude: -122.0 + (index as f64 * 0.001),
-                distance_meters: Some(index as f64 * 100.0),
-                elevation_meters: Some(100.0 + index as f64),
-                speed_mps: Some(5.0 + index as f64 * 0.1),
-                heart_rate_bpm: Some(120 + index),
-                cadence_rpm: Some(80),
-                power_watts: None,
-            })
-            .collect::<Vec<_>>();
-
-        route_points[7].latitude = 46.5;
-        route_points[11].latitude = 44.2;
-        route_points[13].longitude = -123.4;
-        route_points[29].longitude = -120.8;
-
-        let response = ActivityResponse::from_summary_with_earned_awards(
-            activities::Model {
-                id: 7,
-                user_id: 8,
-                activity_import_id: Some(9),
-                title: "Morning Ride".to_string(),
-                sport: "ride".to_string(),
-                source: "manual_upload".to_string(),
-                original_filename: Some("morning-ride.gpx".to_string()),
-                format: Some("gpx".to_string()),
-                activity_type: bike_core::activity_type::ActivityType::Training.as_str().to_string(),
-                started_at: now,
-                ended_at: Some(now),
-                distance_meters: Some(40200.0),
-                moving_time_seconds: Some(3600),
-                total_time_seconds: Some(3900),
-                elevation_gain_meters: Some(520.0),
-                elevation_loss_meters: Some(515.0),
-                average_speed_mps: Some(9.5),
-                max_speed_mps: Some(16.2),
-                average_heart_rate_bpm: Some(142),
-                max_heart_rate_bpm: Some(171),
-                average_cadence_rpm: Some(86),
-                max_cadence_rpm: Some(104),
-                calories: Some(860),
-                derived_data_json: Some(
-                    serialize_derived_activity_data(&ActivityDerivedData {
-                        recording: Default::default(),
-                        laps: Vec::new(),
-                        chart_points: Vec::new(),
-                        route_points,
-                    })
-                    .expect("serialize derived activity data"),
-                ),
-                created_at: now,
-                updated_at: now,
-                ..bike_core::test_support::activity()
-            },
-            Vec::new(),
-        );
-
-        let sampled_elapsed_seconds = response
-            .route_points
-            .iter()
-            .map(|point| point.elapsed_seconds)
-            .collect::<Vec<_>>();
-
-        assert!(sampled_elapsed_seconds.contains(&7));
-        assert!(sampled_elapsed_seconds.contains(&11));
-        assert!(sampled_elapsed_seconds.contains(&13));
-        assert!(sampled_elapsed_seconds.contains(&29));
+    #[tokio::test]
+    async fn a_missing_saved_card_keeps_the_activity_visible_without_read_time_repair() {
+        use crate::controllers::test_support as http;
+        use bike_core::test_support as fixtures;
+        let activity = activities::Model {
+            sport: "hike".into(),
+            ..fixtures::activity()
+        };
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![fixtures::customer()]])
+            .append_query_results([vec![fixtures::count_row(1)]])
+            .append_query_results([vec![fixtures::activity_card_row(&activity, None)]])
+            .append_query_results([Vec::<activity_earned_awards::Model>::new()])
+            .append_query_results([Vec::<activity_cards::preview_points::Model>::new()])
+            .into_connection();
+        let json = http::local_user_json(db.clone(), "/api/activities?sport=hike", 200).await;
+        assert_eq!(json["data"][0]["id"], activity.id);
+        assert_eq!(json["data"][0]["sport"], "hike");
+        assert!(json["data"][0]["location"].is_null());
+        assert_eq!(json["data"][0]["route_points"], json!([]));
+        assert_eq!(json["data"][0]["earned_awards"], json!([]));
+        let sql = format!("{:?}", db.into_transaction_log());
+        assert!(!sql.contains("derived_data_json"));
+        assert!(!sql.contains("INSERT"));
+        assert!(!sql.contains("UPDATE"));
     }
 }
 

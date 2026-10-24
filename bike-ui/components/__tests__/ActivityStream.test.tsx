@@ -3,7 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ActivityStream from "../ActivityStream";
 import type { Activity } from "../../lib/queries";
-import { activityEarnedAward } from "../../tests/fixtures/activities";
+import {
+  activityCard,
+  activityEarnedAward,
+} from "../../tests/fixtures/activities";
 import { activityAchievements } from "../activity-stream/activityAchievements";
 import RequireAuth from "../RequireAuth";
 import { formatActivityTimestamp } from "../../lib/activityFormatting";
@@ -536,3 +539,49 @@ describe("ActivityStream", () => {
     );
   });
 });
+
+it.each([7, 8])(
+  "renders user %s cards using only the compact saved response",
+  (userId) => {
+    mocks.useCurrentUser.mockReturnValue({
+      user: { id: userId, email: `rider-${userId}@example.com` },
+      isLoading: false,
+    });
+    mocks.useActivities.mockReturnValue({
+      data: [
+        activityCard({
+          id: userId * 10,
+          title: `Saved ride ${userId}`,
+          location: "Saved city",
+          distance_meters: 42000,
+          average_speed_mps: 6,
+          moving_time_seconds: 7000,
+          elevation_gain_meters: 500,
+          average_heart_rate_bpm: 145,
+          earned_awards: [
+            activityEarnedAward({
+              activity_id: userId * 10,
+              segment_title: "Saved climb",
+              overall_rank: null,
+              personal_rank: 1,
+            }),
+          ],
+        }),
+      ],
+      metadata: { page: 1, per_page: 10, total: 1, total_pages: 1 },
+      isError: false,
+      isFetching: false,
+      error: null,
+    });
+    render(<ActivityStream />);
+    expect(
+      screen.getByRole("link", { name: `Saved ride ${userId}` }),
+    ).toHaveAttribute("href", `/activities/${userId * 10}`);
+    expect(screen.getByText("Saved city")).toBeInTheDocument();
+    expect(screen.getByText("145 bpm")).toBeInTheDocument();
+    expect(screen.getByText("PR")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: /Route thumbnail/ }),
+    ).not.toBeInTheDocument();
+  },
+);

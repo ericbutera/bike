@@ -1,4 +1,5 @@
 pub mod activity_achievements;
+pub mod activity_cards;
 pub mod activity_climbs;
 pub mod activity_data;
 pub mod activity_details;

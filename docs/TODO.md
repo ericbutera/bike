@@ -33,6 +33,11 @@
       preserving nulls and stale saved values without history ranking or request
       repair. See the [activity detail contract](specs/activity-details.md#route-map-and-matched-segments).
 
+- [x] Serve compact activity cards from typed metrics, saved location and ordered
+      preview points; prepare them during imports/reprocessing and provide the
+      focused `backfill_activity_cards` workflow. See
+      [saved card reads](specs/activity-list.md#saved-card-reads).
+
 - [x] Generate and persist ordered activity climbs in the upload/reprocessing DAG;
       include a one-off Temporal backfill for missing climb outputs. See the
       [stage rollout contract](specs/background-work.md#activity-climbs-and-stage-backfills).

@@ -8,7 +8,7 @@ import {
   formatSpeed,
   type UnitSystem,
 } from "../../lib/activityFormatting";
-import { type Activity } from "../../lib/queries";
+import { type ActivityCard } from "../../lib/queries";
 import MetricCard from "../MetricCard";
 import ActivitySportIcon from "../ActivitySportIcon";
 import ActivityAchievementChip from "./ActivityAchievementChip";
@@ -21,7 +21,7 @@ export default function ActivityStreamCard({
   showFullRouteMaps,
   showEnhancedMaps,
 }: {
-  activity: Activity;
+  activity: ActivityCard;
   unitSystem: UnitSystem;
   showFullRouteMaps: boolean;
   showEnhancedMaps: boolean;

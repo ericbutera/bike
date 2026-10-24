@@ -154,10 +154,7 @@ async fn manual_metadata_edits_preserve_recordings_and_gear_and_allow_clearing()
         };
         let db = MockDatabase::new(DbBackend::Postgres)
             .append_query_results([vec![before.clone()], vec![after.clone()]])
-            .append_exec_results([sea_orm::MockExecResult {
-                rows_affected: 1,
-                ..Default::default()
-            }])
+            .append_exec_results([test_support::written(), test_support::written()])
             .into_connection();
         let result = before
             .update_details(
@@ -180,6 +177,19 @@ async fn manual_metadata_edits_preserve_recordings_and_gear_and_allow_clearing()
             .find(|statement| statement.sql.starts_with("UPDATE \"activities\""))
             .unwrap();
         assert!(!write.sql.contains("\"sport\" ="));
+        let card_write = log[0]
+            .statements()
+            .iter()
+            .find(|statement| statement.sql.starts_with("UPDATE \"activity_cards\""))
+            .unwrap();
+        if value.is_none() {
+            assert!(card_write.sql.contains("route_location"));
+        } else {
+            assert!(card_write.values.as_ref().unwrap().0.contains(&value.clone().into()));
+        }
+        assert_eq!(log[0].statements().last().unwrap().sql, "COMMIT");
+        assert!(!card_write.sql.contains("preview_points"));
+
         let stored_json = serde_json::to_value(after.derived_data_json.unwrap()).unwrap();
         assert!(write
             .values

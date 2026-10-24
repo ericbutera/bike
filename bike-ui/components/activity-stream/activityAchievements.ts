@@ -59,6 +59,8 @@ function streamAchievement(award: ActivityEarnedAward): StreamAchievement[] {
   return [];
 }
 
-export function activityAchievements(activity: Activity) {
+export function activityAchievements(
+  activity: Pick<Activity, "earned_awards">,
+) {
   return activity.earned_awards.flatMap((award) => streamAchievement(award));
 }

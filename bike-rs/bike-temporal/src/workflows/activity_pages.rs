@@ -203,6 +203,44 @@ impl BackfillActivityClimbs {
     }
 }
 
+/// Explicit rollout backfill; visits every activity in bounded ID pages.
+#[workflow]
+#[derive(Default)]
+pub struct BackfillActivityCards;
+
+#[workflow_methods]
+impl BackfillActivityCards {
+    #[run(name = "backfill_activity_cards")]
+    pub async fn run(ctx: &mut WorkflowContext<Self>, mut after_id: i32) -> WorkflowResult<()> {
+        let tasks = options::run(
+            ctx,
+            BatchActivities::activity_card_page,
+            after_id,
+            options::activity(Priority::Background, "activity-card-backfill".into()),
+        )
+        .await?;
+        let full = tasks.len() == 16;
+        for task in tasks {
+            let completed_id = task.activity_id;
+            let user_id = task.user_id;
+            options::run(
+                ctx,
+                DerivedActivities::rebuild_activity_card,
+                task,
+                options::activity(Priority::Background, format!("user-{user_id}")),
+            )
+            .await?;
+            after_id = completed_id;
+        }
+        if full {
+            return ctx
+                .continue_as_new(after_id, Default::default())
+                .map(|never| match never {});
+        }
+        Ok(())
+    }
+}
+
 #[workflow]
 #[derive(Default)]
 pub struct BackfillPersonalAchievements;
@@ -272,6 +310,36 @@ mod tests {
         mock.activity("pending_climbs", &0_i32, &vec![task.clone(), task]);
         mock.fail_activity("rebuild_activity_climbs", "climb failed");
         mock.assert_failure_message("climb failed");
+    }
+
+    #[test]
+    fn card_backfill_awaits_each_stage_and_continues_after_a_full_page() {
+        let tasks: Vec<_> = (1..=16)
+            .map(|activity_id| ActivityTask {
+                activity_id,
+                priority: Priority::Background,
+                ..fixtures::activity_task()
+            })
+            .collect();
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillActivityCards>(0);
+        mock.activity("activity_card_page", &0_i32, &tasks);
+        for task in &tasks {
+            mock.activity("rebuild_activity_card", task, &());
+        }
+        let cursor = mock.continued_input::<i32>();
+        assert_eq!(cursor, 16);
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillActivityCards>(cursor);
+        mock.activity("activity_card_page", &cursor, &Vec::<ActivityTask>::new());
+        mock.result::<()>();
+    }
+
+    #[test]
+    fn failed_card_stops_backfill_before_advancing_to_the_next_activity() {
+        let task = fixtures::activity_task();
+        let mut mock: WorkflowMock = WorkflowMock::new::<BackfillActivityCards>(0);
+        mock.activity("activity_card_page", &0_i32, &vec![task.clone(), task]);
+        mock.fail_activity("rebuild_activity_card", "card failed");
+        mock.assert_failure_message("card failed");
     }
 
     #[test]
