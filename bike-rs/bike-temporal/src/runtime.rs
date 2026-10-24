@@ -28,6 +28,7 @@ pub fn worker(
     uploads_dir: String,
 ) -> Result<Worker, crate::client::Error> {
     let objects = ObjectStore::filesystem(&uploads_dir, ObjectOwner::ActivityImports);
+    let metadata = crate::workflows::MetadataActivities::new(db.clone());
     let recordings = crate::workflows::RecordingActivities::new(db.clone(), objects.clone());
     let operations = Arc::new(BikeOperations::new(db, objects));
     let options = WorkerOptions::new(TASK_QUEUE)
@@ -57,6 +58,8 @@ pub fn worker(
         .register_workflow::<BackfillPersonalAchievements>()?
         .register_workflow::<BackfillOverallAchievements>()?
         .register_workflow::<BackfillEarnedAwards>()?
+        .register_workflow::<crate::workflows::BackfillActivityMetadata>()?
+        .register_activities(metadata)
         .register_workflow::<crate::workflows::BackfillActivityRecordings>()?
         .register_activities(recordings)
         .register_activities(ImportActivities::new(operations.clone()))

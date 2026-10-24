@@ -46,7 +46,7 @@ pub fn mutation(mock: MockDatabase, history_write: Result<u64, DbErr>) -> MockDa
         .append_query_results([vec![fixtures::reprocess_activity()]])
         .append_query_results([vec![saved_activity()]])
         .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
-        .append_exec_results([fixtures::written(), fixtures::written(), fixtures::written()]);
+        .append_exec_results((0..6).map(|_| fixtures::written()));
     match history_write {
         Err(error) => mock.append_exec_errors([error]),
         Ok(rows_affected) => mock.append_exec_results([MockExecResult {

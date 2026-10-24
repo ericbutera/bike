@@ -155,6 +155,7 @@ async fn manual_metadata_edits_preserve_recordings_and_gear_and_allow_clearing()
         let db = MockDatabase::new(DbBackend::Postgres)
             .append_query_results([vec![before.clone()], vec![after.clone()]])
             .append_exec_results([test_support::written(), test_support::written()])
+            .append_exec_results((0..3).map(|_| test_support::written()))
             .into_connection();
         let result = before
             .update_details(
@@ -301,6 +302,7 @@ async fn gear_name_edits_preserve_the_identifier_and_other_metadata() {
                 rows_affected: 1,
                 ..Default::default()
             }])
+            .append_exec_results((0..2).map(|_| test_support::written()))
             .into_connection();
         before
             .update_details(
