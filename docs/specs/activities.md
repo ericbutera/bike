@@ -7,6 +7,24 @@
 - [Supported activities](supported-activities.md) owns the activity vocabulary
   and eligibility rules. List and detail visibility must follow that policy.
 
+## Ingestion source
+
+- `activities.source` records the ingestion route independently of sport, device
+  manufacturer and recording format. Store the same route on the originating
+  `activity_imports.source` row.
+
+  | Ingestion route                          | Stored source        |
+  | ---------------------------------------- | -------------------- |
+  | Manual file upload                       | `manual_upload`      |
+  | Archive import, including Garmin exports | `archive_url_import` |
+  | Native Strava intake                     | `strava_sync`        |
+
+- Parsing and derived DAG stages preserve the ingestion source. Reprocessing
+  keeps the existing activity source; attaching a duplicate recording from
+  another route keeps the original activity source and the new import
+  retains its own route. Archive imports currently use one shared category
+  rather than identifying the archive provider in this field.
+
 ## Normalized recording storage
 
 - Parsing retains its original immutable source through the existing import and

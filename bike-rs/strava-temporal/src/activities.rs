@@ -28,8 +28,7 @@ impl StravaActivities {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn with_operations(operations: StravaOperations) -> Self {
+    pub fn with_operations(operations: StravaOperations) -> Self {
         Self { operations }
     }
 }
@@ -128,6 +127,15 @@ impl StravaActivities {
     ) -> Result<ActivitySources, ActivityError> {
         run(ctx, input.event.clone(), self.operations.fetch_streams(input)).await
     }
+    #[activity(name = "strava_retain_activity")]
+    pub async fn retain_activity(
+        self: Arc<Self>,
+        ctx: ActivityContext,
+        input: ActivitySources,
+    ) -> Result<RetainedActivity, ActivityError> {
+        run(ctx, input.event.clone(), self.operations.retain_activity(input)).await
+    }
+
     #[activity(name = "strava_normalize_activity")]
     pub async fn normalize_activity(
         self: Arc<Self>,

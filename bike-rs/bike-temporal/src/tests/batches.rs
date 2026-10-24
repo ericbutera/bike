@@ -34,8 +34,8 @@ fn regenerate_activity_awaits_segment_results_before_achievements() {
     mock.activity("rebuild_activity_segments", &task, &vec![18_i32]);
     let child = mock.start_child(
         "rebuild_segment_analytics",
-        &SegmentChange {
-            segment_id: 18,
+        &SegmentAnalyticsTask::Batch {
+            segment_ids: vec![18],
             priority: Priority::Background,
         },
     );
@@ -286,4 +286,44 @@ fn a_failed_reprocessing_child_stops_the_batch_before_the_next_activity() {
     mock.assert_pending();
     mock.fail_child(child);
     mock.assert_failure_message("Fixture child failed");
+}
+
+#[test]
+fn old_segment_publication_histories_keep_their_singleton_children() {
+    let task = background_activity(42);
+    let mut mock = WorkflowMock::with_replay::<RegenerateActivitySegments>(task.clone(), true);
+    mock.activity("rebuild_activity_segments", &task, &vec![18_i32, 19]);
+    for segment_id in [18, 19] {
+        let child = mock.start_child(
+            "rebuild_segment_analytics",
+            &SegmentChange {
+                segment_id,
+                priority: task.priority,
+            },
+        );
+        mock.complete_child(child, &());
+    }
+    mock.activity("rebuild_activity_achievements", &task, &());
+    mock.result::<()>();
+}
+
+#[test]
+fn shared_segment_publication_awaits_each_bounded_batch_before_awards() {
+    let task = background_activity(42);
+    let ids: Vec<i32> = (1..=501).collect();
+    let mut mock = WorkflowMock::new::<RegenerateActivitySegments>(task.clone());
+    mock.activity("rebuild_activity_segments", &task, &ids);
+    for batch in ids.chunks(500) {
+        let child = mock.start_child(
+            "rebuild_segment_analytics",
+            &SegmentAnalyticsTask::Batch {
+                segment_ids: batch.to_vec(),
+                priority: task.priority,
+            },
+        );
+        mock.assert_pending();
+        mock.complete_child(child, &());
+    }
+    mock.activity("rebuild_activity_achievements", &task, &());
+    mock.result::<()>();
 }

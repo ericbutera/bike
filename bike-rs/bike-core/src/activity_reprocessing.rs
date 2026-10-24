@@ -8,6 +8,41 @@ use crate::{
     workflow_error::WorkflowError,
 };
 use sea_orm::DatabaseConnection;
+mod strava;
+
+pub async fn process(
+    db: &DatabaseConnection,
+    objects: &ObjectStore,
+    execution: crate::bike_tasks::ActivityProcessingExecution,
+) -> Result<crate::bike_tasks::ActivityProcessingResult, WorkflowError> {
+    use crate::bike_tasks::{ActivityProcessingResult, ActivityProcessingSource};
+    match execution.source {
+        ActivityProcessingSource::Import(command) => {
+            let result = reprocess(
+                db,
+                objects,
+                ImportExecution {
+                    command: *command,
+                    workflow: execution.workflow,
+                },
+            )
+            .await?;
+            Ok(ActivityProcessingResult::Import(result))
+        }
+        ActivityProcessingSource::Strava(source) => {
+            let result = strava::process(db, objects, *source).await?;
+            Ok(ActivityProcessingResult::Strava(Box::new(result)))
+        }
+    }
+}
+
+pub async fn process_strava_source(
+    db: &DatabaseConnection,
+    objects: &ObjectStore,
+    source: crate::entities::strava_events::RetainedActivity,
+) -> Result<crate::entities::strava_events::ActivityChange, WorkflowError> {
+    strava::process(db, objects, source).await
+}
 
 #[cfg(test)]
 mod tests;

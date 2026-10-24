@@ -181,7 +181,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "strava-temporal",
  "tempfile",
+ "temporalio-client",
+ "temporalio-sdk",
  "tokio",
  "tonic",
  "tower",
@@ -5439,6 +5442,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bike-core",
+ "bike-temporal",
  "chrono",
  "futures",
  "integrations",

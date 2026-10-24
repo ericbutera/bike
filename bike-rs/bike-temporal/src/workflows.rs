@@ -33,7 +33,7 @@ pub use regenerate_segment_efforts::RegenerateSegmentEfforts;
 
 pub use bike_core::bike_tasks::ReprocessInput;
 pub use prepare_heatmap::PrepareHeatmap;
-pub use process_activity_import::ProcessActivityImport;
+pub use process_activity_import::{ProcessActivity, ProcessActivityImport};
 pub use rebuild_fitness_freshness::RebuildFitnessFreshness;
 pub use rebuild_segment_analytics::RebuildSegmentAnalytics;
 pub use reprocess_activity_import::ReprocessActivityImport;

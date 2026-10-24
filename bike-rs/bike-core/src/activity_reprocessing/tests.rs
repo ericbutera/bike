@@ -148,39 +148,62 @@ async fn a_new_import_reuses_its_existing_activity_after_a_lost_completion() {
 }
 
 #[tokio::test]
-async fn a_new_import_saves_the_activity_and_links_its_import() {
-    let db = fixture::mock()
-        .append_query_results([vec![fixtures::reprocess_import()]])
-        .append_query_results([Vec::<activities::Model>::new()])
-        .append_query_results([Vec::<activities::Model>::new()])
-        .append_query_results([vec![fixture::saved_activity()]])
-        .append_exec_results([fixtures::written()])
-        .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
-        .append_exec_results([
-            fixtures::written(),
-            fixtures::written(),
-            fixtures::written(),
-            fixtures::written(),
-        ])
-        .append_exec_results((0..3).map(|_| fixtures::written()))
-        .into_connection();
-    let mut execution = fixtures::reprocess_execution();
-    execution.command.target = ImportTarget::NewActivity;
-    let saved = activities::Model::apply_import(
-        &db,
-        &fixture::objects(),
-        &execution,
-        &fixture::artifact(),
-        &fixtures::parsed_reprocess_activity(),
-        &crate::training_profile::TrainingProfile::default(),
-    )
-    .await
-    .unwrap();
-    assert_eq!(saved.id, 42);
-    let log = format!("{:?}", db.into_transaction_log());
-    assert!(log.contains("INSERT INTO"));
-    assert!(log.contains("activity_id"));
-    assert!(log.contains("COMMIT"));
+async fn new_file_imports_save_their_manual_or_archive_ingestion_source() {
+    for source in ["manual_upload", "archive_url_import"] {
+        let import = activity_imports::Model {
+            source: source.into(),
+            ..fixtures::reprocess_import()
+        };
+        let activity = activities::Model {
+            source: source.into(),
+            ..fixture::saved_activity()
+        };
+        let db = fixture::mock()
+            .append_query_results([vec![import]])
+            .append_query_results([Vec::<activities::Model>::new()])
+            .append_query_results([Vec::<activities::Model>::new()])
+            .append_query_results([vec![activity]])
+            .append_exec_results([fixtures::written()])
+            .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
+            .append_exec_results([
+                fixtures::written(),
+                fixtures::written(),
+                fixtures::written(),
+                fixtures::written(),
+            ])
+            .append_exec_results((0..3).map(|_| fixtures::written()))
+            .into_connection();
+        let mut execution = fixtures::reprocess_execution();
+        execution.command.target = ImportTarget::NewActivity;
+        let saved = activities::Model::apply_import(
+            &db,
+            &fixture::objects(),
+            &execution,
+            &fixture::artifact(),
+            &fixtures::parsed_reprocess_activity(),
+            &crate::training_profile::TrainingProfile::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(saved.id, 42);
+        assert_eq!(saved.source, source);
+        let transactions = db.into_transaction_log();
+        let insertion = transactions
+            .iter()
+            .flat_map(|transaction| transaction.statements())
+            .find(|statement| statement.sql.starts_with("INSERT INTO \"activities\""))
+            .unwrap();
+        assert!(insertion
+            .values
+            .as_ref()
+            .unwrap()
+            .0
+            .contains(&sea_orm::Value::from(source)));
+        let log = format!("{transactions:?}");
+        assert!(log.contains("INSERT INTO"));
+        assert!(log.contains("activity_id"));
+        assert!(log.contains("COMMIT"));
+    }
 }
 
 #[tokio::test]
@@ -301,6 +324,7 @@ async fn checksumless_legacy_files_remain_readable_without_replacing_the_source(
 async fn another_recording_of_the_same_ride_reuses_the_activity() {
     let parsed = fixtures::parsed_reprocess_activity();
     let duplicate = activities::Model {
+        source: "strava_sync".into(),
         started_at: parsed.draft.started_at,
         sport: parsed.draft.sport.clone(),
         total_time_seconds: parsed.draft.total_time_seconds,
@@ -334,6 +358,7 @@ async fn another_recording_of_the_same_ride_reuses_the_activity() {
     .await
     .unwrap();
     assert_eq!(saved.id, duplicate.id);
+    assert_eq!(saved.source, duplicate.source);
     let log = format!("{:?}", db.into_transaction_log());
     assert!(log.contains("activity_recordings"));
     assert!(log.contains("duplicate"));

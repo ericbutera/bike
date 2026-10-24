@@ -28,4 +28,3 @@ pub use connection::{
     STRAVA_SYNC_STATUS_QUEUED, STRAVA_SYNC_STATUS_RUNNING,
 };
 pub(crate) use connection::{ensure_connection_scopes_allow_activity_import, ensure_fresh_access_token};
-pub(crate) use provider_payload::build_activity_upload;

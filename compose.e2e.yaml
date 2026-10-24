@@ -1,5 +1,9 @@
 # No development overlay, host ports, source mounts or globally named volumes.
 services:
+  postgres:
+    volumes: !reset []
+    tmpfs:
+      - /var/lib/postgresql/data:rw,size=1g
   bike-rs:
     depends_on:
       temporal:

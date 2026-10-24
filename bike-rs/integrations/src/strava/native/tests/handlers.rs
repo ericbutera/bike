@@ -2,7 +2,6 @@ use super::handlers_fixture::{HandlerFixture, ProviderCall};
 use super::*;
 use crate::strava::{events::StravaOperation, objects::ObjectRef, provider_payload::StoredStravaProviderPayload};
 use axum::http::StatusCode;
-use bike_core::activity_parser::ParsedActivityData;
 use bike_core::test_support as fixtures;
 
 #[tokio::test]
@@ -148,23 +147,22 @@ async fn multi_megabyte_provider_data_stays_in_storage_across_workflow_boundarie
     crate::strava::payload::validate_temporal(&sources).unwrap();
     let normalized = operations.normalize_activity(sources).await.unwrap();
     crate::strava::payload::validate_temporal(&normalized).unwrap();
-    let retained: StoredStravaProviderPayload = operations.store.read_json(&normalized.source).await.unwrap();
+    let retained: StoredStravaProviderPayload = operations.objects.read_json(&normalized.source).await.unwrap();
     assert_eq!(retained.activity.additional_fields["provider_extension"], extension);
-    assert!(normalized.parsed.is_some());
+    assert!(normalized.parsed.is_none());
     assert!(serde_json::to_vec(&normalized).unwrap().len() < 4096);
 }
 
 #[tokio::test]
-async fn normalizes_a_fixture_ride_without_provider_or_persistence_calls() {
+async fn retains_a_fixture_ride_for_the_shared_parser_without_provider_or_persistence_calls() {
     let fixture = HandlerFixture::new();
     let operations = fixture.operations(MockDatabase::new(DatabaseBackend::Postgres));
     let normalized = operations.normalize_activity(fixture.sources().await).await.unwrap();
-    let saved: StoredStravaProviderPayload = operations.store.read_json(&normalized.source).await.unwrap();
-    let parsed: ParsedActivityData = operations
-        .store
-        .read_json(normalized.parsed.as_ref().unwrap())
-        .await
-        .unwrap();
+    let saved: StoredStravaProviderPayload = operations.objects.read_json(&normalized.source).await.unwrap();
+    let parsed = bike_core::activity_parser::strava::parse_strava_provider_payload(
+        &operations.objects.read(&normalized.source).await.unwrap(),
+    )
+    .unwrap();
     assert_eq!(saved.activity.id, fixture.provider.payload.activity.id);
     assert_eq!(parsed.draft.title, fixture.provider.payload.activity.name);
     assert!(parsed.draft.distance_meters.unwrap() > 0.0);
@@ -198,11 +196,10 @@ async fn recorded_activities_of_every_sport_keep_provider_gps_for_maps() {
             .await
             .unwrap();
         let normalized = operations.normalize_activity(sources).await.unwrap();
-        let parsed: ParsedActivityData = operations
-            .store
-            .read_json(normalized.parsed.as_ref().unwrap())
-            .await
-            .unwrap();
+        let parsed = bike_core::activity_parser::strava::parse_strava_provider_payload(
+            &operations.objects.read(&normalized.source).await.unwrap(),
+        )
+        .unwrap();
         assert_eq!(parsed.draft.sport, sport);
         let actual: Vec<_> = parsed
             .derived_data
@@ -231,11 +228,10 @@ async fn gps_free_recordings_keep_the_summary_without_inventing_a_route() {
         .await
         .unwrap();
     let normalized = operations.normalize_activity(sources).await.unwrap();
-    let parsed: ParsedActivityData = operations
-        .store
-        .read_json(normalized.parsed.as_ref().unwrap())
-        .await
-        .unwrap();
+    let parsed = bike_core::activity_parser::strava::parse_strava_provider_payload(
+        &operations.objects.read(&normalized.source).await.unwrap(),
+    )
+    .unwrap();
     assert_eq!(parsed.draft.sport, "workout");
     assert!(parsed.derived_data.route_points.is_empty());
     assert_eq!(*fixture.provider.calls.lock().unwrap(), [ProviderCall::Streams]);
@@ -297,11 +293,10 @@ async fn manual_cycling_summary_does_not_request_missing_streams() {
         .await
         .unwrap();
     let normalized = operations.normalize_activity(sources).await.unwrap();
-    let parsed: ParsedActivityData = operations
-        .store
-        .read_json(normalized.parsed.as_ref().unwrap())
-        .await
-        .unwrap();
+    let parsed = bike_core::activity_parser::strava::parse_strava_provider_payload(
+        &operations.objects.read(&normalized.source).await.unwrap(),
+    )
+    .unwrap();
     assert_eq!(parsed.draft.elevation_gain_meters, Some(407.5));
     assert!(parsed.derived_data.route_points.is_empty());
     assert!(fixture.provider.calls.lock().unwrap().is_empty());

@@ -16,6 +16,7 @@ mod history;
 pub use history::{ActivityDetailsUpdate, ActivityEditOutcome};
 pub(crate) mod parsed;
 mod reprocessing;
+mod strava;
 
 pub const BIKE_ACTIVITY_SPORT: &str = "ride";
 

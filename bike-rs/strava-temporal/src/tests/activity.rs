@@ -6,21 +6,16 @@ use integrations::strava::{events::StravaOperation, native::ActivityChange};
 use temporalio_workflow::common::WorkflowDefinition;
 
 #[test]
-fn restarted_upsert_replays_persisted_steps_and_resumes_publication() {
+fn restarted_upsert_replays_retained_source_and_awaits_the_shared_dag() {
     let fixture = Fixture::reconciling(StravaOperation::Upsert);
-    let change = fixture.change(ActivityStatus::Applied);
     let mut workflow = WorkflowMock::new::<ReconcileActivity>(fixture.event.clone());
-    persist(&mut workflow, &fixture, &change);
+    let child = prepare_shared(&mut workflow, &fixture);
     let mut workflow = workflow.restart::<ReconcileActivity>(fixture.event.clone());
-    for activity in [
-        StravaActivities::rebuild_activity.name(),
-        StravaActivities::rebuild_segments.name(),
-        StravaActivities::rebuild_fitness.name(),
-        StravaActivities::publish_heatmap.name(),
-        StravaActivities::complete_activity.name(),
-    ] {
-        workflow.activity(activity, &change, &change);
-    }
+    workflow.assert_pending();
+    workflow.complete_child(
+        child,
+        &bike_core::bike_tasks::ActivityProcessingResult::Strava(Box::new(fixture.change(ActivityStatus::Applied))),
+    );
     assert_eq!(workflow.result::<ActivityChange>().bike_activity_id, Some(42));
 }
 
@@ -45,20 +40,10 @@ fn update_uses_an_upsert_child_and_preserves_customer_and_activity_context() {
 }
 
 #[test]
-fn upsert_completes_only_after_activity_and_customer_results_are_published() {
+fn upsert_completes_only_after_the_shared_activity_dag_finishes() {
     let fixture = Fixture::reconciling(StravaOperation::Upsert);
     let mut workflow = WorkflowMock::new::<ReconcileActivity>(fixture.event.clone());
     persist(&mut workflow, &fixture, &fixture.change(ActivityStatus::Applied));
-    let change = fixture.change(ActivityStatus::Applied);
-    for activity in [
-        StravaActivities::rebuild_activity.name(),
-        StravaActivities::rebuild_segments.name(),
-        StravaActivities::rebuild_fitness.name(),
-        StravaActivities::publish_heatmap.name(),
-        StravaActivities::complete_activity.name(),
-    ] {
-        workflow.activity(activity, &change, &change);
-    }
     assert_eq!(workflow.result::<ActivityChange>().status, ActivityStatus::Applied);
 }
 
@@ -206,8 +191,8 @@ fn excluded_activity_cleans_up_and_rebuilds_without_publishing_a_heatmap() {
     let fixture = Fixture::reconciling(StravaOperation::Upsert);
     let mut change = fixture.change(ActivityStatus::Deleted);
     change.removed_source = Some("fixture:retired-source".into());
-    let mut workflow = WorkflowMock::new::<ReconcileActivity>(fixture.event.clone());
-    persist(&mut workflow, &fixture, &change);
+    let mut workflow = WorkflowMock::with_replay::<ReconcileActivity>(fixture.event.clone(), true);
+    persist_legacy(&mut workflow, &fixture, &change);
     for activity in [
         StravaActivities::delete_source.name(),
         StravaActivities::rebuild_segments.name(),
@@ -269,7 +254,7 @@ fn superseded_delete_does_not_remove_sources_or_rebuild_results() {
     assert_eq!(workflow.result::<ActivityChange>().status, ActivityStatus::Superseded);
 }
 
-fn persist(workflow: &mut WorkflowMock, fixture: &Fixture, change: &ActivityChange) {
+fn persist_legacy(workflow: &mut WorkflowMock, fixture: &Fixture, change: &ActivityChange) {
     workflow.activity(
         StravaActivities::fetch_activity.name(),
         &fixture.event,
@@ -286,4 +271,34 @@ fn persist(workflow: &mut WorkflowMock, fixture: &Fixture, change: &ActivityChan
         &fixture.normalized(),
     );
     workflow.activity(StravaActivities::persist_activity.name(), &fixture.normalized(), change);
+}
+
+pub(super) fn prepare_shared(workflow: &mut WorkflowMock, fixture: &Fixture) -> u32 {
+    workflow.activity(
+        StravaActivities::fetch_activity.name(),
+        &fixture.event,
+        &fixture.activity(),
+    );
+    workflow.activity(
+        StravaActivities::fetch_streams.name(),
+        &fixture.activity(),
+        &fixture.sources(),
+    );
+    let source = integrations::strava::native::RetainedActivity {
+        event: fixture.event.clone(),
+        source: fixture.normalized().source,
+    };
+    workflow.activity(StravaActivities::retain_activity.name(), &fixture.sources(), &source);
+    workflow.start_child(
+        bike_temporal::workflows::ProcessActivity::run.name(),
+        &bike_core::bike_tasks::ActivityProcessingSource::Strava(Box::new(source)),
+    )
+}
+
+fn persist(workflow: &mut WorkflowMock, fixture: &Fixture, change: &ActivityChange) {
+    let child = prepare_shared(workflow, fixture);
+    workflow.complete_child(
+        child,
+        &bike_core::bike_tasks::ActivityProcessingResult::Strava(Box::new(change.clone())),
+    );
 }

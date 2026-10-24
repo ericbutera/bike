@@ -48,6 +48,15 @@ impl Model {
         activity_id: i32,
     ) -> Result<(), crate::workflow_error::WorkflowError> {
         let source = &execution.command.source;
+        Self::complete_source(db, source.user_id, source.activity_import_id, activity_id).await
+    }
+
+    pub(crate) async fn complete_source(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        import_id: i32,
+        activity_id: i32,
+    ) -> Result<(), crate::workflow_error::WorkflowError> {
         let changed = Entity::update_many()
             .set(ActiveModel {
                 status: Set("processed".into()),
@@ -58,8 +67,8 @@ impl Model {
                 updated_at: Set(Utc::now()),
                 ..Default::default()
             })
-            .filter(Column::Id.eq(source.activity_import_id))
-            .filter(Column::UserId.eq(source.user_id))
+            .filter(Column::Id.eq(import_id))
+            .filter(Column::UserId.eq(user_id))
             .exec(db)
             .await?;
         if changed.rows_affected != 1 {

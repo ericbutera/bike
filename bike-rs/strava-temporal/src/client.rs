@@ -15,6 +15,20 @@ pub fn worker(
     config: &TemporalConfig,
     db: DatabaseConnection,
 ) -> Result<Worker, Error> {
+    worker_with_operations(
+        runtime,
+        client,
+        config,
+        integrations::strava::native::StravaOperations::new(db),
+    )
+}
+
+pub fn worker_with_operations(
+    runtime: &Runtime,
+    client: Client,
+    config: &TemporalConfig,
+    operations: integrations::strava::native::StravaOperations,
+) -> Result<Worker, Error> {
     let options = WorkerOptions::new(config.task_queue.clone())
         .register_workflow::<CreateActivity>()?
         .register_workflow::<UpdateActivity>()?
@@ -25,7 +39,7 @@ pub fn worker(
         .register_workflow::<BackfillActivities>()?
         .register_workflow::<DisconnectStrava>()?
         .register_workflow::<ScheduledSync>()?
-        .register_activities(StravaActivities::new(db))
+        .register_activities(StravaActivities::with_operations(operations))
         .graceful_shutdown_period(Duration::from_secs(10))
         .build();
     Ok(Worker::new(runtime, client, options)?)

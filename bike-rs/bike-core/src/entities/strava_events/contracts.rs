@@ -44,6 +44,13 @@ pub struct NormalizedActivity {
     pub source: ObjectRef,
     pub parsed: Option<ObjectRef>,
 }
+/// Provider intake retains bytes; the shared activity pipeline parses them.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RetainedActivity {
+    pub event: StravaEvent,
+    pub source: ObjectRef,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActivityChange {
     pub event: StravaEvent,

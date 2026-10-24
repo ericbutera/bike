@@ -1,7 +1,6 @@
 # Segment matching fixtures
 
-The City and Commons recordings together cover every segment matched on activity
-1671. Activity recordings already checked into this directory are reused.
+The City and Commons recordings together cover every segment matched on activity 1671. Activity recordings already checked into this directory are reused.
 
 `city_efforts.json` freezes the established matcher on `main` at
 `ee96f2889d30e18f4fe3cd9355239da407b6da9b`, before P5 candidate-query changes.
@@ -22,8 +21,7 @@ segment geometry (maximum segment-to-recording nearest-point offsets below
 20 meters). The second Ashes lap ends at 17998 seconds when matching the GPX's
 calculated distances, versus 17997 in the saved provider recording. These fixture
 expectations preserve the established P3 behavior: 18 City 1 efforts and 21 City 2
-efforts. Exact activity 1671 persistence acceptance remains in the performance
-plan.
+efforts. Exact activity 1671 persistence acceptance now uses the [shared DAG fixture](../activity_dag/README.md).
 The ordinary unit suite parses the real FIT and GPX files and compares membership
 and ordered windows. See the [matching specification](../../../../docs/specs/segment-processing.md#shared-real-ride-regressions).
 

@@ -173,7 +173,7 @@ fi
 # Copy current tracked source, including worktree edits, without an archive image.
 tar "${source_excludes[@]}" -cf - bike-ui/package.json bike-ui/pnpm-lock.yaml bike-ui/pnpm-workspace.yaml \
   bike-ui/playwright.config.mjs bike-ui/tests/e2e bike-ui/public/map-styles \
-  bike-rs/api/tests/fixtures/platform bike-rs/tests/fixtures/segment_matching \
+  bike-rs/api/tests/fixtures/platform bike-rs/tests/fixtures/segment_matching bike-rs/tests/fixtures/activity_dag \
   compose.yaml compose.e2e.yaml docker/*.env \
   scripts/e2e-state.sh scripts/e2e-reset.sql \
   scripts/e2e-browser.sh scripts/fixture-sequences.sql | docker cp - "$runner:/workspace"

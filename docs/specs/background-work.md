@@ -34,7 +34,7 @@
 - Controllers accept requests and return a job reference. Workflow methods show
   the processing steps. Activities call existing services/models; models own
   queries, transactions, uniqueness, and replacement writes.
-- Strava owns provider intake, OAuth, fetching, normalization, and connection
+- Strava owns provider intake, OAuth, fetching, and connection
   checks. Its workflows call the same neutral domain computations as file imports.
   Share domain operations and a small typed SDK helper without a generic DAG engine.
 - Temporal UI shows running/failed work and child steps. Bike retains source
@@ -58,6 +58,7 @@
 
 | Former task / current workflow name      | Required domain behavior                                                                                                                                                              | Implementation                                                                                                                                                                                                                                  |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `process_activity`                       | Process a retained provider source with the shared parser and saved-output DAG; preserve provider ordering and retry guards.                                                          | [Shared source workflow](../../bike-rs/bike-temporal/src/workflows/process_activity_import.rs)                                                                                                                                                  |
 | `process_activity_import`                | Read the retained source and supplemental recording, parse/enrich, deduplicate/save, then await segments, segment results, achievements, heatmap, training, fitness, and saved cards. | [Import](../../bike-rs/bike-temporal/src/workflows/process_activity_import.rs), [shared source operation](../../bike-rs/bike-core/src/activity_reprocessing.rs), [derived sequence](../../bike-rs/bike-temporal/src/workflows/steps/derived.rs) |
 | `reprocess_activity_import`              | Run the same sequence against the owned import/activity; preserve identity and user-edited title/Training/Race selection.                                                             | [Reprocess](../../bike-rs/bike-temporal/src/workflows/reprocess_activity_import.rs)                                                                                                                                                             |
 | `rebuild_fitness_freshness`              | Rebuild the user's stored fitness/fatigue/form from current activities using `rebuild_fitness_freshness_cache`.                                                                       | [Fitness](../../bike-rs/bike-temporal/src/workflows/rebuild_fitness_freshness.rs)                                                                                                                                                               |
@@ -110,7 +111,7 @@
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `strava_activity_create` | `CreateActivity` accepts a create and awaits its upsert.                                                                                                                                                 |
 | `strava_activity_update` | `UpdateActivity` accepts an update and awaits its upsert.                                                                                                                                                |
-| `strava_activity_upsert` | `UpsertActivity` fetches, normalizes, saves, and refreshes through its source child.                                                                                                                     |
+| `strava_activity_upsert` | `UpsertActivity` fetches and retains source data, then awaits the shared Bike DAG through its source child.                                                                                              |
 | `strava_activity_delete` | `DeleteActivity` captures affected data, deletes, and refreshes through its source child.                                                                                                                |
 | `strava_sync`            | `SyncActivities` pages provider activities, awaits upserts, and advances the connection offset.                                                                                                          |
 | `strava_backfill`        | `BackfillActivities` processes a fixed range without advancing the normal sync offset.                                                                                                                   |
@@ -424,6 +425,26 @@ flowchart TD
 
 ## Strava protocol and workflows
 
+### One activity ingestion path
+
+- Strava fetches and retains the full activity response and streams, including
+  unrecognized provider fields. Provider payloads remain immutable source objects.
+- Provider intake hands an owned retained source to the common activity-processing
+  workflow. The shared parser, normalized recording/metadata/lap persistence and
+  derived DAG own all activity processing, including segment matching, standings,
+  awards, climbs, cards, training, fitness and heatmaps. Strava has no second
+  implementation of those stages.
+- Source metadata supported by Bike includes provider title, description, gear,
+  location and private notes. Preserve unknown data in the retained provider
+  response so future consumers can use it without another provider fetch.
+- Keep the accepted provider event, connection generation, source revision and
+  deletion guards at the source handoff and commit. Stale fetches request a fresh
+  source; superseded events do not run derived work. Interrupted committed imports
+  resume the same shared DAG without replacing immutable award decisions.
+- Existing workflow histories retain replay-safe adapters while new executions
+  use the shared flow. Adapters delegate to the same owning domain operations;
+  they must not reintroduce a private parser or matching implementation.
+
 - Target intake is Strava → `/api/strava/webhook` → bounded durable acceptance.
   Preserve registered `/webhooks/strava-gateway` and `/oauth/gateway/callback`
   as aliases to native handlers, with existing ingress/TLS; no gateway code returns.
@@ -438,7 +459,7 @@ flowchart TD
   description, and gear ID/name when supplied. Missing gear name preserves its
   ID without another call. Store complete provider responses in object storage.
 - Fetch streams for recorded activities of every sport so supplied GPS can feed
-  [activity maps](maps.md#rider-experience). Keep the provider payload, parsed data,
+  [activity maps](maps.md#rider-experience). Keep the provider payload
   and stream bytes behind the existing object-storage wrapper.
 - Manual entries skip stream fetching. A stream endpoint's 404 means unavailable
   recording data: retain the summary with empty streams. Other failures, including
@@ -448,24 +469,24 @@ flowchart TD
   to exclude non-cycling activities from cycling calculations while keeping them
   visible in the feed; preserve unknown provider sports.
 
-| Workflow                        | Input                      | Source steps and result                                               |
-| ------------------------------- | -------------------------- | --------------------------------------------------------------------- |
-| CreateActivity / UpdateActivity | Strava event               | Await Upsert child; return Bike ID/status                             |
-| UpsertActivity / DeleteActivity | Event + remote activity ID | Await source-keyed ReconcileActivity; return ID/status                |
-| ReconcileActivity               | Event + remote activity ID | Fetch → normalize → persist → refresh, or capture → delete → refresh  |
-| SyncActivities                  | Event + saved offset       | List pages → await upsert children → commit offset; counts/new offset |
-| BackfillActivities              | Event + fixed range        | List range → await upsert children; counts without offset change      |
-| DisconnectStrava                | Event + revoke flag        | Delete children → optional revoke → remove connection                 |
-| ScheduledSync                   | Schedule context           | List connections → await sync children; per-connection results        |
+| Workflow                        | Input                      | Source steps and result                                                |
+| ------------------------------- | -------------------------- | ---------------------------------------------------------------------- |
+| CreateActivity / UpdateActivity | Strava event               | Await Upsert child; return Bike ID/status                              |
+| UpsertActivity / DeleteActivity | Event + remote activity ID | Await source-keyed ReconcileActivity; return ID/status                 |
+| ReconcileActivity               | Event + remote activity ID | Fetch → retain → shared ProcessActivity, or capture → delete → refresh |
+| SyncActivities                  | Event + saved offset       | List pages → await upsert children → commit offset; counts/new offset  |
+| BackfillActivities              | Event + fixed range        | List range → await upsert children; counts without offset change       |
+| DisconnectStrava                | Event + revoke flag        | Delete children → optional revoke → remove connection                  |
+| ScheduledSync                   | Schedule context           | List connections → await sync children; per-connection results         |
 
 - These are the nine workflows (Create and Update are separate). Review
   [their explicit implementations](../../bike-rs/strava-temporal/src/workflows.rs)
   and [typed Activities](../../bike-rs/strava-temporal/src/activities.rs).
   Call steps as `run(ctx, RevokeConnection, event).await?`; shared helpers adapt
   SDK failures/options and derive display names from registered markers.
-- The workflow table describes the existing provider sequence. Keep its explicit
-  fetch/normalize/persist/refresh shape when reusing Bike domain tasks. Per-item
-  rebuilds are acceptable; shared-output coordination is not a conversion gate.
+- New provider runs await the common `process_activity` workflow after retaining
+  the source. Completed source saves feed the same derived sequence as file imports.
+  Retained histories replay their earlier command order through delegated adapters.
 - Provider single-event parents await request-owned children and preserve the
   child's result: canceled preparation reports cancellation; a started mutation
   reports its actual completion or failure. Collections settle the current child,
@@ -624,8 +645,8 @@ flowchart TD
 
 ## Payload and history budgets
 
-- Retain raw activity responses, stream responses, normalized sources, and parsed
-  activities in Bike's existing persistent upload-volume object store. Temporal
+- Retain raw activity responses, stream responses, and shared normalized
+  recordings in Bike's existing persistent upload-volume object store. Temporal
   carries their path, SHA-256, and byte count; source size does not affect input size.
 - Limit each Strava value crossing a Temporal boundary to **256 KiB of serialized
   UTF-8 JSON**, including the complete event, nested values, and dependency IDs.
@@ -655,7 +676,7 @@ flowchart TD
 | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
 | `strava_fetch_activity`                                                                                                              | StravaEvent → ActivitySource (activity object reference)                     |
 | `strava_fetch_streams`                                                                                                               | ActivitySource → ActivitySources (activity + streams references)             |
-| `strava_normalize_activity`                                                                                                          | ActivitySources → NormalizedActivity (source + optional parsed reference)    |
+| `strava_retain_activity`                                                                                                             | ActivitySources → RetainedActivity (full source reference)                   |
 | `strava_persist_activity`                                                                                                            | NormalizedActivity → ActivityChange (Bike ID, status, affected dependencies) |
 | `strava_capture_deletion`                                                                                                            | StravaEvent → ActivityChange                                                 |
 | `strava_delete_activity`                                                                                                             | ActivityChange → ActivityChange                                              |
@@ -914,5 +935,7 @@ flowchart TD
 - After all segments publish, refresh affected activity summaries once from the
   union of current effort activity IDs and explicitly supplied removed-match IDs.
   Saved award decisions are read, never reconsidered by this operation.
-- The upload workflow's singleton child composition remains the P13 caller cutover.
-  Historical pair persistence and interrupted-removal invalidation remain P4/P14.
+- Source workflows publish affected segment results in batches of at most 500,
+  then await awards, heatmap, training and fitness. Native patch
+  `activity-segment-results-batch-v1` preserves singleton children in old histories.
+  Historical traversal paging remains P14.

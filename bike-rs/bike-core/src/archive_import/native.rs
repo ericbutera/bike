@@ -316,6 +316,18 @@ mod tests {
             objects.read_bytes(key.location.as_ref()).await.unwrap().unwrap(),
             upload.bytes
         );
-        assert!(format!("{:?}", db.into_transaction_log()).contains(key.location.as_ref()));
+        let transactions = db.into_transaction_log();
+        let insertion = transactions
+            .iter()
+            .flat_map(|transaction| transaction.statements())
+            .find(|statement| statement.sql.starts_with("INSERT INTO \"activity_imports\""))
+            .unwrap();
+        assert!(insertion
+            .values
+            .as_ref()
+            .unwrap()
+            .0
+            .contains(&sea_orm::Value::from("archive_url_import")));
+        assert!(format!("{transactions:?}").contains(key.location.as_ref()));
     }
 }

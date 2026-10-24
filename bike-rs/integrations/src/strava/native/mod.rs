@@ -8,7 +8,8 @@ mod scan;
 pub(crate) mod tests;
 pub use bike_core::entities::strava_events::{
     ActivityChange, ActivityPage, ActivitySource, ActivitySources, ActivityStatus, ActivityWindow, ChildEvent,
-    CollectionInput, CollectionProgress, CollectionResult, NormalizedActivity, PageInput, ScanPage, ScanRequest,
+    CollectionInput, CollectionProgress, CollectionResult, NormalizedActivity, PageInput, RetainedActivity, ScanPage,
+    ScanRequest,
 };
 
 use super::{
@@ -28,6 +29,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct StravaOperations {
     pub(crate) db: DatabaseConnection,
+    objects: bike_core::object_store::ObjectStore,
     store: Arc<dyn ActivityStorage>,
     provider: Arc<dyn StravaProvider>,
 }
@@ -39,15 +41,25 @@ impl StravaOperations {
             db: db.clone(),
             store: store.clone(),
         };
-        Self::with_dependencies(db, Arc::new(provider), Arc::new(store))
+        let objects = bike_core::object_store::ObjectStore::filesystem(
+            &Config::get().uploads_dir,
+            bike_core::object_store::ObjectOwner::Strava,
+        );
+        Self::with_dependencies(db, Arc::new(provider), Arc::new(store), objects)
     }
 
     pub fn with_dependencies(
         db: DatabaseConnection,
         provider: Arc<dyn StravaProvider>,
         store: Arc<dyn ActivityStorage>,
+        objects: bike_core::object_store::ObjectStore,
     ) -> Self {
-        Self { db, provider, store }
+        Self {
+            db,
+            provider,
+            store,
+            objects,
+        }
     }
 
     #[tracing::instrument(
@@ -121,33 +133,39 @@ impl StravaOperations {
         })
     }
 
-    pub async fn normalize_activity(&self, input: ActivitySources) -> Result<NormalizedActivity, WorkflowError> {
-        let activity = self.store.read_json::<StravaActivitySummary>(&input.activity).await?;
-        if activity.id != input.event.activity_id()? {
-            return Err(WorkflowError::bad_request("Strava source does not match its event"));
+    pub async fn retain_activity(&self, input: ActivitySources) -> Result<RetainedActivity, WorkflowError> {
+        let activity: serde_json::Value = serde_json::from_slice(&self.store.read(&input.activity).await?)
+            .map_err(|error| WorkflowError::invalid_data(error.to_string()))?;
+        if activity.get("id").and_then(serde_json::Value::as_i64) != Some(input.event.activity_id()?) {
+            return Err(WorkflowError::invalid_data("Strava source does not match its event"));
         }
-        let streams = self.store.read_json::<StravaActivityStreams>(&input.streams).await?;
-        let upload = super::build_activity_upload(&activity, &streams)?;
-        let parsed =
-            bike_core::activity_parser::parse_activity_artifact(bike_core::activity_parser::ActivityParserArtifact {
-                original_filename: &upload.original_filename,
-                format: "json",
-                artifact_kind: "provider_payload",
-                source_quality: "strava_streams",
-                bytes: &upload.bytes,
-            })?;
+        let streams: serde_json::Value = serde_json::from_slice(&self.store.read(&input.streams).await?)
+            .map_err(|error| WorkflowError::invalid_data(error.to_string()))?;
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "v": 1,
+            "provider": "strava",
+            "provider_activity_id": input.event.activity_id()?,
+            "activity": activity,
+            "streams": streams,
+        }))
+        .map_err(|error| WorkflowError::internal(error.to_string()))?;
         let source = self
-            .store
-            .write(&self.key(&input.event, "normalized-source"), &upload.bytes)
+            .objects
+            .write(&self.key(&input.event, "retained-source"), &bytes)
             .await?;
-        let parsed = self
-            .store
-            .transform(&self.key(&input.event, "normalized-activity"), &parsed)
-            .await?;
-        Ok(NormalizedActivity {
+        Ok(RetainedActivity {
             event: input.event,
             source,
-            parsed: Some(parsed),
+        })
+    }
+
+    /// Retained Temporal histories use this adapter; it performs no parsing.
+    pub async fn normalize_activity(&self, input: ActivitySources) -> Result<NormalizedActivity, WorkflowError> {
+        let retained = self.retain_activity(input).await?;
+        Ok(NormalizedActivity {
+            event: retained.event,
+            source: retained.source,
+            parsed: None,
         })
     }
 
