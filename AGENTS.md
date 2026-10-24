@@ -144,6 +144,14 @@ update the remote PR branch under the standing authorization above.
 
 Do not start commits with the word add (eg: `feat: added architecture diagram`), instead use `feat: architecture diagram`.
 
+## PR reviews
+
+Use the repository [Bike PR review skill](.agents/skills/bike-pr-review/SKILL.md)
+for requested PR or branch reviews. Review the intended feature against its spec,
+trace correctness and domain ownership, inspect query growth, and check whether
+tests assert the promised behavior. Report actionable findings and verification
+limits; passing checks alone do not establish correctness.
+
 ## code standards
 
 - Keep controllers thin: adapt HTTP input/output and call a service. Services compose application workflows and delegate meaningful steps to named helpers. Put database queries on their owning entity/model modules. Prefer mature, type-safe frameworks and ORMs when they reduce duplicated infrastructure. Historical migrations are append-only; preserve their order and contents.
