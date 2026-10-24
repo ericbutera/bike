@@ -1,17 +1,17 @@
 {
-  "commit": "2da1d7fa63981b625bf78d2b06bc4d0c83f4cd89",
-  "created_at": "2026-10-23T14:41:12Z",
-  "base_revision": "eb7fcc43b55581923825bdfdabd29b865503cbc6",
-  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/723",
+  "commit": "c6c4303d43cbf66209853b43804da08fbf15a3ce",
+  "created_at": "2026-10-24T03:37:21Z",
+  "base_revision": "7a6ca2555bb74486c3a54865baa3651a7a8d642b",
+  "pipeline_url": "https://ci.nibelheim.dev/repos/3/pipeline/767",
   "minimum_changed_line_percent": 80,
   "projects": {
     "api": {
       "name": "Bike API",
       "language": "Rust",
       "source": "bike-rs/api",
-      "lines": 6340,
-      "covered": 4259,
-      "percent": 67.17665615141955,
+      "lines": 6379,
+      "covered": 4636,
+      "percent": 72.67596802006584,
       "changed": {
         "lines": 0,
         "covered": 0,
@@ -35,9 +35,9 @@
       "name": "Provider integrations",
       "language": "Rust",
       "source": "bike-rs/integrations",
-      "lines": 2705,
-      "covered": 1807,
-      "percent": 66.80221811460258,
+      "lines": 2711,
+      "covered": 1811,
+      "percent": 66.80191811139801,
       "changed": {
         "lines": 0,
         "covered": 0,
@@ -61,22 +61,22 @@
       "name": "Shared Bike core",
       "language": "Rust",
       "source": "bike-rs/bike-core",
-      "lines": 26484,
-      "covered": 19431,
-      "percent": 73.36882646125963,
+      "lines": 27081,
+      "covered": 20115,
+      "percent": 74.27716849451646,
       "changed": {
-        "lines": 0,
-        "covered": 0,
-        "percent": 100.0
+        "lines": 153,
+        "covered": 152,
+        "percent": 99.35
       }
     },
     "bike-temporal": {
       "name": "Bike Temporal workflows",
       "language": "Rust",
       "source": "bike-rs/bike-temporal",
-      "lines": 1130,
-      "covered": 1068,
-      "percent": 94.51327433628319,
+      "lines": 1207,
+      "covered": 1131,
+      "percent": 93.70339685169843,
       "changed": {
         "lines": 0,
         "covered": 0,
@@ -87,12 +87,12 @@
       "name": "Bike UI",
       "language": "Next.js",
       "source": "bike-ui",
-      "lines": 5758,
-      "covered": 3915,
-      "percent": 67.99,
+      "lines": 5766,
+      "covered": 3955,
+      "percent": 68.59,
       "changed": {
-        "lines": 0,
-        "covered": 0,
+        "lines": 1,
+        "covered": 1,
         "percent": 100.0
       }
     },
