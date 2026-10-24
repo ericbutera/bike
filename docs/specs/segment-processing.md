@@ -276,3 +276,21 @@ Older activities uploaded before route-point persistence or before a parser fix 
 
 Follow-up status and priority live only in the [Bike TODO](../TODO.md).
 This specification is the processing reference for DATA05, DATA16, and SEG01.
+
+## Shared real-ride regressions
+
+- Reuse `city_01.fit`, `city_02.fit` and `commons_01.fit` with the shared segment
+  GPXs to cover every segment matched on activity 1671. Add missing segment
+  definitions instead of duplicating existing activity recordings.
+- Freeze the established City fixture segment membership, every traversal in recording
+  order, recording indexes, elapsed-time bounds and durations in
+  `city_efforts.json`. Include nonmatching segment definitions as negative cases.
+  Expected values come from the pre-change `main` matcher and are cross-checked
+  against saved efforts; document any existing differences in the fixture README.
+  Never regenerate them from a changed candidate to make a test pass.
+- Parse the FIT/GPX files through the normal activity parser and run regressions
+  as ordinary unit tests in local checks and CI. They require no production
+  service, private snapshot, environment variable or ignored test.
+- GPX contains geometry; its distances are calculated from GPS. Exact provider
+  distances and persistence still use the frozen activity 1671 DAG integration
+  reference defined in the [performance plan](https://github.com/ericbutera/bike/blob/docs/performance-backlog/docs/specs/performance.md#activity-1671-regression-acceptance).

@@ -236,3 +236,45 @@ fn nearby_short_connector_fixture_does_not_become_an_effort() {
 
     assert!(match_segment_efforts(&segment, &recording).is_empty());
 }
+
+#[derive(serde::Deserialize)]
+struct CitySegmentReference {
+    file: String,
+    city_01: Vec<[i32; 5]>,
+    city_02: Vec<[i32; 5]>,
+}
+
+fn effort_windows(efforts: &[MatchedSegmentEffort]) -> Vec<[i32; 5]> {
+    efforts
+        .iter()
+        .map(|effort| {
+            [
+                effort.start_route_point_index,
+                effort.end_route_point_index,
+                effort.start_elapsed_seconds,
+                effort.end_elapsed_seconds,
+                effort.duration_seconds,
+            ]
+        })
+        .collect()
+}
+
+#[test]
+fn city_rides_preserve_segment_membership_and_ordered_traversals() {
+    let references: Vec<CitySegmentReference> = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/segment_matching/city_efforts.json"
+    ))
+    .unwrap();
+    let city_01 = fixture_route("activities", "city_01.fit");
+    let city_02 = fixture_route("activities", "city_02.fit");
+    for reference in references {
+        let segment = fixture_route("segments", &reference.file);
+        for (file, recording, expected) in [
+            ("city_01.fit", &city_01, &reference.city_01),
+            ("city_02.fit", &city_02, &reference.city_02),
+        ] {
+            let actual = match_segment_efforts(&segment, recording);
+            assert_eq!(effort_windows(&actual), *expected, "{file}: {}", reference.file);
+        }
+    }
+}
