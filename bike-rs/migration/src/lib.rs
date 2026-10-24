@@ -79,6 +79,7 @@ mod m20261023_000003_activity_cards;
 mod m20261024_000009_climb_report_facts;
 mod m20261024_000010_activity_recordings;
 mod m20261024_000011_activity_metadata_laps;
+mod m20261024_000012_route_matching_bounds;
 
 pub struct Migrator;
 
@@ -162,6 +163,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261015_000001_background_task_insert_defaults::Migration),
             Box::new(m20261024_000011_activity_metadata_laps::Migration),
             Box::new(m20261024_000010_activity_recordings::Migration),
+            Box::new(m20261024_000012_route_matching_bounds::Migration),
         ];
         locals.sort_by_key(|m| m.name().to_string());
 

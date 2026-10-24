@@ -30,6 +30,17 @@ pub(super) fn lap_recording(laps: &[(f64, i32)]) -> Vec<ActivityRoutePoint> {
     route
 }
 
+fn assert_geographic_candidate(segment: &[ActivityRoutePoint], recording: &[ActivityRoutePoint]) {
+    use crate::entities::route_matching_bounds::Bounds;
+
+    let corridor = Bounds::from_route(segment).unwrap().unwrap().matching_corridor();
+    let activity = Bounds::from_route(recording).unwrap().unwrap();
+    assert!(activity.min_latitude <= corridor.max_latitude);
+    assert!(activity.max_latitude >= corridor.min_latitude);
+    assert!(activity.min_longitude <= corridor.max_longitude);
+    assert!(activity.max_longitude >= corridor.min_longitude);
+}
+
 fn recording_bounds(matches: &[MatchedSegmentEffort]) -> Vec<(i32, i32)> {
     matches
         .iter()
@@ -225,6 +236,8 @@ fn favorite_segment_fixtures_match_expected_activity_files() {
                 !match_segment_efforts(&segment, &recording).is_empty(),
                 "{activity_file} must match {segment_file}"
             );
+            assert_geographic_candidate(&segment, &recording);
+            assert_geographic_candidate(&recording, &segment);
         }
     }
 }
@@ -235,6 +248,17 @@ fn nearby_short_connector_fixture_does_not_become_an_effort() {
     let recording = fixture_route("activities", "short_connector_nearby_route.gpx");
 
     assert!(match_segment_efforts(&segment, &recording).is_empty());
+}
+
+#[test]
+fn geographic_candidates_preserve_matches_for_each_supported_traversal_profile() {
+    for drift in [0.0, 60.0, 110.0] {
+        let segment = segment_route(2000.0);
+        let recording = lap_recording(&[(drift, 600)]);
+        assert_eq!(match_segment_efforts(&segment, &recording).len(), 1);
+        assert_geographic_candidate(&segment, &recording);
+        assert_geographic_candidate(&recording, &segment);
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -274,6 +298,10 @@ fn city_rides_preserve_segment_membership_and_ordered_traversals() {
             ("city_02.fit", &city_02, &reference.city_02),
         ] {
             let actual = match_segment_efforts(&segment, recording);
+            if !actual.is_empty() {
+                assert_geographic_candidate(&segment, recording);
+                assert_geographic_candidate(recording, &segment);
+            }
             assert_eq!(effort_windows(&actual), *expected, "{file}: {}", reference.file);
         }
     }

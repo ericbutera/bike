@@ -10,12 +10,17 @@ use sea_orm::{ActiveModelTrait, DatabaseTransaction, EntityTrait, IntoActiveMode
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 
+#[path = "e2e-fixtures/segment_matching.rs"]
+mod segment_matching;
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Dataset {
     records: Vec<Record>,
     #[serde(default)]
     prepare_heatmaps: bool,
+    #[serde(default)]
+    segment_matching: Option<segment_matching::Input>,
 }
 
 #[derive(Deserialize)]
@@ -162,7 +167,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input)?;
-    let dataset: Dataset = serde_json::from_str(&input)?;
+    let mut dataset: Dataset = serde_json::from_str(&input)?;
+    let matching = dataset.segment_matching.take();
+    if staging && matching.is_some() {
+        return Err("Matching acceptance requires a disposable E2E project".into());
+    }
     let db = bike_core::db::connect_database(&std::env::var("DATABASE_URL")?).await?;
     if staging && staging_already_seeded(&db, &dataset).await? {
         if dataset.prepare_heatmaps {
@@ -172,6 +181,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     seed(&db, dataset).await?;
+    if let Some(input) = matching {
+        println!("{}", serde_json::to_string(&segment_matching::run(&db, input).await?)?);
+    }
     Ok(())
 }
 

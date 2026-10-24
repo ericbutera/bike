@@ -93,6 +93,7 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
         .append_query_results([existing])
         .append_query_results([vec![activity]])
         .append_query_results([Vec::<bike_core::entities::activity_recordings::Model>::new()])
+        .append_exec_results([executed()])
         .append_query_results([vec![domain.activity_state()]])
         .append_exec_results([executed(), executed(), executed()]);
     let mock = if crate::strava::provider_payload::strava_activity_is_bike(&fixture.provider.payload.activity) || update

@@ -1,9 +1,10 @@
 use crate::activity_data::StoredRoutePointSeries;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::sea_query::Expr;
+use sea_orm::sea_query::{Expr, SelectStatement, UnionType};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DbErr, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, TransactionSession,
+    ColumnTrait, ConnectionTrait, DbErr, ExprTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
+    Select, TransactionSession,
 };
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
@@ -123,20 +124,99 @@ impl Model {
             .await
     }
 
-    pub async fn matching_routes_page<C>(db: &C, after_id: i32, limit: u64) -> Result<Vec<SegmentMatchingRoute>, DbErr>
+    pub async fn matching_routes_page<C>(
+        db: &C,
+        after_id: i32,
+        limit: u64,
+        bounds: Option<super::route_matching_bounds::Bounds>,
+    ) -> Result<Vec<SegmentMatchingRoute>, DbErr>
     where
         C: ConnectionTrait,
     {
         Entity::find()
             .select_only()
-            .column(Column::Id)
-            .column(Column::RouteDataJson)
-            .filter(Column::Id.gt(after_id))
+            .columns([Column::Id, Column::RouteDataJson])
+            .filter(Column::Id.in_subquery(Self::matching_id_page(after_id, limit, bounds)))
             .order_by_asc(Column::Id)
-            .limit(limit)
             .into_model::<SegmentMatchingRoute>()
             .all(db)
             .await
+    }
+
+    fn matching_id_page(
+        after_id: i32,
+        limit: u64,
+        bounds: Option<super::route_matching_bounds::Bounds>,
+    ) -> SelectStatement {
+        Entity::find()
+            .select_only()
+            .column(Column::Id)
+            .filter(Column::Id.gt(after_id))
+            .apply_if(bounds, |query, bounds| {
+                query.filter(Column::Id.in_subquery(Self::candidate_segment_ids(bounds)))
+            })
+            .order_by_asc(Column::Id)
+            .limit(limit.clamp(1, 25))
+            .into_query()
+    }
+
+    fn candidate_segment_ids(bounds: super::route_matching_bounds::Bounds) -> SelectStatement {
+        Self::overlapping_segment_ids(bounds)
+            .union(
+                UnionType::All,
+                Self::segments_without_bounds()
+                    .select_only()
+                    .column(Column::Id)
+                    .into_query(),
+            )
+            .to_owned()
+    }
+
+    fn overlapping_segment_ids(bounds: super::route_matching_bounds::Bounds) -> SelectStatement {
+        use super::route_matching_bounds::segment::{Column as BoundsColumn, Entity as BoundsEntity};
+
+        BoundsEntity::find()
+            .select_only()
+            .column(BoundsColumn::SegmentId)
+            // Match the partial GiST index predicate even with a generic prepared plan.
+            .filter(BoundsColumn::PointCount.into_expr().gte(Expr::Constant(2.into())))
+            .filter(bounds.overlaps(
+                [
+                    BoundsColumn::MinLongitude.into_expr(),
+                    BoundsColumn::MinLatitude.into_expr(),
+                ],
+                [
+                    BoundsColumn::MaxLongitude.into_expr(),
+                    BoundsColumn::MaxLatitude.into_expr(),
+                ],
+            ))
+            .into_query()
+    }
+
+    pub(super) async fn pending_matching_bounds_ids(
+        db: &impl ConnectionTrait,
+        after_id: i32,
+    ) -> Result<Vec<i32>, DbErr> {
+        Self::segments_without_bounds()
+            .select_only()
+            .column(Column::Id)
+            .filter(Column::Id.gt(after_id))
+            .order_by_asc(Column::Id)
+            .limit(16)
+            .into_tuple::<i32>()
+            .all(db)
+            .await
+    }
+
+    fn segments_without_bounds() -> Select<Entity> {
+        use super::route_matching_bounds::segment::{Column as BoundsColumn, Entity as BoundsEntity};
+
+        let saved_bounds = BoundsEntity::find()
+            .select_only()
+            .column(BoundsColumn::SegmentId)
+            .filter(Expr::col((BoundsEntity, BoundsColumn::SegmentId)).equals((Entity, Column::Id)))
+            .into_query();
+        Entity::find().filter(Expr::exists(saved_bounds).not())
     }
 
     pub async fn list_by_ids<C>(db: &C, segment_ids: &[i32]) -> Result<Vec<Model>, DbErr>

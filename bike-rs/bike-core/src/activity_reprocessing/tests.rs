@@ -120,6 +120,7 @@ async fn a_new_import_reuses_its_existing_activity_after_a_lost_completion() {
         .append_query_results([vec![import]])
         .append_query_results([vec![activity]])
         .append_query_results([vec![fixture::saved_activity()]])
+        .append_exec_results([fixtures::written()])
         .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
         .append_exec_results([
             fixtures::written(),
@@ -153,6 +154,7 @@ async fn a_new_import_saves_the_activity_and_links_its_import() {
         .append_query_results([Vec::<activities::Model>::new()])
         .append_query_results([Vec::<activities::Model>::new()])
         .append_query_results([vec![fixture::saved_activity()]])
+        .append_exec_results([fixtures::written()])
         .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
         .append_exec_results([
             fixtures::written(),
@@ -314,6 +316,7 @@ async fn another_recording_of_the_same_ride_reuses_the_activity() {
         .append_query_results([Vec::<activities::Model>::new()])
         .append_query_results([vec![duplicate.clone()], vec![duplicate.clone()]])
         .append_query_results([vec![fixtures::reprocess_import()]])
+        .append_exec_results([fixtures::written()])
         .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
         .append_exec_results([fixtures::written()])
         .append_exec_results((0..3).map(|_| fixtures::written()))
@@ -373,6 +376,7 @@ async fn duplicate_recordings_publish_merged_evidence_without_replacing_the_orig
         .append_query_results([Vec::<activities::Model>::new()])
         .append_query_results([vec![existing.clone()], vec![existing.clone()]])
         .append_query_results([vec![fixtures::reprocess_import()]])
+        .append_exec_results([fixtures::written()])
         .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
         .append_exec_results([fixtures::written(), fixtures::written()])
         .append_exec_results((0..3).map(|_| fixtures::written()))

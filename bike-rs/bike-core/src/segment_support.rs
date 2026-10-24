@@ -80,6 +80,13 @@ const REWORKED_TRAIL_MATCH_PROFILE: MatchProfile = MatchProfile {
     shape_max_threshold_meters: REWORKED_SHAPE_MAX_THRESHOLD_METERS,
     max_score: Some(REWORKED_SCORE_THRESHOLD),
 };
+/// Maximum supported endpoint corridor for conservative SQL candidate discovery.
+pub(crate) fn candidate_corridor_meters() -> f64 {
+    STRICT_MATCH_PROFILE
+        .max_endpoint_threshold_meters
+        .max(FALLBACK_MATCH_PROFILE.max_endpoint_threshold_meters)
+        .max(REWORKED_TRAIL_MATCH_PROFILE.max_endpoint_threshold_meters)
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MatchedSegmentEffort {
@@ -159,8 +166,9 @@ where
     let txn = db.begin().await?;
     let mut matched_segments = Vec::new();
     let mut after_id = 0;
+    let bounds = crate::entities::route_matching_bounds::Bounds::from_route(activity_route_points)?;
     while activity_route_points.len() >= 2 {
-        let candidates = segments::Model::matching_routes_page(&txn, after_id, 25).await?;
+        let candidates = segments::Model::matching_routes_page(&txn, after_id, 25, bounds).await?;
         let Some(last) = candidates.last() else {
             break;
         };

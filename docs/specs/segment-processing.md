@@ -125,6 +125,36 @@ The activity ingestion graph also rebuilds segment efforts after an activity is 
   Removing broad retry invalidation and resolving matching/analytics/deletion lock order
   (LOAD06) remain follow-ups before historical matching is enabled.
 
+### Geographic candidate filtering
+
+- Save compact route bounds in `activity_route_bounds` and `segment_route_bounds`
+  from normalized activity routes and fixed segment geometry. Imports and segment
+  creation publish bounds with their owning transaction; rename does not rebuild them.
+- Define tables, constraints, cascade foreign keys and partial spatial indexes
+  through SeaORM migration builders.
+- Compose candidate selection with typed SeaORM/SeaQuery expressions. Share the
+  PostgreSQL box-overlap expression; keep cycling eligibility, missing-bound
+  fallback and bounded paging explicit, with automatically bound parameters.
+- Preserve matching behavior with ordinary real-ride fixture regressions and
+  specialized geographic boundary cases. Accepted traversals must survive the
+  geographic prefilter in both activity-to-segment and segment-to-activity queries.
+- GiST indexes over native PostgreSQL boxes narrow candidates in SQL. Select a
+  deterministic, bounded ID page before hydrating segment geometry or historical
+  activity recordings. Historical candidates include cycling activities across riders.
+- Expand the source box by the largest supported endpoint corridor, including a
+  one-meter allowance for recording encoding precision. Coarse overlap is not a
+  match; the unchanged matcher still checks direction, shape and every traversal.
+- Antimeridian crossings and polar corridors use conservative longitude coverage.
+  Missing bounds remain candidates. A saved route with fewer than two points
+  cannot match. Heatmap exclusions or publication state do not affect these queries.
+- Run `backfill_activity_route_bounds` and `backfill_segment_route_bounds` on
+  `bike-tasks`, each with input `0`. Each uses 16-ID pages and short per-output
+  transactions. Activity bounds require the P1 normalized recording output; run
+  `backfill_activity_recordings` first. Missing recording output fails explicitly.
+- Backfills save only bounds. They do not match efforts, refresh standings or
+  reconsider awards. P14 owns the historical matching workflow; personal
+  recording/comparison reads remain owner-scoped.
+
 ## Matching Contract
 
 Bike matches stored segment routes against normalized activity route points to create segment efforts. This contract must stay stable across parser, matcher, import, and performance changes.
@@ -291,6 +321,15 @@ This specification is the processing reference for DATA05, DATA16, and SEG01.
 - Parse the FIT/GPX files through the normal activity parser and run regressions
   as ordinary unit tests in local checks and CI. They require no production
   service, private snapshot, environment variable or ignored test.
+- Connected acceptance loads the same recordings and segment GPXs into the
+  existing migrated E2E PostgreSQL database. Execute the production candidate
+  queries in both directions, then persist activity matches and compare ordered
+  effort windows with `city_efforts.json`.
+- Connected cases must exercise multiple ID pages, matches across activity owners,
+  missing-bound fallback, noncycling exclusion, saved empty/single-point routes,
+  distant routes, and inclusive corridor boundaries. Keep matcher negatives even
+  when their coarse boxes overlap. The default E2E gate runs these checks through
+  the native fixture command without an ingestion worker.
 - GPX contains geometry; its distances are calculated from GPS. Exact provider
   distances and persistence still use the frozen activity 1671 DAG integration
   reference defined in the [performance plan](https://github.com/ericbutera/bike/blob/docs/performance-backlog/docs/specs/performance.md#activity-1671-regression-acceptance).
