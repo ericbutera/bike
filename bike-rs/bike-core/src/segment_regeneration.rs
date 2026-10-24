@@ -1,7 +1,5 @@
 use crate::activity_data::deserialize_derived_activity_data;
-use crate::analytics::{
-    mark_segment_activity_changes, rebuild_activity_analytics_cache, rebuild_segment_analytics_cache,
-};
+use crate::analytics::{mark_segment_activity_changes, rebuild_segment_results};
 use crate::entities::{activities, segments};
 use crate::segment_support::{
     deserialize_segment_route_points, replace_segment_efforts_for_segment, SegmentSupportError,
@@ -58,8 +56,7 @@ pub async fn regenerate_segment_efforts(
     let affected_activity_ids =
         replace_segment_efforts_for_segment(db, segment.user_id, segment.id, &route_points).await?;
     mark_segment_activity_changes(db, &[segment.id], Utc::now()).await?;
-    rebuild_segment_analytics_cache(db, &[segment.id]).await?;
-    rebuild_activity_analytics_cache(db, &affected_activity_ids).await?;
+    rebuild_segment_results(db, &[segment.id], &affected_activity_ids).await?;
 
     Ok(())
 }

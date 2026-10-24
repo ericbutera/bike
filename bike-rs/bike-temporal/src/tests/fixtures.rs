@@ -142,7 +142,7 @@ impl DerivedOperations for Operations {
     async fn rebuild_activity_training(&self, task: ActivityTask) -> Result<(), WorkflowError> {
         self.record("rebuild_activity_training", &task)
     }
-    async fn rebuild_segment_analytics(&self, task: SegmentChange) -> Result<(), WorkflowError> {
+    async fn rebuild_segment_analytics(&self, task: SegmentAnalyticsTask) -> Result<(), WorkflowError> {
         self.record("rebuild_segment_analytics", &task)
     }
     async fn prepare_heatmap(&self, task: ActivityTask) -> Result<(), WorkflowError> {

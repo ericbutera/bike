@@ -1,7 +1,7 @@
 //! Activities call domain operations directly; Temporal owns their execution state.
 use crate::activities::{DerivedOperations, ImportOperations};
 use bike_core::{
-    bike_tasks::{ActivityImportResult, ActivityTask, FitnessChange, ImportExecution, SegmentChange},
+    bike_tasks::{ActivityImportResult, ActivityTask, FitnessChange, ImportExecution, SegmentAnalyticsTask},
     entities::{activities, heatmap_projections},
     heatmaps::{
         preparation,
@@ -80,8 +80,8 @@ impl DerivedOperations for BikeOperations {
         Ok(())
     }
 
-    async fn rebuild_segment_analytics(&self, task: SegmentChange) -> Result<(), WorkflowError> {
-        bike_core::analytics::rebuild_segment_analytics_cache(&self.db, &[task.segment_id]).await?;
+    async fn rebuild_segment_analytics(&self, task: SegmentAnalyticsTask) -> Result<(), WorkflowError> {
+        bike_core::analytics::rebuild_segment_analytics_cache(&self.db, &task.segment_ids()).await?;
         Ok(())
     }
 

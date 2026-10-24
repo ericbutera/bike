@@ -218,13 +218,19 @@ async fn changed_or_deleted_segment_input_publishes_no_current_results_or_award_
         None,
     ];
     for current in current_segments {
+        let changed = current.is_some();
         let db = fixtures::postgres_mock()
             .append_query_results([vec![segment.clone()]])
             .append_query_results([vec![fixtures::segment_effort()]])
             .append_query_results([vec![fixtures::activity()]])
             .append_query_results([current.into_iter().collect::<Vec<_>>()])
             .into_connection();
-        rebuild_segment_analytics_cache(&db, &[segment.id]).await.unwrap();
+        let result = rebuild_segment_analytics_cache(&db, &[segment.id]).await;
+        if changed {
+            assert!(result.unwrap_err().to_string().contains("retry"));
+        } else {
+            result.unwrap();
+        }
         let log = db.into_transaction_log();
         let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
         assert_eq!(statements.last().unwrap().sql, "ROLLBACK");
@@ -255,4 +261,59 @@ async fn personal_or_overall_publication_failure_rolls_back_every_current_result
             .any(|s| s.sql.starts_with("UPDATE \"segment_efforts\"")));
         assert!(!statements.iter().any(|s| s.sql.contains("activity_analytics")));
     }
+}
+
+#[tokio::test]
+async fn a_segment_batch_refreshes_shared_and_removed_activity_summaries_once() {
+    let mut mock = fixtures::postgres_mock();
+    for segment_id in [1, 2] {
+        let segment = segments::Model {
+            id: segment_id,
+            ..fixtures::segment()
+        };
+        mock = mock
+            .append_query_results([vec![segment.clone()]])
+            .append_query_results([vec![effort(segment_id, 7, segment_id)]])
+            .append_query_results([vec![fixtures::activity()]])
+            .append_query_results([vec![segment]])
+            .append_query_results([vec![fixtures::segment_summary()]])
+            .append_exec_results((0..8).map(|_| fixtures::written()));
+    }
+    let removed = activity_analytics::Model {
+        activity_id: 43,
+        ..fixtures::activity_analytics()
+    };
+    let db = mock
+        .append_query_results([vec![fixtures::activity_id_row()]])
+        .append_query_results([vec![fixtures::activity_analytics(), removed]])
+        .append_query_results([vec![effort(1, 7, 1), effort(2, 7, 2)]])
+        .append_query_results([Vec::<activity_award_outputs::Model>::new()])
+        .append_query_results([Vec::<activity_earned_awards::Model>::new()])
+        .append_exec_results([fixtures::written()])
+        .into_connection();
+    rebuild_segment_results(&db, &[2, 1, 1, 0], &[43, 42, 43])
+        .await
+        .unwrap();
+    let log = db.into_transaction_log();
+    let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
+    let writes: Vec<_> = statements
+        .iter()
+        .filter(|statement| statement.sql.starts_with("INSERT INTO \"activity_analytics\""))
+        .collect();
+    assert_eq!(writes.len(), 1);
+    let values = &writes[0].values.as_ref().unwrap().0;
+    // Each row has activity ID, owner, effort count, and the five award-count fields.
+    let rows: Vec<_> = values.chunks(7).collect();
+    assert!(rows.iter().any(|row| row[0] == 42.into() && row[2] == 2.into()));
+    assert!(rows.iter().any(|row| row[0] == 43.into() && row[2] == 0.into()));
+    assert_eq!(
+        statements
+            .iter()
+            .filter(|s| s.sql.starts_with("INSERT INTO \"segment_summaries\""))
+            .count(),
+        2
+    );
+    assert!(!statements
+        .iter()
+        .any(|s| s.sql.starts_with("INSERT INTO \"activity_earned_awards\"")));
 }

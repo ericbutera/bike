@@ -215,7 +215,6 @@ flowchart TD
   Repeating unchanged input reuses the artifact; empty output remains successful.
   Backfill only climbs, without reparsing sources, matching or recalculating awards.
 
-
 ## Identity and causal context
 
 - Pass the owned import/file reference and activity ID when known. New imports
@@ -902,3 +901,18 @@ flowchart TD
 - [Cancellation](https://docs.temporal.io/encyclopedia/workflow/cancellation-and-termination)
 - [Activity heartbeats](https://docs.temporal.io/encyclopedia/detecting-activity-failures#activity-heartbeat)
 - [Strava webhook contract](https://developers.strava.com/docs/webhooks/)
+
+## Current segment result publication
+
+- `rebuild_segment_analytics` accepts either its existing single-segment input
+  or a batch of affected segment IDs. Queue submissions normalize the batch and
+  start one workflow per at most 500 segments; existing histories keep their original wire shape.
+- Build each segment's analytics and personal/overall standings from one saved
+  effort snapshot. Publish them in the existing transaction under the segment lock.
+  A changed source returns a retryable failure before an award stage can run;
+  a deleted segment is successful empty work.
+- After all segments publish, refresh affected activity summaries once from the
+  union of current effort activity IDs and explicitly supplied removed-match IDs.
+  Saved award decisions are read, never reconsidered by this operation.
+- The upload workflow's singleton child composition remains the P13 caller cutover.
+  Historical pair persistence and interrupted-removal invalidation remain P4/P14.

@@ -78,6 +78,7 @@ async fn domain_producers_start_native_workflows_without_sql_queue_writes() {
     queue.reprocess_archive_fit_activity_imports(12).await.unwrap();
     queue.backfill_user_xc_training(12).await.unwrap();
     queue.archive_activity_import(7, 12).await.unwrap();
+    queue.rebuild_segment_analytics(vec![0, -1]).await.unwrap();
     let starts = &requests.lock().unwrap().starts;
     let names: Vec<_> = starts
         .iter()
@@ -88,7 +89,6 @@ async fn domain_producers_start_native_workflows_without_sql_queue_writes() {
         [
             "rebuild_fitness_freshness",
             "rebuild_segment_analytics",
-            "rebuild_segment_analytics",
             "regenerate_segment_efforts",
             "regenerate_user_segments",
             "reprocess_user_activity_imports",
@@ -97,6 +97,9 @@ async fn domain_producers_start_native_workflows_without_sql_queue_writes() {
             "activity_archive_import"
         ]
     );
+    let input: serde_json::Value = serde_json::from_slice(&starts[1].input.as_ref().unwrap().payloads[0].data).unwrap();
+    assert_eq!(input["segment_ids"], serde_json::json!([18, 19]));
+    assert_eq!(starts.len(), 8);
     for start in starts {
         assert_eq!(start.task_queue.as_ref().unwrap().name, crate::TASK_QUEUE);
         assert!(start.retry_policy.is_none());
@@ -178,4 +181,27 @@ async fn retained_file_producers_submit_owned_metadata_without_processing_in_the
         assert_eq!(request.workflow_type.as_ref().unwrap().name, name);
         assert!(!format!("{:?}", db.into_transaction_log()).contains("INSERT INTO"));
     }
+}
+
+#[tokio::test]
+async fn large_segment_refreshes_use_bounded_batches_and_empty_inputs_start_nothing() {
+    let requests = Arc::new(Mutex::new(Requests::default()));
+    let queue = bike_core::jobs::JobQueue::with_client(
+        fixtures::postgres_mock().into_connection(),
+        client(requests.clone()).await,
+    );
+    queue.rebuild_segment_analytics(Vec::new()).await.unwrap();
+    queue
+        .rebuild_segment_analytics((1..=501).chain([1, 0, -1]).collect())
+        .await
+        .unwrap();
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.starts.len(), 2);
+    let inputs: Vec<serde_json::Value> = requests
+        .starts
+        .iter()
+        .map(|start| serde_json::from_slice(&start.input.as_ref().unwrap().payloads[0].data).unwrap())
+        .collect();
+    assert_eq!(inputs[0]["segment_ids"].as_array().unwrap().len(), 500);
+    assert_eq!(inputs[1]["segment_ids"], serde_json::json!([501]));
 }
