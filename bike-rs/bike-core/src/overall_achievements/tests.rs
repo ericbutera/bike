@@ -3,7 +3,7 @@ use crate::test_support as fixtures;
 
 #[test]
 fn repeated_attempts_occupy_one_position_per_athlete() {
-    let rows = overall_top_ten(fixtures::shared_segment_efforts());
+    let rows = overall_top_ten(&fixtures::shared_segment_efforts());
     assert_eq!(rows.iter().map(|row| row.user_id).collect::<Vec<_>>(), vec![7, 8]);
 }
 
@@ -11,7 +11,7 @@ fn repeated_attempts_occupy_one_position_per_athlete() {
 fn an_athlete_is_represented_by_their_fastest_attempt() {
     let mut efforts = fixtures::shared_segment_efforts();
     efforts.swap(0, 1);
-    let rows = overall_top_ten(efforts);
+    let rows = overall_top_ten(&efforts);
     assert_eq!(rows[0].effort_id, 1);
 }
 
@@ -19,7 +19,7 @@ fn an_athlete_is_represented_by_their_fastest_attempt() {
 fn standings_are_ordered_by_duration() {
     let mut efforts = fixtures::shared_segment_efforts();
     efforts.reverse();
-    let rows = overall_top_ten(efforts);
+    let rows = overall_top_ten(&efforts);
     assert_eq!(
         rows.iter().map(|row| row.duration_seconds).collect::<Vec<_>>(),
         vec![100, 300]
@@ -28,12 +28,12 @@ fn standings_are_ordered_by_duration() {
 
 #[test]
 fn standings_are_limited_to_ten_athletes() {
-    assert_eq!(overall_top_ten(fixtures::distinct_athlete_efforts(11)).len(), 10);
+    assert_eq!(overall_top_ten(&fixtures::distinct_athlete_efforts(11)).len(), 10);
 }
 
 #[test]
 fn equal_times_choose_the_smaller_effort_identity_first() {
-    let efforts = fixtures::shared_segment_efforts()
+    let efforts: Vec<_> = fixtures::shared_segment_efforts()
         .into_iter()
         .rev()
         .map(|effort| segment_efforts::Model {
@@ -41,54 +41,54 @@ fn equal_times_choose_the_smaller_effort_identity_first() {
             ..effort
         })
         .collect();
-    let rows = overall_top_ten(efforts);
+    let rows = overall_top_ten(&efforts);
     assert_eq!(rows.iter().map(|row| row.effort_id).collect::<Vec<_>>(), vec![1, 3]);
 }
 
 #[test]
 fn later_equal_time_attempt_keeps_the_original_effort_on_the_leaderboard() {
     let original = fixtures::segment_effort();
-    let before = overall_top_ten(vec![original.clone()]);
+    let before = overall_top_ten(std::slice::from_ref(&original));
     let later = segment_efforts::Model {
         id: 2,
         activity_id: 43,
         ..original.clone()
     };
     // Present the later attempt first so input order cannot decide the tie.
-    let after = overall_top_ten(vec![later, original]);
+    let after = overall_top_ten(&[later, original]);
     assert_eq!(after, before);
     assert_eq!(after[0].effort_id, 1);
 }
 
 #[test]
 fn tied_athletes_receive_consecutive_positions() {
-    let efforts = fixtures::shared_segment_efforts()
+    let efforts: Vec<_> = fixtures::shared_segment_efforts()
         .into_iter()
         .map(|effort| segment_efforts::Model {
             duration_seconds: 100,
             ..effort
         })
         .collect();
-    let rows = overall_top_ten(efforts);
+    let rows = overall_top_ten(&efforts);
     assert_eq!(rows.iter().map(|row| row.position).collect::<Vec<_>>(), vec![1, 2]);
 }
 
 #[test]
 fn removing_the_fastest_attempt_promotes_that_athletes_next_attempt() {
-    let efforts = fixtures::shared_segment_efforts()
+    let efforts: Vec<_> = fixtures::shared_segment_efforts()
         .into_iter()
         .filter(|effort| effort.id != 1)
         .collect();
-    assert_eq!(overall_top_ten(efforts)[0].effort_id, 2);
+    assert_eq!(overall_top_ten(&efforts)[0].effort_id, 2);
 }
 
 #[test]
 fn removing_an_athletes_last_attempt_promotes_the_next_qualifying_athlete() {
-    let efforts = fixtures::distinct_athlete_efforts(11)
+    let efforts: Vec<_> = fixtures::distinct_athlete_efforts(11)
         .into_iter()
         .filter(|effort| effort.user_id != 1)
         .collect();
-    assert_eq!(overall_top_ten(efforts)[9].user_id, 11);
+    assert_eq!(overall_top_ten(&efforts)[9].user_id, 11);
 }
 
 #[tokio::test]

@@ -3,7 +3,8 @@ use crate::entities::{segment_efforts, segment_overall_achievements as achieveme
 use sea_orm::{ConnectionTrait, DbErr, TransactionSession, TransactionTrait};
 use std::collections::HashSet;
 
-fn overall_top_ten(mut efforts: Vec<segment_efforts::Model>) -> Vec<achievements::Model> {
+fn overall_top_ten(efforts: &[segment_efforts::Model]) -> Vec<achievements::Model> {
+    let mut efforts = efforts.iter().collect::<Vec<_>>();
     efforts.sort_by_key(|effort| (effort.duration_seconds, effort.id));
     let mut athletes = HashSet::new();
     efforts
@@ -21,7 +22,7 @@ fn overall_top_ten(mut efforts: Vec<segment_efforts::Model>) -> Vec<achievements
         .collect()
 }
 
-/// Analytics and the rollout backfill call the same saved-effort operation.
+/// Standalone backfills load their input while holding the segment lock.
 #[tracing::instrument(name = "achievements.overall.rebuild", skip_all, fields(segment_id))]
 pub async fn rebuild(db: &(impl ConnectionTrait + TransactionTrait), segment_id: i32) -> Result<(), DbErr> {
     let txn = db.begin().await?;
@@ -29,8 +30,17 @@ pub async fn rebuild(db: &(impl ConnectionTrait + TransactionTrait), segment_id:
         return Ok(());
     };
     let efforts = segment_efforts::Model::list_for_segment_analytics(&txn, &[segment.id]).await?;
-    achievements::Model::replace_for_segment(&txn, segment.id, overall_top_ten(efforts)).await?;
+    rebuild_from_efforts(&txn, segment.id, &efforts).await?;
     txn.commit().await
+}
+
+/// Reuse the caller's checked snapshot and existing segment transaction/lock.
+pub(crate) async fn rebuild_from_efforts(
+    db: &impl ConnectionTrait,
+    segment_id: i32,
+    efforts: &[segment_efforts::Model],
+) -> Result<(), DbErr> {
+    achievements::Model::replace_for_segment(db, segment_id, overall_top_ten(efforts)).await
 }
 
 #[cfg(test)]

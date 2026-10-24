@@ -3,7 +3,8 @@ use crate::entities::{segment_efforts, segment_personal_achievements as achievem
 use sea_orm::{ConnectionTrait, DbErr, TransactionSession, TransactionTrait};
 use std::collections::HashMap;
 
-fn personal_top_three(mut efforts: Vec<segment_efforts::Model>) -> Vec<achievements::Model> {
+fn personal_top_three(efforts: &[segment_efforts::Model]) -> Vec<achievements::Model> {
+    let mut efforts = efforts.iter().collect::<Vec<_>>();
     efforts.sort_by_key(|effort| (effort.duration_seconds, effort.id));
     let mut positions = HashMap::<i32, i32>::new();
     efforts
@@ -22,7 +23,7 @@ fn personal_top_three(mut efforts: Vec<segment_efforts::Model>) -> Vec<achieveme
         .collect()
 }
 
-/// Imports and the rollout backfill call this same saved-effort operation.
+/// Standalone backfills load their input while holding the segment lock.
 #[tracing::instrument(name = "achievements.personal.rebuild", skip_all, fields(segment_id))]
 pub async fn rebuild(db: &(impl ConnectionTrait + TransactionTrait), segment_id: i32) -> Result<(), DbErr> {
     let txn = db.begin().await?;
@@ -30,8 +31,17 @@ pub async fn rebuild(db: &(impl ConnectionTrait + TransactionTrait), segment_id:
         return Ok(());
     };
     let efforts = segment_efforts::Model::list_for_segment_analytics(&txn, &[segment.id]).await?;
-    achievements::Model::replace_for_segment(&txn, segment.id, personal_top_three(efforts)).await?;
+    rebuild_from_efforts(&txn, segment.id, &efforts).await?;
     txn.commit().await
+}
+
+/// Reuse the caller's checked snapshot and existing segment transaction/lock.
+pub(crate) async fn rebuild_from_efforts(
+    db: &impl ConnectionTrait,
+    segment_id: i32,
+    efforts: &[segment_efforts::Model],
+) -> Result<(), DbErr> {
+    achievements::Model::replace_for_segment(db, segment_id, personal_top_three(efforts)).await
 }
 
 #[cfg(test)]
@@ -58,7 +68,7 @@ mod tests {
 
     #[test]
     fn every_rider_gets_their_own_pr_and_up_to_three_individual_efforts() {
-        let rows = personal_top_three(vec![
+        let rows = personal_top_three(&[
             effort(5, 7, 500),
             effort(2, 7, 200),
             effort(4, 7, 400),
@@ -86,9 +96,9 @@ mod tests {
 
     #[test]
     fn equal_times_use_effort_identity_and_deletion_promotes_the_next_attempt() {
-        let rows = personal_top_three(vec![effort(4, 7, 400), effort(3, 7, 100), effort(2, 7, 100)]);
+        let rows = personal_top_three(&[effort(4, 7, 400), effort(3, 7, 100), effort(2, 7, 100)]);
         assert_eq!(rows.iter().map(|row| row.effort_id).collect::<Vec<_>>(), vec![2, 3, 4]);
-        let after_delete = personal_top_three(vec![effort(3, 7, 100), effort(4, 7, 400)]);
+        let after_delete = personal_top_three(&[effort(3, 7, 100), effort(4, 7, 400)]);
         assert_eq!(after_delete[0].effort_id, 3);
         assert_eq!(after_delete[0].position, 1);
         assert_eq!(after_delete[1].position, 2);
@@ -175,7 +185,7 @@ mod tests {
 
     #[tokio::test]
     async fn personal_reads_return_saved_positions_without_waiting_for_refresh() {
-        let rows = personal_top_three(vec![effort(1, 7, 100), effort(2, 7, 200)]);
+        let rows = personal_top_three(&[effort(1, 7, 100), effort(2, 7, 200)]);
         let db = fixtures::postgres_mock()
             .append_query_results([rows.clone()])
             .into_connection();

@@ -350,7 +350,7 @@ where
     };
     let input = load_segment_analytics_input(db, &[id]).await?;
     let activity_ids = input.activity_ids.clone();
-    let rebuild = build_segment_analytics(input);
+    let rebuild = build_segment_analytics(&input);
     let txn = db.begin().await?;
     let current = segments::Model::lock_for_analytics(&txn, id).await?;
     if current.is_none_or(|current| {
@@ -359,9 +359,9 @@ where
         return Ok(Vec::new());
     }
     persist_segment_analytics_rebuild(&txn, &[id], rebuild).await?;
+    crate::personal_achievements::rebuild_from_efforts(&txn, id, &input.efforts).await?;
+    crate::overall_achievements::rebuild_from_efforts(&txn, id, &input.efforts).await?;
     txn.commit().await?;
-    crate::personal_achievements::rebuild(db, id).await?;
-    crate::overall_achievements::rebuild(db, id).await?;
     Ok(activity_ids)
 }
 
@@ -392,7 +392,7 @@ where
     })
 }
 
-fn build_segment_analytics(input: SegmentAnalyticsInput) -> SegmentAnalyticsRebuild {
+fn build_segment_analytics(input: &SegmentAnalyticsInput) -> SegmentAnalyticsRebuild {
     let mut rebuild = SegmentAnalyticsRebuild {
         segment_summary_by_id: HashMap::new(),
         segment_user_summary_by_key: HashMap::new(),
@@ -401,7 +401,7 @@ fn build_segment_analytics(input: SegmentAnalyticsInput) -> SegmentAnalyticsRebu
     let mut overall_ranks = HashMap::<i32, i32>::new();
     let mut user_ranks = HashMap::<(i32, i32), i32>::new();
 
-    for effort in input.efforts {
+    for effort in &input.efforts {
         let overall_rank = next_rank(&mut overall_ranks, effort.segment_id);
         let user_rank = next_rank(&mut user_ranks, (effort.segment_id, effort.user_id));
         apply_segment_effort_to_rebuild(
@@ -426,13 +426,13 @@ where
 fn apply_segment_effort_to_rebuild(
     rebuild: &mut SegmentAnalyticsRebuild,
     activity_started_at_by_id: &HashMap<i32, DateTime<Utc>>,
-    effort: segment_efforts::Model,
+    effort: &segment_efforts::Model,
     overall_rank: i32,
     user_rank: i32,
 ) {
     update_segment_summary(
         rebuild.segment_summary_by_id.entry(effort.segment_id).or_default(),
-        &effort,
+        effort,
         activity_started_at_by_id.get(&effort.activity_id).copied(),
     );
     update_segment_user_summary(
@@ -440,7 +440,7 @@ fn apply_segment_effort_to_rebuild(
             .segment_user_summary_by_key
             .entry((effort.segment_id, effort.user_id))
             .or_default(),
-        &effort,
+        effort,
     );
     rebuild.effort_updates.push(segment_efforts::RankUpdate {
         effort_id: effort.id,
