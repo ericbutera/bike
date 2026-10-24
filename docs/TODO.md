@@ -29,6 +29,11 @@
 
 ## Activities
 
+- [x] **P2 Metadata/laps:** Save editable metadata and ordered lap facts in typed
+      rows during imports and edits, with owner-scoped reads and a focused
+      stage-only backfill. B2 owns the API/UI cutover; see
+      [metadata and laps](specs/activities.md#typed-metadata-and-laps).
+
 - [x] **P9 Climb facts:** Save the existing report detector facts with typed artifact
       references and convert/backfill only climb output. See
       [saved climb report facts](specs/background-work.md#saved-climb-report-facts).

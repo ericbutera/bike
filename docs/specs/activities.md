@@ -32,3 +32,23 @@
   page. Use the same artifact producer as imports, lock the current owned activity,
   and preserve metadata, laps, efforts and awards. Missing legacy recording data
   is an error, while explicitly saved empty recordings are valid outputs.
+
+## Typed metadata and laps
+
+- P2 saves description, manual location, private notes and recorded gear ID/name
+  in `activity_metadata`, keyed by activity. Existing activity summary columns
+  continue to own title, sport and Training/Race.
+- Save every lap in `activity_laps` with its original lap number, title, offsets,
+  duration, distance, elevation, speed, sensor metrics and calories. A separate
+  zero-based position preserves source order, even when lap numbers repeat.
+- Retained-file imports, duplicate reconciliation and native Strava imports save
+  these rows in the activity transaction. Manual metadata edits synchronize the
+  typed metadata in the same transaction. Preserve existing import/edit precedence,
+  optional values, empty text clears and gear identifiers.
+- `backfill_activity_metadata` on `bike-tasks`, input `0`, pages missing metadata
+  in groups of 16 and calls the same producer under the activity lock. Empty
+  metadata/laps are valid saved outputs; backfill does not reparse, rematch,
+  calculate awards or rewrite recordings.
+- Model reads authorize the activity owner and return saved metadata and ordered
+  laps. Missing output stays missing. B2 owns the API/UI read cutover; keep
+  existing consumers usable until then, with no conversion or repair on GET.
