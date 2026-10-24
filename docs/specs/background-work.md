@@ -198,6 +198,24 @@ flowchart TD
 - This slice generates climb data. Activity screens switch to these saved rows
   in a subsequent change.
 
+### Saved climb report facts
+
+- The climb stage saves every scalar from the existing climbing report detector:
+  start/summit bounds and times, gain/loss and grade, vertical rate, speed,
+  heart rate, cadence, power, recovery duration and heart-rate drop, descent facts,
+  and the existing half marker. Preserve detector units and original climb numbers.
+- Extend the existing climb rows; do not create a second climb-result table.
+  Previously unsaved report facts stay nullable until the climb-only backfill runs.
+  Existing activity-detail responses and saved values remain available.
+- Store the climb artifact as nonnull `object_path`, `object_sha256` and
+  `object_bytes` columns. Convert existing valid `object_ref` values before
+  removing that JSON column; reject malformed references without discarding data.
+- Detector version 3 selects missing or older outputs through the existing
+  bounded `pending_tasks` query and `backfill_activity_climbs` workflow.
+  Repeating unchanged input reuses the artifact; empty output remains successful.
+  Backfill only climbs, without reparsing sources, matching or recalculating awards.
+
+
 ## Identity and causal context
 
 - Pass the owned import/file reference and activity ID when known. New imports

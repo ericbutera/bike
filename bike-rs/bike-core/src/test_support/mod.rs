@@ -23,8 +23,9 @@ pub use tasks::{
 mod analytics;
 mod defaults;
 pub use analytics::{
-    activity_analytics, activity_award_output, activity_earned_awards, activity_id_row, analytics_user_state,
-    fitness_day, new_fitness_day, new_segment_effort, segment_effort, segment_id_rows,
+    activity_analytics, activity_award_output, activity_climb, activity_climb_output, activity_earned_awards,
+    activity_id_row, analytics_user_state, fitness_day, new_fitness_day, new_segment_effort, segment_effort,
+    segment_id_rows,
 };
 pub use defaults::user_preferences;
 pub use defaults::{new_feature_flag, new_user_preferences};

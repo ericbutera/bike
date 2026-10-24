@@ -76,13 +76,10 @@ async fn owned_activity_update_preserves_fields_and_commits_its_audit() {
             activity_type: "race".into(),
             ..before.clone()
         };
-        let recording = bike_core::activity_data::deserialize_derived_activity_data(after.derived_data_json.as_ref());
         let output = activity_climbs::output::Model {
             activity_id: after.id,
-            detector_version: bike_core::activity_climbs::DETECTOR_VERSION,
-            recording_sha256: bike_core::object_store::checksum(&serde_json::to_vec(&recording).unwrap()),
-            object_ref: json!({}),
             climb_count: 0,
+            ..test_support::activity_climb_output()
         };
         let db = MockDatabase::new(DbBackend::Postgres)
             .append_query_results([vec![test_support::customer()]])

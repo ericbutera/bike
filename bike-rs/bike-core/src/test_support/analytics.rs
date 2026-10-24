@@ -104,3 +104,48 @@ pub fn activity_earned_awards() -> crate::entities::activity_earned_awards::Mode
         personal_best_duration_seconds: Some(effort.duration_seconds),
     }
 }
+
+pub fn activity_climb_output() -> crate::entities::activity_climbs::output::Model {
+    let activity = super::activity();
+    let recording = crate::activity_data::deserialize_derived_activity_data(activity.derived_data_json.as_ref());
+    crate::entities::activity_climbs::output::Model {
+        activity_id: activity.id,
+        detector_version: crate::activity_climbs::DETECTOR_VERSION,
+        recording_sha256: crate::object_store::checksum(&serde_json::to_vec(&recording).unwrap()),
+        object_path: "activity-imports/derived/fixture/climbs.json".into(),
+        object_sha256: crate::object_store::checksum(b"fixture climbs"),
+        object_bytes: 14,
+        climb_count: 0,
+    }
+}
+
+pub fn activity_climb() -> crate::entities::activity_climbs::Model {
+    crate::entities::activity_climbs::Model {
+        activity_id: super::activity().id,
+        climb_number: 1,
+        start_route_point_index: None,
+        end_route_point_index: None,
+        start_elapsed_seconds: 0,
+        end_elapsed_seconds: 120,
+        duration_seconds: 120,
+        distance_meters: 520.0,
+        elevation_gain_meters: 26.0,
+        average_grade_percent: Some(5.0),
+        elevation_loss_meters: Some(0.0),
+        max_grade_percent: Some(6.0),
+        category: None,
+        route_points_json: Default::default(),
+        vertical_rate_meters_per_hour: Some(780.0),
+        average_speed_mps: Some(4.33),
+        average_heart_rate_bpm: None,
+        peak_heart_rate_bpm: None,
+        average_cadence_rpm: None,
+        average_power_watts: None,
+        heart_rate_recovery_30_seconds_bpm: None,
+        heart_rate_recovery_60_seconds_bpm: None,
+        seconds_to_drop_10_bpm: None,
+        seconds_to_drop_15_bpm: None,
+        summit_immediately_enters_descent: Some(false),
+        is_first_half: Some(true),
+    }
+}
