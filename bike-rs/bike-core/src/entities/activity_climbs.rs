@@ -1,5 +1,5 @@
 use crate::{
-    activity_climbs::{Climb, ClimbOutput, DETECTOR_VERSION},
+    activity_climbs::{Climb, PreparedClimb, PreparedOutput, DETECTOR_VERSION},
     activity_data::{deserialize_route_point_series, serialize_route_point_series, StoredRoutePointSeries},
     bike_tasks::{ActivityTask, Priority},
     object_store::ObjectRef,
@@ -29,6 +29,18 @@ pub struct Model {
     pub max_grade_percent: Option<f64>,
     pub category: Option<String>,
     pub route_points_json: StoredRoutePointSeries,
+    pub vertical_rate_meters_per_hour: Option<f64>,
+    pub average_speed_mps: Option<f64>,
+    pub average_heart_rate_bpm: Option<f64>,
+    pub peak_heart_rate_bpm: Option<i32>,
+    pub average_cadence_rpm: Option<f64>,
+    pub average_power_watts: Option<f64>,
+    pub heart_rate_recovery_30_seconds_bpm: Option<i32>,
+    pub heart_rate_recovery_60_seconds_bpm: Option<i32>,
+    pub seconds_to_drop_10_bpm: Option<i32>,
+    pub seconds_to_drop_15_bpm: Option<i32>,
+    pub summit_immediately_enters_descent: Option<bool>,
+    pub is_first_half: Option<bool>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -36,7 +48,9 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl ActiveModel {
-    fn from_climb(activity_id: i32, climb: &Climb) -> Self {
+    fn from_climb(activity_id: i32, prepared: &PreparedClimb) -> Self {
+        let climb = &prepared.climb;
+        let facts = &prepared.facts;
         Self {
             activity_id: Set(activity_id),
             climb_number: Set(climb.climb_number),
@@ -52,6 +66,18 @@ impl ActiveModel {
             max_grade_percent: Set(climb.max_grade_percent),
             category: Set(climb.category.clone()),
             route_points_json: Set(serialize_route_point_series(&climb.route_points)),
+            vertical_rate_meters_per_hour: Set(Some(facts.vertical_rate_meters_per_hour)),
+            average_speed_mps: Set(facts.average_speed_mps),
+            average_heart_rate_bpm: Set(facts.average_heart_rate_bpm),
+            peak_heart_rate_bpm: Set(facts.peak_heart_rate_bpm),
+            average_cadence_rpm: Set(facts.average_cadence_rpm),
+            average_power_watts: Set(facts.average_power_watts),
+            heart_rate_recovery_30_seconds_bpm: Set(facts.heart_rate_recovery_30_seconds_bpm),
+            heart_rate_recovery_60_seconds_bpm: Set(facts.heart_rate_recovery_60_seconds_bpm),
+            seconds_to_drop_10_bpm: Set(facts.seconds_to_drop_10_bpm),
+            seconds_to_drop_15_bpm: Set(facts.seconds_to_drop_15_bpm),
+            summit_immediately_enters_descent: Set(Some(facts.summit_immediately_enters_descent)),
+            is_first_half: Set(Some(facts.is_first_half)),
         }
     }
 }
@@ -83,10 +109,10 @@ impl Model {
         }
     }
 
-    pub async fn replace_output(
+    pub(crate) async fn replace_output(
         db: &DatabaseConnection,
         source: &super::activities::Model,
-        climbs: &ClimbOutput,
+        climbs: &PreparedOutput,
         reference: &ObjectRef,
     ) -> Result<(), WorkflowError> {
         let txn = db.begin().await?;
@@ -128,7 +154,9 @@ pub mod output {
         pub activity_id: i32,
         pub detector_version: i32,
         pub recording_sha256: String,
-        pub object_ref: Json,
+        pub object_path: String,
+        pub object_sha256: String,
+        pub object_bytes: i64,
         pub climb_count: i32,
     }
 
@@ -143,6 +171,15 @@ pub mod output {
     }
 
     impl Model {
+        pub fn object_reference(&self) -> Result<ObjectRef, WorkflowError> {
+            Ok(ObjectRef {
+                path: self.object_path.clone(),
+                sha256: self.object_sha256.clone(),
+                bytes: usize::try_from(self.object_bytes)
+                    .map_err(|error| WorkflowError::invalid_data(error.to_string()))?,
+            })
+        }
+
         pub fn matches(&self, recording_sha256: &str) -> bool {
             self.detector_version == DETECTOR_VERSION && self.recording_sha256 == recording_sha256
         }
@@ -176,16 +213,18 @@ pub mod output {
         pub(super) async fn save_output(
             db: &impl ConnectionTrait,
             activity_id: i32,
-            climbs: &ClimbOutput,
+            climbs: &PreparedOutput,
             reference: &ObjectRef,
         ) -> Result<(), WorkflowError> {
-            let object_ref =
-                serde_json::to_value(reference).map_err(|error| WorkflowError::internal(error.to_string()))?;
+            let object_bytes =
+                i64::try_from(reference.bytes).map_err(|error| WorkflowError::invalid_data(error.to_string()))?;
             Entity::insert(ActiveModel {
                 activity_id: Set(activity_id),
                 detector_version: Set(climbs.detector_version),
                 recording_sha256: Set(climbs.recording_sha256.clone()),
-                object_ref: Set(object_ref),
+                object_path: Set(reference.path.clone()),
+                object_sha256: Set(reference.sha256.clone()),
+                object_bytes: Set(object_bytes),
                 climb_count: Set(climbs.climbs.len() as i32),
             })
             .on_conflict(
@@ -193,7 +232,9 @@ pub mod output {
                     .update_columns([
                         Column::DetectorVersion,
                         Column::RecordingSha256,
-                        Column::ObjectRef,
+                        Column::ObjectPath,
+                        Column::ObjectSha256,
+                        Column::ObjectBytes,
                         Column::ClimbCount,
                     ])
                     .to_owned(),
@@ -234,5 +275,64 @@ mod tests {
         assert!(sql.contains("NOT EXISTS"));
         assert!(sql.contains("detector_version"));
         assert!(sql.contains("ORDER BY a.id LIMIT 16"));
+    }
+
+    #[test]
+    fn climb_rows_retain_each_detected_report_fact_in_its_original_units() {
+        use sea_orm::TryIntoModel;
+        let report = crate::services::reports::ClimbResponse {
+            activity_id: 42,
+            activity_title: "Hill repeats".into(),
+            climb_number: 2,
+            start_seconds: 10,
+            summit_seconds: 130,
+            duration_seconds: 120,
+            distance_meters: 520.0,
+            gain_meters: 26.0,
+            average_grade_percent: Some(5.0),
+            vertical_rate_meters_per_hour: 780.0,
+            average_speed_mps: Some(4.33),
+            average_heart_rate_bpm: Some(140.8),
+            peak_heart_rate_bpm: Some(160),
+            average_cadence_rpm: Some(81.0),
+            average_power_watts: Some(220.0),
+            heart_rate_recovery_30_seconds_bpm: Some(6),
+            heart_rate_recovery_60_seconds_bpm: Some(18),
+            seconds_to_drop_10_bpm: Some(40),
+            seconds_to_drop_15_bpm: Some(60),
+            summit_immediately_enters_descent: true,
+            first_or_second_half: "first".into(),
+        };
+        let prepared = PreparedClimb::from_detection(report, &[]);
+        let row = ActiveModel::from_climb(42, &prepared).try_into_model().unwrap();
+        assert_eq!(row.climb_number, 2);
+        assert_eq!(row.start_elapsed_seconds, 10);
+        assert_eq!(row.end_elapsed_seconds, 130);
+        assert_eq!(row.vertical_rate_meters_per_hour, Some(780.0));
+        assert_eq!(row.average_speed_mps, Some(4.33));
+        assert_eq!(row.average_heart_rate_bpm, Some(140.8));
+        assert_eq!(row.peak_heart_rate_bpm, Some(160));
+        assert_eq!(row.average_cadence_rpm, Some(81.0));
+        assert_eq!(row.average_power_watts, Some(220.0));
+        assert_eq!(row.heart_rate_recovery_30_seconds_bpm, Some(6));
+        assert_eq!(row.heart_rate_recovery_60_seconds_bpm, Some(18));
+        assert_eq!(row.seconds_to_drop_10_bpm, Some(40));
+        assert_eq!(row.seconds_to_drop_15_bpm, Some(60));
+        assert_eq!(row.summit_immediately_enters_descent, Some(true));
+        assert_eq!(row.is_first_half, Some(true));
+    }
+
+    #[test]
+    fn typed_climb_reference_preserves_path_checksum_and_byte_count() {
+        let output = fixtures::activity_climb_output();
+        let reference = output.object_reference().unwrap();
+        assert_eq!(reference.path, output.object_path);
+        assert_eq!(reference.sha256, output.object_sha256);
+        assert_eq!(reference.bytes as i64, output.object_bytes);
+        let invalid = output::Model {
+            object_bytes: -1,
+            ..output
+        };
+        assert!(invalid.object_reference().is_err());
     }
 }

@@ -906,13 +906,10 @@ mod tests {
         use bike_core::{activity_climbs, entities::activity_climbs as rows, test_support as fixtures};
         for completed_empty in [false, true] {
             let activity = fixtures::activity();
-            let recording = deserialize_derived_activity_data(activity.derived_data_json.as_ref());
             let output = rows::output::Model {
                 activity_id: activity.id,
-                detector_version: activity_climbs::DETECTOR_VERSION,
-                recording_sha256: bike_core::object_store::checksum(&serde_json::to_vec(&recording).unwrap()),
-                object_ref: json!({}),
                 climb_count: if completed_empty { 0 } else { 1 },
+                ..fixtures::activity_climb_output()
             };
             let climbs = if completed_empty {
                 vec![]
@@ -932,6 +929,7 @@ mod tests {
                     max_grade_percent: Some(9.0),
                     category: Some("4".into()),
                     route_points_json: Default::default(),
+                    ..fixtures::activity_climb()
                 }]
             };
             let db = fixtures::postgres_mock()

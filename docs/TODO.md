@@ -29,6 +29,11 @@
 
 ## Activities
 
+- [x] **P9 Climb facts:** Save the existing report detector facts with typed artifact
+  references and convert/backfill only climb output. See
+  [saved climb report facts](specs/background-work.md#saved-climb-report-facts).
+
+
 - [x] **LOAD09:** Read saved activity effort ranks and personal-best summaries,
       preserving nulls and stale saved values without history ranking or request
       repair. See the [activity detail contract](specs/activity-details.md#route-map-and-matched-segments).
