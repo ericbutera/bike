@@ -8,8 +8,9 @@ async fn retry_rebuilds_a_removed_segment_from_existing_user_summaries() {
         .append_query_results([vec![activity.clone()]])
         .append_query_results([fixtures::segment_id_rows(&[18])])
         .append_query_results([fixtures::segment_id_rows(&[])])
+        .append_query_results([Vec::<crate::entities::segment_efforts::Model>::new()])
         .append_query_results([fixtures::segment_id_rows(&[])])
-        .append_exec_results([fixtures::written(), fixtures::written()])
+        .append_exec_results([fixtures::written()])
         .into_connection();
     assert_eq!(match_activity(&db, &activity).await.unwrap(), vec![18]);
     let log = format!("{:?}", db.into_transaction_log());

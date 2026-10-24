@@ -105,6 +105,26 @@ Incomplete analytics should feel normal in the UI. A newly created segment may i
 
 The activity ingestion graph also rebuilds segment efforts after an activity is saved. That pipeline owns import orchestration and trace events; this spec owns the segment route-matching behavior used by that graph stage.
 
+### Activity effort reconciliation
+
+- Activity matching reconciles all processed activity/segment pairs in its existing
+  activity transaction. Keep the authenticated activity owner in every query and write.
+- Identify a saved traversal by its segment and recording start/end point indexes.
+  An unchanged matching result performs no effort writes, retaining its ID, creation
+  time, saved ranks and timestamps at this step. An earlier removed traversal must
+  not transfer its ID to a later one.
+- Attempt numbers follow recording order. Update a retained traversal's attempt number
+  or changed metrics in place; clear its ranks until the existing standings stage refreshes them.
+- Insert new traversals in bounded batches. Remove only saved IDs no longer present in
+  the processed activity; another activity or athlete's efforts remain untouched.
+- Preserve the existing transaction, retry invalidation and downstream standings calls.
+  Existing saved effort rows need no conversion or backfill. Consumers keep using the
+  retained IDs, and immutable earned awards are not rewritten.
+- This is a partial LOAD05 slice after PR 125. Historical segment regeneration still
+  needs pair reconciliation, saved GPS bounds and bounded Temporal paging (LOAD19).
+  Removing broad retry invalidation and resolving matching/analytics/deletion lock order
+  (LOAD06) remain follow-ups before historical matching is enabled.
+
 ## Matching Contract
 
 Bike matches stored segment routes against normalized activity route points to create segment efforts. This contract must stay stable across parser, matcher, import, and performance changes.

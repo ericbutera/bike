@@ -157,8 +157,7 @@ where
     C: ConnectionTrait + TransactionTrait,
 {
     let txn = db.begin().await?;
-    clear_segment_efforts_for_activity(&txn, user_id, activity_id).await?;
-
+    let mut matched_segments = Vec::new();
     let mut after_id = 0;
     while activity_route_points.len() >= 2 {
         let candidates = segments::Model::matching_routes_page(&txn, after_id, 25).await?;
@@ -172,10 +171,11 @@ where
                 continue;
             }
             let matches = match_segment_efforts(&segment_route_points, activity_route_points);
-            insert_matches(&txn, user_id, segment.id, activity_id, &matches).await?;
+            matched_segments.push((segment.id, matches));
         }
     }
 
+    segment_efforts::Entity::reconcile_activity_matches(&txn, user_id, activity_id, matched_segments).await?;
     txn.commit().await?;
     Ok(())
 }
@@ -801,3 +801,7 @@ mod tests {
         assert_eq!(matches[0].end_route_point_index, 4);
     }
 }
+
+#[cfg(test)]
+#[path = "segment_support/persistence.rs"]
+mod persistence;

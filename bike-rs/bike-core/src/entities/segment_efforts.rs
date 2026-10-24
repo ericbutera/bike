@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbErr, QueryFilter, QueryOrder, QuerySelect};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -180,18 +180,10 @@ impl Entity {
         if matches.is_empty() {
             return Ok(());
         }
-        let efforts = matches.iter().enumerate().map(|(index, matched)| ActiveModel {
-            user_id: Set(user_id),
-            segment_id: Set(segment_id),
-            activity_id: Set(activity_id),
-            effort_index: Set((index + 1) as i32),
-            start_route_point_index: Set(matched.start_route_point_index),
-            end_route_point_index: Set(matched.end_route_point_index),
-            start_elapsed_seconds: Set(matched.start_elapsed_seconds),
-            end_elapsed_seconds: Set(matched.end_elapsed_seconds),
-            duration_seconds: Set(matched.duration_seconds),
-            distance_meters: Set(matched.distance_meters),
-            ..Default::default()
+        let efforts = matches.iter().enumerate().map(|(index, matched)| {
+            matched
+                .clone()
+                .into_effort(user_id, activity_id, segment_id, (index + 1) as i32)
         });
         Self::insert_many(efforts).exec(db).await?;
         Ok(())
@@ -219,6 +211,7 @@ impl Model {
 }
 
 mod ranks;
+mod reconciliation;
 
 pub(crate) struct RankUpdate {
     pub effort_id: i32,
