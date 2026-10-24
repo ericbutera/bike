@@ -70,14 +70,15 @@ async fn changed_metrics_update_the_saved_id_and_invalidate_only_its_ranks() {
     };
     let db = fixtures::postgres_mock()
         .append_query_results([vec![old]])
+        .append_query_results([vec![fixtures::segment()]])
         .append_exec_results([fixtures::written()])
         .into_connection();
     Entity::reconcile_activity_matches(&db, 7, 42, vec![(1, vec![matched(&changed)])])
         .await
         .unwrap();
     let log = db.into_transaction_log();
-    assert_eq!(log.len(), 2);
-    let statement = &log[1].statements()[0];
+    assert_eq!(log.len(), 3);
+    let statement = &log[2].statements()[0];
     assert!(statement.sql.starts_with("UPDATE \"segment_efforts\""));
     assert!(statement.sql.contains("\"overall_rank\" ="));
     assert!(statement.sql.contains("\"user_rank\" ="));
@@ -105,6 +106,7 @@ async fn a_concurrently_removed_effort_fails_instead_of_being_resurrected() {
     };
     let db = fixtures::postgres_mock()
         .append_query_results([vec![old]])
+        .append_query_results([vec![fixtures::segment()]])
         .append_exec_results([MockExecResult::default()])
         .into_connection();
     let error = Entity::reconcile_activity_matches(&db, 7, 42, vec![(1, vec![matched(&changed)])])
@@ -125,6 +127,7 @@ async fn new_traversals_use_bounded_inserts_without_replacing_existing_rows() {
         .collect();
     let db = fixtures::postgres_mock()
         .append_query_results([Vec::<Model>::new()])
+        .append_query_results([vec![fixtures::segment()]])
         .append_exec_results([500, 1].map(|rows_affected| MockExecResult {
             rows_affected,
             ..Default::default()
@@ -134,8 +137,8 @@ async fn new_traversals_use_bounded_inserts_without_replacing_existing_rows() {
         .await
         .unwrap();
     let log = db.into_transaction_log();
-    assert_eq!(log.len(), 3);
-    for transaction in &log[1..] {
+    assert_eq!(log.len(), 4);
+    for transaction in &log[2..] {
         assert!(transaction.statements()[0]
             .sql
             .starts_with("INSERT INTO \"segment_efforts\""));
@@ -151,15 +154,26 @@ async fn empty_results_remove_only_the_processed_athletes_activity_efforts() {
             .into_iter()
             .filter(|effort| effort.activity_id == activity_id)
             .collect();
+        let mut segment_ids: Vec<_> = existing.iter().map(|effort| effort.segment_id).collect();
+        segment_ids.sort_unstable();
+        segment_ids.dedup();
+        let locked = segment_ids
+            .into_iter()
+            .map(|id| crate::entities::segments::Model {
+                id,
+                ..fixtures::segment()
+            })
+            .collect::<Vec<_>>();
         let db = fixtures::postgres_mock()
             .append_query_results([existing.clone()])
+            .append_query_results([locked])
             .append_exec_results([fixtures::written()])
             .into_connection();
         Entity::reconcile_activity_matches(&db, user_id, activity_id, Vec::new())
             .await
             .unwrap();
         let log = db.into_transaction_log();
-        let statement = &log[1].statements()[0];
+        let statement = &log[2].statements()[0];
         assert!(statement.sql.starts_with("DELETE FROM \"segment_efforts\" WHERE"));
         assert!(statement.sql.contains("\"user_id\" = $1"));
         assert!(statement.sql.contains("\"activity_id\" = $2"));
@@ -187,4 +201,52 @@ async fn a_spectators_empty_match_set_does_not_write_other_riders_efforts() {
     assert_eq!(log.len(), 1);
     let values = &log[0].statements()[0].values.as_ref().unwrap().0;
     assert_eq!(values, &vec![9.into(), 44.into()]);
+}
+
+#[tokio::test]
+async fn historical_pair_removes_only_that_activitys_segment_efforts() {
+    for (user_id, activity_id) in [(7, 42), (8, 43)] {
+        let old = Model {
+            user_id,
+            activity_id,
+            ..fixtures::segment_effort()
+        };
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![old.clone()]])
+            .append_exec_results([fixtures::written()])
+            .into_connection();
+        assert!(
+            Entity::reconcile_pair_matches(&db, user_id, activity_id, old.segment_id, vec![])
+                .await
+                .unwrap()
+        );
+        let log = db.into_transaction_log();
+        let read = &log[0].statements()[0];
+        assert!(read.sql.contains("\"user_id\" = $1"));
+        assert!(read.sql.contains("\"activity_id\" = $2"));
+        assert!(read.sql.contains("\"segment_id\" = $3"));
+        let deletion = &log[1].statements()[0];
+        assert_eq!(
+            deletion.values.as_ref().unwrap().0,
+            vec![user_id.into(), activity_id.into(), old.id.into()]
+        );
+    }
+}
+
+#[tokio::test]
+async fn historical_pair_updates_metrics_on_the_saved_id() {
+    let old = fixtures::segment_effort();
+    let mut next = matched(&old);
+    next.duration_seconds = 55;
+    let db = fixtures::postgres_mock()
+        .append_query_results([vec![old]])
+        .append_exec_results([fixtures::written()])
+        .into_connection();
+    assert!(Entity::reconcile_pair_matches(&db, 7, 42, 1, vec![next]).await.unwrap());
+    let log = db.into_transaction_log();
+    let update = &log[1].statements()[0];
+    assert!(update.sql.starts_with("UPDATE"));
+    assert!(update.sql.contains("\"id\" IN"));
+    assert!(!update.sql.contains("\"created_at\" ="));
+    assert!(!update.sql.contains("INSERT"));
 }

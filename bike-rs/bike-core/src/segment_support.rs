@@ -1,6 +1,5 @@
 use crate::activity_data::{
-    deserialize_derived_activity_data, deserialize_route_point_series, serialize_route_point_series,
-    ActivityRoutePoint, StoredRoutePointSeries,
+    deserialize_route_point_series, serialize_route_point_series, ActivityRoutePoint, StoredRoutePointSeries,
 };
 use crate::entities::{activities, segment_efforts, segments};
 use sea_orm::DbErr;
@@ -191,62 +190,80 @@ where
 #[tracing::instrument(name = "segments.match.segment", skip_all, fields(bike.operation = "segments.match.segment", user_id, segment_id, route_point_count = segment_route_points.len() as i64))]
 pub async fn replace_segment_efforts_for_segment<C>(
     db: &C,
+    objects: &crate::object_store::ObjectStore,
     user_id: i32,
     segment_id: i32,
     segment_route_points: &[ActivityRoutePoint],
 ) -> Result<Vec<i32>, SegmentSupportError>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + TransactionTrait,
 {
-    if segment_route_points.len() < 2 {
-        let affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
-        segment_efforts::Entity::delete_for_segment(db, segment_id).await?;
-        return Ok(affected_activity_ids);
-    }
-
-    let mut affected_activity_ids = load_activity_ids_for_segment(db, segment_id).await?;
-    let mut replacements = Vec::new();
+    let mut affected_activity_ids =
+        segment_efforts::Model::owned_activity_ids_for_segment(db, user_id, segment_id).await?;
+    let mut visited = std::collections::HashSet::new();
     let mut after_id = 0;
-    loop {
+    while segment_route_points.len() >= 2 {
         let candidates = activities::Model::matching_routes_page(db, user_id, after_id, 16).await?;
         let Some(last) = candidates.last() else {
             break;
         };
         after_id = last.id;
         for activity in candidates {
-            let route_points = deserialize_derived_activity_data(activity.derived_data_json.as_ref()).route_points;
-            if !activity_may_contain_segment(segment_route_points, &route_points) {
-                continue;
-            }
-            let matches = match_segment_efforts(segment_route_points, &route_points);
-            if !matches.is_empty() {
-                replacements.push((activity.user_id, activity.id, matches));
+            visited.insert(activity.id);
+            if reconcile_activity_segment(db, objects, user_id, activity.id, segment_id, segment_route_points).await? {
                 affected_activity_ids.push(activity.id);
             }
         }
     }
-
-    segment_efforts::Entity::delete_for_segment(db, segment_id).await?;
-
-    for (user_id, activity_id, matches) in replacements {
-        insert_matches(db, user_id, segment_id, activity_id, &matches).await?;
+    // Previous efforts can belong to activities now excluded by sport or recording.
+    for activity_id in affected_activity_ids.iter().copied() {
+        if !visited.contains(&activity_id) {
+            reconcile_activity_segment(db, objects, user_id, activity_id, segment_id, segment_route_points).await?;
+        }
     }
-
     affected_activity_ids.sort_unstable();
     affected_activity_ids.dedup();
-
     Ok(affected_activity_ids)
 }
 
-async fn load_activity_ids_for_segment<C>(db: &C, segment_id: i32) -> Result<Vec<i32>, SegmentSupportError>
+pub async fn reconcile_activity_segment<C>(
+    db: &C,
+    objects: &crate::object_store::ObjectStore,
+    user_id: i32,
+    activity_id: i32,
+    segment_id: i32,
+    segment_route_points: &[ActivityRoutePoint],
+) -> Result<bool, SegmentSupportError>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + TransactionTrait,
 {
-    let mut activity_ids = segment_efforts::Model::activity_ids_for_segment(db, segment_id).await?;
-    activity_ids.sort_unstable();
-    activity_ids.dedup();
-
-    Ok(activity_ids)
+    let txn = db.begin().await?;
+    let Some(activity) = activities::Model::lock_owned(&txn, activity_id, user_id).await? else {
+        txn.commit().await?;
+        return Ok(false);
+    };
+    let route = crate::entities::activity_recordings::Model::matching_route(&txn, objects, &activity)
+        .await
+        .map_err(|error| SegmentSupportError { message: error.message })?;
+    let matches = if activity_may_contain_segment(segment_route_points, &route) {
+        match_segment_efforts(segment_route_points, &route)
+    } else {
+        Vec::new()
+    };
+    let has_matches = !matches.is_empty();
+    segments::Model::lock_for_analytics(&txn, segment_id)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound("Segment was deleted during matching".into()))?;
+    if segment_efforts::Entity::reconcile_pair_matches(&txn, user_id, activity_id, segment_id, matches).await? {
+        segments::Model::mark_activity_changes(&txn, &[segment_id], chrono::Utc::now()).await?;
+        if !has_matches {
+            // Once the last pair effort disappears, retries cannot rediscover this
+            // activity from that segment. Save its counts before committing removal.
+            crate::analytics::rebuild_activity_analytics_cache(&txn, &[activity_id]).await?;
+        }
+    }
+    txn.commit().await?;
+    Ok(has_matches)
 }
 
 fn activity_may_contain_segment(
@@ -277,20 +294,6 @@ fn activity_may_contain_segment(
     }
 
     false
-}
-
-async fn insert_matches<C>(
-    db: &C,
-    user_id: i32,
-    segment_id: i32,
-    activity_id: i32,
-    matches: &[MatchedSegmentEffort],
-) -> Result<(), SegmentSupportError>
-where
-    C: ConnectionTrait,
-{
-    segment_efforts::Entity::store_matches(db, user_id, segment_id, activity_id, matches).await?;
-    Ok(())
 }
 
 fn match_segment_efforts(

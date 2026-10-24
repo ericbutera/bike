@@ -196,6 +196,10 @@ impl HandlerFixture {
                 segment_id: 4,
                 ..fixture::segment_effort()
             }]])
+            .append_query_results([vec![bike_core::entities::segments::Model {
+                id: 4,
+                ..fixture::segment()
+            }]])
             .append_query_results([fixture::segment_id_rows(&[])])
             .append_query_results([vec![fixture::activity_id_row()]])
             .append_query_results([vec![fixture::activity_analytics()]])

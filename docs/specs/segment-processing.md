@@ -117,13 +117,33 @@ The activity ingestion graph also rebuilds segment efforts after an activity is 
   or changed metrics in place; clear its ranks until the existing standings stage refreshes them.
 - Insert new traversals in bounded batches. Remove only saved IDs no longer present in
   the processed activity; another activity or athlete's efforts remain untouched.
-- Preserve the existing transaction, retry invalidation and downstream standings calls.
+- Preserve the activity transaction and downstream standings calls.
   Existing saved effort rows need no conversion or backfill. Consumers keep using the
   retained IDs, and immutable earned awards are not rewritten.
-- This is a partial LOAD05 slice after PR 125. Historical segment regeneration still
-  needs pair reconciliation, saved GPS bounds and bounded Temporal paging (LOAD19).
-  Removing broad retry invalidation and resolving matching/analytics/deletion lock order
-  (LOAD06) remain follow-ups before historical matching is enabled.
+- Historical matching reuses the same reconciler for one owned activity/segment
+  pair at a time. Never delete and reinsert a segment's complete effort set.
+  Re-read the activity under its lock before matching; a removed activity is skipped.
+  Matching consumes the owner's saved normalized recording artifact through P1's
+  typed reference and integrity checks. Missing or corrupt cycling recordings fail
+  explicitly; do not fall back to the mixed activity JSON. Non-cycling activities
+  reconcile an empty match set without requiring a recording.
+  A stale or non-cycling recording removes only that pair's previous traversals.
+- Matching and segment deletion acquire activity locks before segment locks, with
+  multiple IDs in ascending order. Current-result publication holds only its segment
+  lock and commits before refreshing activity summaries.
+  If an import changes the deletion's activity set before its segment lock is acquired,
+  reject deletion for retry instead of acquiring new activity locks out of order.
+- Refresh only the processed activity's old/new segments. On interrupted-refresh
+  retries, also recover that rider's saved summaries older than the segment's existing
+  activity-change marker; do not invalidate every segment the rider has ever matched.
+  Pair effort writes and their change marker commit together. Immutable earned awards
+  remain untouched. Removing a pair's last effort also saves that activity's counts
+  in the same transaction, so interruption cannot lose the removed activity's refresh.
+  No execution receipts or new freshness tables are needed.
+- Across-rider historical candidate selection and bounded Temporal paging remain
+  LOAD19 follow-ups; this change keeps the historical caller's existing athlete scope.
+- P4 acceptance includes the frozen activity 1671 saved-value and retry comparison,
+  immutable awards, and replay through the actual ingestion workflow described in PR 100.
 
 ### Geographic candidate filtering
 

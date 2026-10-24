@@ -21,6 +21,18 @@ struct Dataset {
     prepare_heatmaps: bool,
     #[serde(default)]
     segment_matching: Option<segment_matching::Input>,
+    #[serde(default)]
+    reconcile_pairs: Vec<ActivitySegmentPair>,
+    #[serde(default)]
+    prepare_recordings: Vec<bike_core::bike_tasks::ActivityTask>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActivitySegmentPair {
+    user_id: i32,
+    activity_id: i32,
+    segment_id: i32,
 }
 
 #[derive(Deserialize)]
@@ -169,7 +181,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::io::stdin().read_to_string(&mut input)?;
     let mut dataset: Dataset = serde_json::from_str(&input)?;
     let matching = dataset.segment_matching.take();
-    if staging && matching.is_some() {
+    let pairs = std::mem::take(&mut dataset.reconcile_pairs);
+    let recordings = std::mem::take(&mut dataset.prepare_recordings);
+    let acceptance = matching.is_some() || !pairs.is_empty() || !recordings.is_empty();
+    if staging && acceptance {
         return Err("Matching acceptance requires a disposable E2E project".into());
     }
     let db = bike_core::db::connect_database(&std::env::var("DATABASE_URL")?).await?;
@@ -181,6 +196,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     seed(&db, dataset).await?;
+    let objects = bike_core::object_store::ObjectStore::filesystem(
+        &bike_core::config::Config::get().uploads_dir,
+        bike_core::object_store::ObjectOwner::ActivityImports,
+    );
+    prepare_matching(&db, &objects, recordings, pairs).await?;
     if let Some(input) = matching {
         println!("{}", serde_json::to_string(&segment_matching::run(&db, input).await?)?);
     }
@@ -228,5 +248,100 @@ async fn staging_already_seeded(db: &sea_orm::DatabaseConnection, dataset: &Data
         Some(_) => Err(sea_orm::DbErr::Custom(
             "Refusing to seed a nonempty database with a different fixture owner".into(),
         )),
+    }
+}
+
+async fn prepare_matching(
+    db: &sea_orm::DatabaseConnection,
+    objects: &bike_core::object_store::ObjectStore,
+    recordings: Vec<bike_core::bike_tasks::ActivityTask>,
+    pairs: Vec<ActivitySegmentPair>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for task in recordings {
+        bike_core::entities::activity_recordings::Model::backfill(db, objects, task).await?;
+    }
+    for pair in pairs {
+        reconcile_pair(db, objects, pair).await?;
+    }
+    Ok(())
+}
+
+async fn reconcile_pair(
+    db: &sea_orm::DatabaseConnection,
+    objects: &bike_core::object_store::ObjectStore,
+    pair: ActivitySegmentPair,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let segment = segments::Model::find_by_id(db, pair.segment_id)
+        .await?
+        .ok_or("Pair reconciliation segment is missing")?;
+    let route = bike_core::segment_support::deserialize_segment_route_points(segment.route_data_json.as_ref());
+    bike_core::segment_support::reconcile_activity_segment(
+        db,
+        objects,
+        pair.user_id,
+        pair.activity_id,
+        pair.segment_id,
+        &route,
+    )
+    .await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bike_core::{entities::activity_recordings, object_store::ObjectOwner, test_support as fixtures};
+
+    #[tokio::test]
+    async fn matching_fixture_uses_the_recording_producer_and_shared_pair_writer() {
+        let data = fixtures::parsed_reprocess_activity().derived_data;
+        let activity = activities::Model {
+            derived_data_json: Some((&data).into()),
+            ..fixtures::activity()
+        };
+        let segment = segments::Model {
+            route_data_json: Some(bike_core::segment_support::serialize_segment_route_points(
+                &data.route_points,
+            )),
+            ..fixtures::segment()
+        };
+        let (objects, _) = fixtures::object_storage(ObjectOwner::BikeTasks);
+        let reference = objects
+            .transform(
+                &format!("bike/tasks/recordings/{}", activity.user_id),
+                &activity_recordings::Recording::from(data),
+            )
+            .await
+            .unwrap();
+        let recording = fixtures::activity_recording(&reference);
+        let dataset: Dataset = serde_json::from_value(serde_json::json!({
+            "records": [],
+            "prepare_recordings": [{"user_id": activity.user_id, "activity_id": activity.id, "priority": "Background"}],
+            "reconcile_pairs": [{"user_id": activity.user_id, "activity_id": activity.id, "segment_id": segment.id}]
+        }))
+        .unwrap();
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![activity.clone()]])
+            .append_query_results([vec![recording.clone()]])
+            .append_query_results([vec![segment.clone()]])
+            .append_query_results([vec![activity]])
+            .append_query_results([vec![recording]])
+            .append_query_results([vec![segment]])
+            .append_query_results([Vec::<segment_efforts::Model>::new()])
+            .append_exec_results([fixtures::written(), fixtures::written()])
+            .into_connection();
+        prepare_matching(&db, &objects, dataset.prepare_recordings, dataset.reconcile_pairs)
+            .await
+            .unwrap();
+        let transactions = db.into_transaction_log();
+        assert_eq!(transactions.len(), 3);
+        let statements: Vec<_> = transactions.iter().flat_map(|txn| txn.statements()).collect();
+        assert!(statements
+            .iter()
+            .any(|stmt| stmt.sql.starts_with("INSERT INTO \"segment_efforts\"")));
+        assert!(!statements.iter().any(|stmt| stmt.sql.starts_with("DELETE")));
+        assert!(!statements
+            .iter()
+            .any(|stmt| stmt.sql.starts_with("INSERT INTO \"activity_recordings\"")));
     }
 }

@@ -71,6 +71,16 @@ impl Model {
         let activity_ids = super::segment_efforts::Model::activity_ids_for_segment(db, self.id).await?;
         let txn = db.begin().await?;
         super::activities::Model::lock_for_analytics(&txn, &activity_ids).await?;
+        Self::lock_for_analytics(&txn, self.id).await?;
+        let mut current_activity_ids = super::segment_efforts::Model::activity_ids_for_segment(&txn, self.id).await?;
+        current_activity_ids.sort_unstable();
+        let mut locked_activity_ids = activity_ids.clone();
+        locked_activity_ids.sort_unstable();
+        if current_activity_ids != locked_activity_ids {
+            return Err(DbErr::Custom(
+                "Segment activities changed during deletion; retry".into(),
+            ));
+        }
         super::segment_user_summaries::Entity::delete_for_segment(&txn, self.id).await?;
         super::segment_summaries::Entity::delete_for_segment(&txn, self.id).await?;
         super::segment_efforts::Entity::delete_for_segment(&txn, self.id).await?;
@@ -302,3 +312,31 @@ impl SegmentMode {
 
 mod mutations;
 pub use mutations::{normalize_segment_title, slice_builder_route_points, ActivitySegmentSource, SegmentImport};
+
+#[derive(FromQueryResult)]
+struct SegmentIdentity {
+    id: i32,
+}
+
+impl Model {
+    pub(crate) async fn lock_matching_scope(db: &impl ConnectionTrait, segment_ids: &[i32]) -> Result<(), DbErr> {
+        if segment_ids.is_empty() {
+            return Ok(());
+        }
+        let locked = Entity::find()
+            .select_only()
+            .column(Column::Id)
+            .filter(Column::Id.is_in(segment_ids.iter().copied()))
+            .order_by_asc(Column::Id)
+            .lock_exclusive()
+            .into_model::<SegmentIdentity>()
+            .all(db)
+            .await?;
+        if locked.into_iter().map(|row| row.id).ne(segment_ids.iter().copied()) {
+            return Err(DbErr::RecordNotFound(
+                "Segment was deleted during matching; retry".into(),
+            ));
+        }
+        Ok(())
+    }
+}

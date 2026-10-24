@@ -33,14 +33,21 @@ where
 
 pub async fn replace_segment_efforts_for_segment<C>(
     db: &C,
+    objects: &bike_core::object_store::ObjectStore,
     user_id: i32,
     segment_id: i32,
     segment_route_points: &[ActivityRoutePoint],
 ) -> Result<Vec<i32>, AppError>
 where
-    C: ConnectionTrait,
+    C: ConnectionTrait + TransactionTrait,
 {
-    bike_core::segment_support::replace_segment_efforts_for_segment(db, user_id, segment_id, segment_route_points)
-        .await
-        .map_err(|error| AppError::internal(error.message))
+    bike_core::segment_support::replace_segment_efforts_for_segment(
+        db,
+        objects,
+        user_id,
+        segment_id,
+        segment_route_points,
+    )
+    .await
+    .map_err(|error| AppError::internal(error.message))
 }

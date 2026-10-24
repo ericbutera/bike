@@ -36,7 +36,7 @@ impl BatchOperations for BikeOperations {
     }
 
     async fn regenerate_segment_efforts(&self, segment_id: i32) -> Result<(), WorkflowError> {
-        bike_core::segment_regeneration::regenerate_segment_efforts(&self.db, segment_id).await?;
+        bike_core::segment_regeneration::regenerate_segment_efforts(&self.db, &self.objects, segment_id).await?;
         Ok(())
     }
 
