@@ -64,7 +64,7 @@ pub(crate) async fn activity_segments<W>(ctx: &WorkflowContext<W>, task: Activit
         children::run(
             ctx,
             RebuildSegmentAnalytics::run,
-            task,
+            task.into(),
             priority,
             format!("segment-{segment_id}"),
         )

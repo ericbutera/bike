@@ -332,7 +332,19 @@ pub async fn rebuild_segment_analytics_cache<C>(db: &C, segment_ids: &[i32]) -> 
 where
     C: ConnectionTrait + TransactionTrait,
 {
-    let mut activity_ids = Vec::new();
+    rebuild_segment_results(db, segment_ids, &[]).await
+}
+
+/// Publish current results, then refresh the union of surviving and removed matches.
+pub async fn rebuild_segment_results<C>(
+    db: &C,
+    segment_ids: &[i32],
+    removed_activity_ids: &[i32],
+) -> Result<(), sea_orm::DbErr>
+where
+    C: ConnectionTrait + TransactionTrait,
+{
+    let mut activity_ids = removed_activity_ids.to_vec();
     for id in normalized_positive_ids(segment_ids) {
         activity_ids.extend(rebuild_one_segment_cache(db, id).await?);
     }
@@ -353,10 +365,13 @@ where
     let rebuild = build_segment_analytics(&input);
     let txn = db.begin().await?;
     let current = segments::Model::lock_for_analytics(&txn, id).await?;
-    if current.is_none_or(|current| {
-        current.last_activity_change_at != segment.last_activity_change_at || current.updated_at != segment.updated_at
-    }) {
+    let Some(current) = current else {
         return Ok(Vec::new());
+    };
+    if current.last_activity_change_at != segment.last_activity_change_at || current.updated_at != segment.updated_at {
+        return Err(sea_orm::DbErr::Custom(
+            "Segment input changed during current-results calculation; retry".into(),
+        ));
     }
     persist_segment_analytics_rebuild(&txn, &[id], rebuild).await?;
     crate::personal_achievements::rebuild_from_efforts(&txn, id, &input.efforts).await?;

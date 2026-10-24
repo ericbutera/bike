@@ -1,7 +1,7 @@
 use super::{domain_error, domain_task};
 use async_trait::async_trait;
 use bike_core::{
-    bike_tasks::{ActivityTask, FitnessChange, SegmentChange},
+    bike_tasks::{ActivityTask, FitnessChange, SegmentAnalyticsTask},
     workflow_error::WorkflowError,
 };
 use std::sync::Arc;
@@ -16,7 +16,7 @@ pub trait DerivedOperations: Send + Sync {
     async fn rebuild_activity_climbs(&self, task: ActivityTask) -> Result<(), WorkflowError>;
     async fn rebuild_activity_card(&self, task: ActivityTask) -> Result<(), WorkflowError>;
     async fn rebuild_fitness_freshness(&self, task: FitnessChange) -> Result<(), WorkflowError>;
-    async fn rebuild_segment_analytics(&self, task: SegmentChange) -> Result<(), WorkflowError>;
+    async fn rebuild_segment_analytics(&self, task: SegmentAnalyticsTask) -> Result<(), WorkflowError>;
     async fn prepare_heatmap(&self, task: ActivityTask) -> Result<(), WorkflowError>;
 }
 
@@ -102,7 +102,7 @@ impl DerivedActivities {
     pub async fn rebuild_segment_analytics(
         self: Arc<Self>,
         _ctx: ActivityContext,
-        task: SegmentChange,
+        task: SegmentAnalyticsTask,
     ) -> Result<(), ActivityError> {
         domain_task(async move { self.operations.rebuild_segment_analytics(task).await })
             .await

@@ -123,10 +123,13 @@ async fn segment_rebuild_without_efforts_clears_old_summaries() {
         .append_query_results([Vec::<segment_efforts::Model>::new()])
         .append_exec_results((0..4).map(|_| fixtures::written()));
     operations(mock)
-        .rebuild_segment_analytics(bike_core::bike_tasks::SegmentChange {
-            segment_id: fixtures::segment().id,
-            ..fixtures::segment_change()
-        })
+        .rebuild_segment_analytics(
+            bike_core::bike_tasks::SegmentChange {
+                segment_id: fixtures::segment().id,
+                ..fixtures::segment_change()
+            }
+            .into(),
+        )
         .await
         .unwrap();
 }

@@ -13,7 +13,7 @@ pub(super) fn complete_derived_tasks(mock: &mut WorkflowMock, imported: &Activit
         };
         let child = mock.start_child("rebuild_segment_analytics", &segment);
         mock.assert_pending();
-        let mut segments = WorkflowMock::new::<RebuildSegmentAnalytics>(segment.clone());
+        let mut segments = WorkflowMock::new::<RebuildSegmentAnalytics>(segment.clone().into());
         segments.activity("rebuild_segment_analytics", &segment, &());
         mock.complete_child(child, &segments.result::<()>());
     }
@@ -145,7 +145,7 @@ fn derived_workflows_execute_one_named_activity_and_complete() {
     fitness.activity("rebuild_fitness_freshness", &task, &());
     fitness.result::<()>();
     let task = fixtures::segment_change();
-    let mut segments = WorkflowMock::new::<RebuildSegmentAnalytics>(task.clone());
+    let mut segments = WorkflowMock::new::<RebuildSegmentAnalytics>(task.clone().into());
     segments.activity("rebuild_segment_analytics", &task, &());
     segments.result::<()>();
 }

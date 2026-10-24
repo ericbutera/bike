@@ -131,6 +131,36 @@ pub struct SegmentChange {
     pub priority: Priority,
 }
 
+/// Untagged single input preserves existing Temporal history payloads.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SegmentAnalyticsTask {
+    Single(SegmentChange),
+    Batch { segment_ids: Vec<i32>, priority: Priority },
+}
+
+impl SegmentAnalyticsTask {
+    pub fn segment_ids(&self) -> Vec<i32> {
+        match self {
+            Self::Single(task) => vec![task.segment_id],
+            Self::Batch { segment_ids, .. } => segment_ids.clone(),
+        }
+    }
+
+    pub fn priority(&self) -> Priority {
+        match self {
+            Self::Single(task) => task.priority,
+            Self::Batch { priority, .. } => *priority,
+        }
+    }
+}
+
+impl From<SegmentChange> for SegmentAnalyticsTask {
+    fn from(task: SegmentChange) -> Self {
+        Self::Single(task)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserPage {
     pub user_id: i32,

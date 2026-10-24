@@ -32,7 +32,10 @@ async fn named_derived_handlers_call_the_domain_with_the_owned_target() {
         .await
         .unwrap();
     environment
-        .run(DerivedActivities::rebuild_segment_analytics, fixtures::segment_change())
+        .run(
+            DerivedActivities::rebuild_segment_analytics,
+            fixtures::segment_change().into(),
+        )
         .await
         .unwrap();
     let calls = operations.received.lock().unwrap();

@@ -1,4 +1,6 @@
-use crate::bike_tasks::{ActivityTask, ArchiveInput, FitnessChange, Priority, SegmentChange, UserPage};
+use crate::bike_tasks::{
+    ActivityTask, ArchiveInput, FitnessChange, Priority, SegmentAnalyticsTask, SegmentChange, UserPage,
+};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -94,11 +96,14 @@ impl JobQueue {
         segment_ids.retain(|id| *id > 0);
         segment_ids.sort_unstable();
         segment_ids.dedup();
-        for segment_id in segment_ids {
+        if segment_ids.is_empty() {
+            return Ok(());
+        }
+        for batch in segment_ids.chunks(500) {
             self.submit(
                 "rebuild_segment_analytics",
-                &SegmentChange {
-                    segment_id,
+                &SegmentAnalyticsTask::Batch {
+                    segment_ids: batch.to_vec(),
                     priority: Priority::Background,
                 },
             )

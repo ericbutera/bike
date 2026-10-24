@@ -78,6 +78,11 @@
 
 ## Segments
 
+- [x] **P6 Current results:** Retry changed standings input before awards; submit
+      bounded segment batches and refresh the union of shared/removed activity
+      summaries once. LOAD04 upload caller composition remains P13; see
+      [publication](specs/background-work.md#current-segment-result-publication).
+
 - [x] **P3 Traversals:** Preserve every valid segment traversal across strict,
       fallback and eligible reworked-trail profiles, in recording order, with stable
       per-segment attempt numbers. See [matching](specs/segment-processing.md#matching-contract).
