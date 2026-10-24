@@ -13,6 +13,39 @@
   icon immediately before the header date/time. Keep both icons decorative,
   with their adjacent text accessible and vertically aligned.
 
+## Saved data
+
+Related implementation work follows the [loading checklist](../TODO-fix-data-loading.md#saved-reads-and-screens),
+especially LOAD09-LOAD12 for saved ranks, facts, and prepared effort samples,
+and LOAD22 for saved award-chip order.
+
+The [DAG plan](performance.md#queries-each-screen-needs) distinguishes current
+saved sources from the remaining producer cutovers:
+
+| Detail data                     | Saved source / remaining producer                                                                                      |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Summary, metadata and laps      | Existing summary; P2 supplies typed metadata and ordered lap rows.                                                     |
+| Route and signals               | P1 supplies the normalized recording and typed artifact reference.                                                     |
+| Matched segments and attempts   | Existing `segment_efforts` and shared `segments`; P8 adds prepared per-effort facts/samples.                           |
+| Earned awards and current ranks | Existing typed award rows, effort ranks and segment/rider summaries (#123/#126).                                       |
+| Climbs                          | Existing `activity_climbs` plus saved report facts and typed artifact reference from #133; B3 still owns report reads. |
+
+- The [saved climb read contract](performance.md#saved-climb-read-contract) owns
+  the persisted climb metrics and prepared geometry. Read what is currently saved;
+  activity JSON is not a read-time fallback.
+- Use saved effort IDs, recording bounds and `effort_index` to display repeated
+  attempts in their original order and retain their attempt numbers when ranked.
+- Matching, climb detection, rank/award calculation and preparation of effort
+  samples run in the DAG. Detail requests read those results instead of parsing
+  the original upload, scanning riding history for ranks, redetecting climbs or
+  extracting comparison samples from whole recordings.
+- Read original award decisions even when current leaderboards have changed.
+  Follow the [saved-order contract](performance.md#saved-ranks-and-display-order)
+  for API ordering and UI rendering; neither layer reconstructs ranks or chip priority.
+  Show the saved results while processing catches up. Timestamps, versions and
+  checksums do not hide data or drive UI state. Opening an activity does not
+  trigger request-time calculation as a fallback.
+
 ## Detail layout
 
 - Place the title outside the cards, using the activity feed's **Recent

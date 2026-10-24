@@ -8,7 +8,13 @@ Update the owning spec in the same change as any intended behavior change.
 - [Durable worker and Strava integration](background-work.md): the single worker
   specification, including the complete task inventory, client submission,
   domain behavior, native durability, storage, and provider protocol.
+- [Activity processing DAG](performance.md): immutable progressive refinement,
+  saved stage inputs/outputs, shared segments, ordered efforts, activity awards
+  and downstream consumers.
 - [TODO](../TODO.md): outstanding work only; it does not duplicate the worker spec.
+- [Fix data loading TODO](../TODO-fix-data-loading.md): canonical N+1 and repeated
+  read/write checklist, including screen recalculation; consult its related
+  items when implementing DAG stages or features using the same data.
 - [Activities](activities.md): activity list and activity details specifications.
 - [Achievements](achievements.md): personal segment podiums and saved stage output.
 - [Authentication and user data](authentication.md): ownership boundaries and browser session isolation.

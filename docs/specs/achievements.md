@@ -123,7 +123,7 @@
   not recalculate priority or sort by ranks/titles in application code. The UI
   uses the generated award-row contract, preserves received order, and formats
   labels. Retries and regeneration preserve both stored orders.
-- Retries, reprocessing, rematching, segment edits/deletion, and standings
+- Retries, reprocessing, rematching, segment renaming/deletion, and standings
   rebuilds leave the saved rows unchanged. Deleting the activity cascades through
   its output to its awards. Historical rows do not reference replaceable effort
   rows or deleted segments.

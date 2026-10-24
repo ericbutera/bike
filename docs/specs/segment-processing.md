@@ -1,12 +1,23 @@
 # Segment Specification
 
+The [activity processing DAG](performance.md) builds on shared browsing, fixed
+geometry, saved awards and stable activity effort identities already merged.
+The [remaining slices](../TODO.md#performance) cover matching correctness,
+historical pair writes, geographic filtering and saved consumer outputs.
+
+Related implementation work follows the [loading checklist](../TODO-fix-data-loading.md#use-this-checklist-during-related-work):
+LOAD01-LOAD06 cover analytics, matching refresh scope, and lock order;
+LOAD08-LOAD13 cover saved segment reads and their screens; LOAD19 covers
+matching inputs. Update those items as their call sites or features change.
+
 Segments let a rider define a route slice, match it against uploaded activities, compare repeated efforts, and optionally use the segment as input to DH analytics.
 
 ## Product Intent
 
 Segment workflows must feel responsive. Creating a segment should validate and persist it quickly, then queue background matching. Long route-matching jobs should be observable and restartable enough to debug, but they should not make the request path or UI feel stuck.
 
-The system favors simple, reliable processing over clever spatial optimization until profiling proves the simple path is insufficient.
+Use existing Temporal paging and PostgreSQL spatial filtering to keep matching
+bounded. Candidate filtering happens before loading full recordings.
 
 ## Segment Sources
 
@@ -31,9 +42,9 @@ The segment builder records the source activity id and route-point start/end ind
   links show that the saved route is locked.
 - Creating a duplicate returns the existing segment without renaming it or
   replacing its stored builder source. Renaming uses the creator metadata action.
-- This is the first stream 1 slice of PR 100. LOAD05, LOAD06, and LOAD19 remain
-  follow-up work for stable effort persistence, lock order, and historical matching;
-  no data conversion or backfill is needed to retire route replacement.
+- PR 127 completed this behavior. PR 131 also preserves unchanged activity
+  effort identities. Historical pair persistence, lock order and candidate
+  paging remain in LOAD05, LOAD06 and LOAD19.
 
 ## Segment Ownership And Visibility
 
@@ -69,6 +80,10 @@ The segment builder records the source activity id and route-point start/end ind
   Rust and UI tests. Matching follow-up is tracked in the
   [segment backlog](../TODO.md#segments).
 
+The [pipeline plan](performance.md#shared-segment-activity-and-effort) defines
+activity/effort relations beneath the shared
+segment. Sharing a segment does not expose private source activity fields.
+
 ## Segment Mode
 
 Every segment has a mode:
@@ -78,7 +93,8 @@ Every segment has a mode:
 
 Only `dh` segments feed DH progress. A segment must never appear in DH analytics because of title, shape, speed, or any other heuristic alone.
 
-Segments can also be starred. Starred state is a user-facing organization signal and should not alter matching semantics.
+Creator-controlled starred state is an organization signal and does not affect
+matching. Independent per-rider favorites remain a separate feature.
 
 ## Matching And Processing
 
@@ -91,15 +107,20 @@ Segment upload and segment-builder requests should:
 
 The request path should not scan activities or call route matching inline. CPU-heavy matching belongs in worker tasks.
 
-When matching completes, the worker should rebuild segment analytics and refresh affected activity analytics so the rest of the app sees consistent derived data.
+Matching saves the activity/segment relation and every effort, then calls the
+downstream stages in the [DAG](performance.md#proposed-flow). Extract efforts in
+recording order and preserve their IDs, per-segment attempt numbers and recording
+bounds as defined by the [effort-order contract](performance.md#recording-order-and-attempt-numbers).
+New activities match shared segments; a new shared segment also matches existing
+activities in batches. Reprocessing uses the same stages, including zero matches.
+Awards follow the same first-added rule for uploads and backfills. Matching
+refreshes current standings and effort counts, including an activity that loses
+its last match. Original award recording remains an explicit activity stage;
+segment regeneration reads saved awards for highlights and does not decide new ones.
 
-- `regenerate_activity_segments` works as an individual task as well as a child
-  of user regeneration. Individual execution must not require a batch context.
-- Individual execution refreshes affected segment caches. A batch records those
-  segment IDs for its parent's shared rebuild after all matching children settle.
-- Both paths refresh the matched activity's own analytics, including clearing
-  stale counts when it loses its last match. A segment cache rebuild alone cannot
-  discover an activity removed from all of that segment's current efforts.
+- Individual activity regeneration remains valid without a batch context.
+- Individual execution refreshes affected results; batch execution passes affected
+  IDs to its parent. Both clear the activity summary when its last match is lost.
 
 Incomplete analytics should feel normal in the UI. A newly created segment may initially show queued or pending matching instead of efforts.
 
@@ -124,6 +145,39 @@ The activity ingestion graph also rebuilds segment efforts after an activity is 
   needs pair reconciliation, saved GPS bounds and bounded Temporal paging (LOAD19).
   Removing broad retry invalidation and resolving matching/analytics/deletion lock order
   (LOAD06) remain follow-ups before historical matching is enabled.
+
+### Incremental matching and historical activities
+
+- A new activity discovers nearby saved shared segments and saves all valid
+  traversals for that activity. Other activities' recordings need not be read.
+- Creating a segment starts a background Temporal workflow over nearby existing
+  cycling activities across athletes. Historical matches may appear gradually;
+  matching the complete history is not required before creation returns.
+- Use deterministic bounded candidate-ID pages and the existing Temporal
+  Continue-As-New pattern. Resume from the saved workflow cursor after a retry
+  or restart; advance it only after the page's writes and required refreshes finish.
+  Keep worker concurrency within the existing resource budget.
+- Reuse the same route matcher and effort persistence for new imports and the
+  historical workflow. Save each activity/segment pair in short transactions;
+  do not keep a transaction or an unbounded replacement list across the scan.
+- Upsert that pair's matched traversals, preserving unchanged effort IDs,
+  recording bounds and attempt numbers. An unchanged retry creates no duplicate
+  effort. Reconcile removals only within the processed pair, without deleting
+  every athlete's efforts for the segment.
+- Coordinate pair writes with activity reprocessing and activity/segment deletion
+  through ordinary ownership checks, transactions and consistent lock order.
+  Concurrent import
+  and backfill must not erase each other's matches or write stale source results.
+- After each bounded batch, refresh current standings and counts for the affected
+  segments and activities once. Rank saved effort rows; ranking does not require
+  loading other recordings or rematching the segment's complete history.
+- Overall standings select each athlete's best effort before assigning positions.
+  Inserting an attempt does not always move a position, so incrementing every
+  lower position is not a complete standings update. Persist the affected result
+  rows in bounded bulk writes; APIs and screens read the saved positions.
+- Historical segment matching updates current results and effort counts. It does
+  not create or reconsider saved activity awards, including an empty award output.
+  The explicit award stage remains governed by [earned awards](achievements.md#earned-awards).
 
 ### Geographic candidate filtering
 
@@ -171,13 +225,15 @@ Bike matches stored segment routes against normalized activity route points to c
 
 ## Reworked Trails
 
-Some public segments represent routes that have drifted from the current trail because of reroutes or trail work. Bike should follow Strava-compatible leniency for these cases:
+Erosion, natural trail movement, reroutes and trail work can move the ridden route away from the saved segment GPS points. Preserve the existing route-drift tolerances:
 
+- Keep the segment ID, base GPS points and distance fixed so historical efforts continue to refer to the same course. Match each activity's actual recording against that definition; matching never rewrites the shared route.
+- Candidate discovery must allow the corridor accepted by the eligible matching profiles, so it does not discard a drifted route before matching.
 - Endpoint order and approximate distance remain required.
 - Moderate shape deviation is acceptable when the activity still follows the same practical segment corridor.
 - The reworked-trail fallback must not replace a stricter match for the same traversal; stricter matches on other laps do not disable it.
 - Leniency is for old-vs-current route drift, not for matching unrelated nearby trails or the wrong direction.
-- The broad reworked-trail fallback is intended for longer public trail routes where the same route has moved over time. It must not be used to infer efforts on short, isolated connectors, private-property connectors, or trails the rider did not actually enter.
+- Keep the existing minimum segment distance of 1,500 meters for the broad reworked-trail fallback. It must not infer efforts on short, isolated connectors, private-property connectors, or trails the rider did not actually enter.
 
 ## Regression Fixtures
 
@@ -264,19 +320,21 @@ Upload and builder responses should avoid expanding all efforts immediately afte
 
 ## Duplicate Detection
 
-Duplicate detection should preserve geometric duplicate behavior, but it should avoid loading every route blob where possible. Filtering by user and compact distance bucket before reading route JSON is acceptable. A stored dedupe key remains a possible future cleanup if this path becomes too expensive.
+Duplicate detection should preserve geometric duplicate behavior across shared segments. Reuse the existing shared segment when the route is a duplicate, so athletes use the same segment ID. Use compact candidate fields such as distance before loading route JSON; do not limit duplicate detection to the creator.
 
 ## Performance Principles
 
 Segment processing should:
 
-- filter candidate activities by segment owner;
+- match shared segments against candidate activities across athletes;
 - page candidate activities in deterministic order when the scan grows large;
 - query only the columns needed for matching whenever practical;
 - avoid selecting route blobs on list endpoints;
 - rebuild analytics in worker paths rather than request handlers.
 
-Multiple worker instances in production are acceptable. A single long task occupying one worker is not by itself a product blocker as long as requests remain responsive and jobs remain inspectable.
+Multiple worker instances are acceptable. Bound historical work by candidate
+pages and short writes so the job can progress gradually without holding a
+whole-history transaction or monopolizing the worker's Activity slots.
 
 ## UI Contract
 
@@ -295,8 +353,8 @@ Older activities uploaded before route-point persistence or before a parser fix 
 ## Code Anchors
 
 - Segment API and duplicate detection: `bike-rs/api/src/controllers/segments.rs`
-- Route matching helpers: `bike-rs/api/src/segment_support.rs`
-- Segment analytics: `bike-rs/api/src/analytics.rs`
+- Route matching helpers: `bike-rs/bike-core/src/segment_support.rs`
+- Segment analytics: `bike-rs/bike-core/src/analytics.rs`
 - Regeneration workflow: `bike-rs/bike-temporal/src/workflows/regenerate_segment_efforts.rs`
 - Segment list UI: `bike-ui/components/SegmentsPanel.tsx`
 - Segment detail UI: `bike-ui/components/SegmentDetailPanel.tsx`
