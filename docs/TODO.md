@@ -65,6 +65,10 @@
 
 ## Segments
 
+- [x] Preserve saved effort identities when activity matching repeats unchanged
+      traversals; see [activity reconciliation](specs/segment-processing.md#activity-effort-reconciliation).
+      LOAD05 still needs narrowed retry invalidation and historical pair writes;
+      LOAD06 and LOAD19 remain prerequisites for gradual historical matching.
 - [x] Fix segment geometry after creation and keep creator renaming as a metadata
       update without matching or standings work; see the
       [fixed-geometry contract](specs/segment-processing.md#fixed-geometry-and-creator-renaming).

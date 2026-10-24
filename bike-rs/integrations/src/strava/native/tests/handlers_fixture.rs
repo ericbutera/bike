@@ -190,6 +190,12 @@ impl HandlerFixture {
             .append_query_results([vec![self.domain.activity_state()]])
             .append_query_results([vec![activity.clone()]])
             .append_query_results([fixture::segment_id_rows(&[4])])
+            .append_query_results([vec![segment_efforts::Model {
+                user_id: activity.user_id,
+                activity_id: activity.id,
+                segment_id: 4,
+                ..fixture::segment_effort()
+            }]])
             .append_query_results([fixture::segment_id_rows(&[])])
             .append_query_results([vec![fixture::activity_id_row()]])
             .append_query_results([vec![fixture::activity_analytics()]])
