@@ -58,9 +58,9 @@
   Positions are consecutive from 1 through at most 10, including tied times.
 - Store athlete, effort ID, and duration with each position. Uniqueness protects
   one athlete per segment and one selected effort. Foreign keys cascade deletion.
-- The worker locks the segment, reads saved efforts, and replaces its standings
-  in one transaction. Empty segments clear previously saved rows. New efforts
-  can displace rows; deleted efforts promote the next eligible athlete/attempt.
+- The worker follows the [saved analytics persistence contract](segment-processing.md#saved-analytics-persistence)
+  to replace standings transactionally. Empty segments clear previously saved
+  rows. New efforts can displace rows; deleted efforts promote the next eligible athlete/attempt.
 - Existing segment analytics refreshes overall standings after imports,
   reprocessing, regeneration, and activity deletion using the same operation
   as `backfill_overall_achievements`.

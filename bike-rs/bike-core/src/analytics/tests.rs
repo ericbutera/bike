@@ -13,7 +13,7 @@ fn effort(id: i32, user_id: i32, segment_id: i32) -> segment_efforts::Model {
 
 #[test]
 fn equal_duration_efforts_retain_identity_order_and_independent_rider_ranks_and_bests() {
-    let rebuild = build_segment_analytics(SegmentAnalyticsInput {
+    let rebuild = build_segment_analytics(&SegmentAnalyticsInput {
         efforts: vec![effort(1, 7, 1), effort(2, 8, 1), effort(3, 7, 1), effort(4, 8, 2)],
         activity_ids: vec![42],
         activity_started_at_by_id: HashMap::from([(42, fixtures::timestamp())]),
@@ -94,7 +94,7 @@ async fn a_rider_summary_failure_rolls_back_the_saved_ranks_and_both_summary_rep
 }
 
 #[tokio::test]
-async fn a_segment_without_efforts_clears_riders_and_keeps_an_empty_segment_summary() {
+async fn a_segment_without_efforts_clears_all_three_current_result_outputs() {
     let db = fixtures::postgres_mock()
         .append_query_results([vec![fixtures::segment()]])
         .append_query_results([Vec::<segment_efforts::Model>::new()])
@@ -106,10 +106,6 @@ async fn a_segment_without_efforts_clears_riders_and_keeps_an_empty_segment_summ
             best_duration_seconds: None,
             ..fixtures::segment_summary()
         }]])
-        .append_query_results([vec![fixtures::segment()]])
-        .append_query_results([Vec::<segment_efforts::Model>::new()])
-        .append_query_results([vec![fixtures::segment()]])
-        .append_query_results([Vec::<segment_efforts::Model>::new()])
         .append_exec_results((0..4).map(|_| fixtures::written()))
         .into_connection();
     assert!(rebuild_one_segment_cache(&db, 1).await.unwrap().is_empty());
@@ -135,4 +131,128 @@ async fn a_segment_without_efforts_clears_riders_and_keeps_an_empty_segment_summ
     assert!(!statements
         .iter()
         .any(|s| s.sql.starts_with("INSERT INTO \"segment_user_summaries\"")));
+    for table in ["segment_personal_achievements", "segment_overall_achievements"] {
+        let clear = statements
+            .iter()
+            .find(|s| s.sql.starts_with(&format!("DELETE FROM \"{table}\"")))
+            .unwrap();
+        assert_eq!(clear.values.as_ref().unwrap().0, vec![1.into()]);
+        assert!(!statements
+            .iter()
+            .any(|s| s.sql.starts_with(&format!("INSERT INTO \"{table}\""))));
+    }
+}
+
+#[tokio::test]
+async fn one_effort_snapshot_publishes_distinct_analytics_personal_and_overall_ranks_atomically() {
+    let scenario = fixtures::shared_segments();
+    let db = fixtures::postgres_mock()
+        .append_query_results([vec![scenario.segment.clone()]])
+        .append_query_results([scenario.efforts_for(scenario.segment.id)])
+        .append_query_results([scenario.activities.to_vec()])
+        .append_query_results([vec![scenario.segment.clone()]])
+        .append_query_results([vec![fixtures::segment_summary()]])
+        .append_exec_results([1, 1, 3, 1, 1, 1, 1, 1].map(|rows_affected| MockExecResult {
+            rows_affected,
+            ..Default::default()
+        }))
+        .into_connection();
+    assert_eq!(
+        rebuild_one_segment_cache(&db, scenario.segment.id).await.unwrap(),
+        vec![42, 43]
+    );
+    let log = db.into_transaction_log();
+    let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
+    assert_eq!(
+        statements
+            .iter()
+            .filter(|s| s.sql.contains("FROM \"segment_efforts\""))
+            .count(),
+        1
+    );
+    assert_eq!(statements.iter().filter(|s| s.sql.ends_with("FOR UPDATE")).count(), 1);
+    assert_eq!(statements.iter().filter(|s| s.sql == "BEGIN").count(), 1);
+    assert_eq!(statements.last().unwrap().sql, "COMMIT");
+    let ranks = statements
+        .iter()
+        .find(|s| s.sql.starts_with("UPDATE \"segment_efforts\""))
+        .unwrap();
+    assert_eq!(
+        ranks.values.as_ref().unwrap().0,
+        [1, 1, 2, 2, 3, 3, 1, 1, 2, 2, 3, 1, 1, 2, 3].map(Into::into).to_vec()
+    );
+    let personal = statements
+        .iter()
+        .find(|s| s.sql.starts_with("INSERT INTO \"segment_personal_achievements\""))
+        .unwrap();
+    assert_eq!(
+        personal.values.as_ref().unwrap().0,
+        [1, 7, 1, 1, 100, 1, 7, 2, 2, 200, 1, 8, 1, 3, 300]
+            .map(Into::into)
+            .to_vec()
+    );
+    let overall = statements
+        .iter()
+        .find(|s| s.sql.starts_with("INSERT INTO \"segment_overall_achievements\""))
+        .unwrap();
+    assert_eq!(
+        overall.values.as_ref().unwrap().0,
+        [1, 1, 7, 1, 100, 1, 2, 8, 3, 300].map(Into::into).to_vec()
+    );
+    assert!(!statements.iter().any(|s| s.sql.contains("activity_earned_awards")));
+}
+
+#[tokio::test]
+async fn changed_or_deleted_segment_input_publishes_no_current_results_or_award_summaries() {
+    let segment = fixtures::segment();
+    let changed_at = segment.updated_at + Duration::seconds(1);
+    let current_segments = [
+        Some(segments::Model {
+            updated_at: changed_at,
+            ..segment.clone()
+        }),
+        Some(segments::Model {
+            last_activity_change_at: changed_at,
+            ..segment.clone()
+        }),
+        None,
+    ];
+    for current in current_segments {
+        let db = fixtures::postgres_mock()
+            .append_query_results([vec![segment.clone()]])
+            .append_query_results([vec![fixtures::segment_effort()]])
+            .append_query_results([vec![fixtures::activity()]])
+            .append_query_results([current.into_iter().collect::<Vec<_>>()])
+            .into_connection();
+        rebuild_segment_analytics_cache(&db, &[segment.id]).await.unwrap();
+        let log = db.into_transaction_log();
+        let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
+        assert_eq!(statements.last().unwrap().sql, "ROLLBACK");
+        assert!(!statements.iter().any(|s| s.sql.starts_with("INSERT")));
+        assert!(!statements.iter().any(|s| s.sql.starts_with("UPDATE")));
+        assert!(!statements.iter().any(|s| s.sql.starts_with("DELETE")));
+        assert!(!statements.iter().any(|s| s.sql.contains("activity_analytics")));
+    }
+}
+
+#[tokio::test]
+async fn personal_or_overall_publication_failure_rolls_back_every_current_result() {
+    // Fail either standings delete or insert after the analytics writes succeeded.
+    for successful_writes in 4..=7 {
+        let db = segment_input(vec![fixtures::segment_effort()])
+            .append_query_results([vec![fixtures::segment_summary()]])
+            .append_exec_results((0..successful_writes).map(|_| fixtures::written()))
+            .append_exec_errors([DbErr::Custom("standings publication failed".into())])
+            .into_connection();
+        let error = rebuild_segment_analytics_cache(&db, &[1]).await.unwrap_err();
+        assert_eq!(error, DbErr::Custom("standings publication failed".into()));
+        let log = db.into_transaction_log();
+        let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
+        assert_eq!(statements.last().unwrap().sql, "ROLLBACK");
+        assert!(!statements.iter().any(|s| s.sql == "COMMIT"));
+        assert!(statements
+            .iter()
+            .any(|s| s.sql.starts_with("UPDATE \"segment_efforts\"")));
+        assert!(!statements.iter().any(|s| s.sql.contains("activity_analytics")));
+    }
 }

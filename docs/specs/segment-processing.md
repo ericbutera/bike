@@ -177,9 +177,18 @@ cargo test segment_support
   effort identity, traversal order, recording bounds and saved award decisions.
 - LOAD02: insert segment/rider summaries in batches of at most 500, including
   each rider's effort count and personal-best effort and duration.
-- Keep rank writes, clearing previous summaries and inserting replacement
-  summaries in the existing segment transaction and behind its existing lock.
-  A failed batch rolls back the replacement. No efforts clears rider summaries
+- LOAD03: load one saved effort snapshot for effort analytics, personal podiums
+  and overall standings. Preserve each domain's distinct rules in
+  [achievements](achievements.md); never reload efforts between these calculations.
+- Publish all three current-result outputs in the same segment transaction.
+  Retain the existing exclusive segment lock and compare the loaded segment's
+  activity-change and update timestamps before any writes. Changed or deleted
+  input publishes nothing; a failure in any output rolls back all three.
+- Standalone personal and overall backfills keep their own segment transaction
+  and lock before loading efforts, then use the same domain calculations and
+  replacement operations as the combined refresh. Release the segment lock
+  before refreshing activity summaries, preserving saved awards and effort IDs.
+- No efforts clears rider summaries, personal podiums and overall standings,
   and stores an empty segment summary. Unrelated segments remain untouched.
 - These persistence changes introduce no new saved fields or ranking rules.
   Existing rows need no conversion or backfill; explicit refreshes use the same

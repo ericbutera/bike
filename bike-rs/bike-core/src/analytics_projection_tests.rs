@@ -144,7 +144,7 @@ async fn segment_title_changes_do_not_refresh_activity_projections() {
 }
 
 #[tokio::test]
-async fn segment_refresh_commits_ranks_before_locking_shared_activity_projections() {
+async fn segment_refresh_commits_current_results_before_locking_shared_activity_projections() {
     let db = segment_result_refresh(fixtures::postgres_mock(), 1)
         .append_query_results([vec![fixtures::activity_id_row()]])
         .append_query_results([vec![fixtures::activity_analytics()]])
@@ -167,7 +167,7 @@ async fn segment_refresh_commits_ranks_before_locking_shared_activity_projection
     assert!(commit < projection_lock);
     assert_eq!(
         statements.iter().filter(|statement| statement.sql == "COMMIT").count(),
-        4
+        2
     );
 }
 
@@ -297,10 +297,6 @@ fn segment_result_refresh(mock: MockDatabase, segment_id: i32) -> MockDatabase {
             segment_id,
             ..fixtures::segment_summary()
         }]])
-        .append_query_results([vec![segment.clone()]])
-        .append_query_results([vec![effort.clone()]])
-        .append_query_results([vec![segment]])
-        .append_query_results([vec![effort]])
 }
 
 #[tokio::test]
@@ -348,7 +344,7 @@ async fn segment_batch_refreshes_shared_activity_award_counts_only_once() {
         .collect();
     assert_eq!(locks.len(), 1);
     assert_eq!(locks[0].values.as_ref().unwrap().0, vec![42.into()]);
-    assert_eq!(statements.iter().filter(|s| s.sql == "COMMIT").count(), 7);
+    assert_eq!(statements.iter().filter(|s| s.sql == "COMMIT").count(), 3);
 }
 
 #[tokio::test]
@@ -363,5 +359,5 @@ async fn failed_segment_batch_leaves_award_summary_refresh_for_retry() {
     let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
     assert!(!statements.iter().any(|s| s.sql.contains("activity_earned_awards")));
     assert!(!statements.iter().any(|s| s.sql.contains("activity_analytics")));
-    assert_eq!(statements.iter().filter(|s| s.sql == "COMMIT").count(), 3);
+    assert_eq!(statements.iter().filter(|s| s.sql == "COMMIT").count(), 1);
 }
