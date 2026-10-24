@@ -2,8 +2,11 @@
 mod activity_archive_import;
 mod activity_pages;
 mod children;
+mod matching_bounds;
 mod metadata;
 pub(crate) mod options;
+pub(crate) use matching_bounds::BoundsActivities;
+pub use matching_bounds::{BackfillActivityRouteBounds, BackfillSegmentRouteBounds};
 mod prepare_heatmap;
 mod process_activity_import;
 mod rebuild_fitness_freshness;

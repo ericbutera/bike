@@ -103,6 +103,7 @@ impl Model {
         };
         crate::entities::activity_metadata::Model::store(db, &saved).await?;
         crate::entities::activity_recordings::Model::store_reference(db, &saved, recording).await?;
+        crate::entities::route_matching_bounds::Model::store_source(db, &saved).await?;
         Ok(saved)
     }
 }

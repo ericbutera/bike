@@ -30,6 +30,7 @@ pub fn worker(
     let objects = ObjectStore::filesystem(&uploads_dir, ObjectOwner::ActivityImports);
     let metadata = crate::workflows::MetadataActivities::new(db.clone());
     let recordings = crate::workflows::RecordingActivities::new(db.clone(), objects.clone());
+    let bounds = crate::workflows::BoundsActivities::new(db.clone(), objects.clone());
     let operations = Arc::new(BikeOperations::new(db, objects));
     let options = WorkerOptions::new(TASK_QUEUE)
         .tuner(
@@ -44,6 +45,9 @@ pub fn worker(
         .register_workflow::<ReprocessActivityImport>()?
         .register_workflow::<RebuildFitnessFreshness>()?
         .register_workflow::<RebuildSegmentAnalytics>()?
+        .register_workflow::<crate::workflows::BackfillActivityRouteBounds>()?
+        .register_workflow::<crate::workflows::BackfillSegmentRouteBounds>()?
+        .register_activities(bounds)
         .register_workflow::<PrepareHeatmap>()?
         .register_workflow::<RegenerateActivitySegments>()?
         .register_workflow::<RegenerateSegmentEfforts>()?

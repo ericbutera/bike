@@ -35,8 +35,7 @@ impl Model {
         let before = Self::import_target(&txn, execution).await?;
         if before.is_none() {
             if let Some(duplicate) = Self::duplicate_import(&txn, &import, parsed).await? {
-                crate::entities::activity_metadata::Model::store(&txn, &duplicate).await?;
-                crate::entities::activity_recordings::Model::store(&txn, objects, &duplicate).await?;
+                duplicate.store_import_outputs(&txn, objects).await?;
                 txn.commit().await?;
                 return Ok(duplicate);
             }
@@ -46,8 +45,7 @@ impl Model {
             Some(activity) => activity.clone().update_parsed(&txn, artifact, parsed, data).await?,
             None => Self::insert_parsed(&txn, &import, artifact, parsed, data, None).await?,
         };
-        crate::entities::activity_metadata::Model::store(&txn, &saved).await?;
-        crate::entities::activity_recordings::Model::store(&txn, objects, &saved).await?;
+        saved.store_import_outputs(&txn, objects).await?;
         let dirty_from = before.as_ref().map_or(saved.started_at.date_naive(), |activity| {
             activity.started_at.date_naive().min(saved.started_at.date_naive())
         });
@@ -61,6 +59,17 @@ impl Model {
         .await?;
         txn.commit().await?;
         Ok(saved)
+    }
+
+    async fn store_import_outputs(
+        &self,
+        db: &impl ConnectionTrait,
+        objects: &crate::object_store::ObjectStore,
+    ) -> Result<(), WorkflowError> {
+        crate::entities::activity_metadata::Model::store(db, self).await?;
+        crate::entities::activity_recordings::Model::store(db, objects, self).await?;
+        crate::entities::route_matching_bounds::Model::store_source(db, self).await?;
+        Ok(())
     }
 
     async fn duplicate_import(

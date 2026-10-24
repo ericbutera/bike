@@ -88,6 +88,12 @@
       summaries once. LOAD04 upload caller composition remains P13; see
       [publication](specs/background-work.md#current-segment-result-publication).
 
+- [x] **P5 Matching bounds:** Persist indexed activity/segment route bounds, narrow
+      candidate IDs before recording/geometry hydration, and provide focused bounds
+      backfills. Preserve missing bounds and all supported drift profiles. Historical
+      orchestration and pair persistence remain P14/P4; see
+      [candidate filtering](specs/segment-processing.md#geographic-candidate-filtering).
+
 - [x] **P3 Traversals:** Preserve every valid segment traversal across strict,
       fallback and eligible reworked-trail profiles, in recording order, with stable
       per-segment attempt numbers. See [matching](specs/segment-processing.md#matching-contract).

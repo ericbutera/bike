@@ -4,7 +4,7 @@ use crate::activity_summary::summarize_activity_upload;
 use crate::entities::{activities, segments};
 use crate::segment_support::{serialize_segment_route_points, slice_effort_route_points};
 use crate::workflow_error::WorkflowError as AppError;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, Set, TransactionSession, TransactionTrait};
 
 #[derive(Debug, Clone)]
 pub struct ActivitySegmentSource {
@@ -158,19 +158,24 @@ impl Model {
         Ok(patch.update(db).await?)
     }
     pub async fn create_from_activity(
-        db: &impl ConnectionTrait,
+        db: &(impl ConnectionTrait + TransactionTrait),
         source: &ActivitySegmentSource,
     ) -> Result<segments::Model, AppError> {
-        Ok(ActiveModel {
+        let txn = db.begin().await?;
+        let saved = ActiveModel {
             user_id: Set(source.activity.user_id),
             ..Default::default()
         }
         .with_activity_source(source)
-        .insert(db)
-        .await?)
+        .insert(&txn)
+        .await?;
+        crate::entities::route_matching_bounds::segment::Model::store_route(&txn, saved.id, &source.route_points)
+            .await?;
+        txn.commit().await?;
+        Ok(saved)
     }
     pub async fn import_route(
-        db: &impl ConnectionTrait,
+        db: &(impl ConnectionTrait + TransactionTrait),
         user_id: i32,
         filename: &str,
         format: &str,
@@ -197,6 +202,7 @@ impl Model {
             return Ok(SegmentImport::Existing(existing_segment));
         }
 
+        let txn = db.begin().await?;
         let segment = ActiveModel {
             title: Set(segment_summary.title),
             source: Set("manual_segment_import".into()),
@@ -206,8 +212,16 @@ impl Model {
             ..Default::default()
         }
         .with_route(segment_summary.distance_meters, &segment_detail.route_points)
-        .insert(db)
+        .insert(&txn)
         .await?;
+
+        crate::entities::route_matching_bounds::segment::Model::store_route(
+            &txn,
+            segment.id,
+            &segment_detail.route_points,
+        )
+        .await?;
+        txn.commit().await?;
 
         Ok(SegmentImport::Created(segment))
     }
@@ -298,5 +312,58 @@ mod tests {
         assert!(!assignment.contains("\"distance_meters\" ="));
         assert!(assignment.contains("\"mode\" ="));
         assert!(assignment.contains("\"starred\" ="));
+    }
+
+    #[tokio::test]
+    async fn builder_creation_publishes_bounds_in_the_segment_transaction_and_failure_rolls_back() {
+        for fail in [false, true] {
+            let parsed = test_support::parsed_reprocess_activity();
+            let route = parsed.derived_data.route_points.clone();
+            let activity = activities::Model {
+                derived_data_json: Some((&parsed.derived_data).into()),
+                ..test_support::activity()
+            };
+            let saved = segments::Model {
+                route_data_json: Some(serialize_segment_route_points(&route)),
+                source_activity_id: Some(activity.id),
+                ..test_support::segment()
+            };
+            let mock = test_support::postgres_mock()
+                .append_query_results([vec![activity]])
+                .append_query_results([vec![saved.clone()]]);
+            let mock = if fail {
+                mock.append_exec_errors([sea_orm::DbErr::Custom("bounds unavailable".into())])
+            } else {
+                mock.append_exec_results([test_support::written()])
+            };
+            let db = mock.into_connection();
+            let source = ActivitySegmentSource::load(&db, 7, 42, "Course", 0, 2).await.unwrap();
+            let result = Model::create_from_activity(&db, &source).await;
+            assert_eq!(result.is_err(), fail);
+            if !fail {
+                assert_eq!(result.unwrap().id, saved.id);
+            }
+            let log = db.into_transaction_log();
+            let statements: Vec<_> = log.iter().flat_map(|txn| txn.statements()).collect();
+            assert!(statements.iter().any(|s| s.sql.contains("segment_route_bounds")));
+            assert_eq!(statements.last().unwrap().sql, if fail { "ROLLBACK" } else { "COMMIT" });
+        }
+    }
+
+    #[tokio::test]
+    async fn imported_segment_publishes_its_prepared_bounds_without_matching_recordings() {
+        let db = test_support::postgres_mock()
+            .append_query_results([Vec::<segments::Model>::new()])
+            .append_query_results([vec![test_support::segment()]])
+            .append_exec_results([test_support::written()])
+            .into_connection();
+        let result = Model::import_route(&db, 7, "route.tcx", "tcx", test_support::REPROCESS_SOURCE)
+            .await
+            .unwrap();
+        assert!(matches!(result, SegmentImport::Created(_)));
+        let log = format!("{:?}", db.into_transaction_log());
+        assert!(log.contains("segment_route_bounds"));
+        assert!(log.contains("COMMIT"));
+        assert!(!log.contains("segment_efforts"));
     }
 }
