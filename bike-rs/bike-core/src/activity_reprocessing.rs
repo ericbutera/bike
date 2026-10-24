@@ -113,7 +113,7 @@ pub async fn reprocess(
     crate::activity_import_pipeline::enrich_recording(db, objects, &import, &artifact, current.as_ref(), &mut parsed)
         .await?;
     let profile = crate::training_profile::load_training_profile(db, source.user_id).await?;
-    let activity = activities::Model::apply_import(db, &execution, &artifact, &parsed, &profile).await?;
+    let activity = activities::Model::apply_import(db, objects, &execution, &artifact, &parsed, &profile).await?;
     Ok(ActivityImportResult {
         activity_id: activity.id,
         activity_import_id: import.id,

@@ -4,6 +4,7 @@
 )]
 
 pub use sea_orm_migration::prelude::*;
+
 mod kaleido_migrations;
 mod m20260506_000001_create_activity_imports;
 mod m20260506_000002_create_activities;
@@ -76,6 +77,7 @@ mod m20261023_000001_overall_achievements;
 mod m20261023_000002_activity_earned_awards;
 mod m20261023_000003_activity_cards;
 mod m20261024_000009_climb_report_facts;
+mod m20261024_000010_activity_recordings;
 
 pub struct Migrator;
 
@@ -157,6 +159,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261006_000002_heatmap_cycling_sources::Migration),
             Box::new(m20261006_000003_activity_recording_environment::Migration),
             Box::new(m20261015_000001_background_task_insert_defaults::Migration),
+            Box::new(m20261024_000010_activity_recordings::Migration),
         ];
         locals.sort_by_key(|m| m.name().to_string());
 

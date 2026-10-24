@@ -12,6 +12,7 @@ use sea_orm::TransactionTrait;
 impl Model {
     pub(crate) async fn apply_import(
         db: &DatabaseConnection,
+        objects: &crate::object_store::ObjectStore,
         execution: &ImportExecution,
         artifact: &ActivityProcessingArtifact,
         parsed: &ParsedActivityData,
@@ -34,6 +35,7 @@ impl Model {
         let before = Self::import_target(&txn, execution).await?;
         if before.is_none() {
             if let Some(duplicate) = Self::duplicate_import(&txn, &import, parsed).await? {
+                crate::entities::activity_recordings::Model::store(&txn, objects, &duplicate).await?;
                 txn.commit().await?;
                 return Ok(duplicate);
             }
@@ -43,6 +45,7 @@ impl Model {
             Some(activity) => activity.clone().update_parsed(&txn, artifact, parsed, data).await?,
             None => Self::insert_parsed(&txn, &import, artifact, parsed, data, None).await?,
         };
+        crate::entities::activity_recordings::Model::store(&txn, objects, &saved).await?;
         let dirty_from = before.as_ref().map_or(saved.started_at.date_naive(), |activity| {
             activity.started_at.date_naive().min(saved.started_at.date_naive())
         });
@@ -72,7 +75,16 @@ impl Model {
         }) else {
             return Ok(None);
         };
-        activity
+        let expected_updated_at = activity.updated_at;
+        let Some(activity) = Self::lock_owned(db, activity.id, import.user_id).await? else {
+            return Err(WorkflowError::not_found("Duplicate activity was deleted"));
+        };
+        if activity.updated_at != expected_updated_at {
+            return Err(WorkflowError::internal(
+                "Activity changed while resolving duplicate recording; retry import",
+            ));
+        }
+        let activity = activity
             .merge_import_recording(db, &parsed.derived_data.recording)
             .await?;
         import.mark_duplicate(db, activity.id).await?;
@@ -80,10 +92,10 @@ impl Model {
     }
 
     async fn merge_import_recording(
-        &self,
+        mut self,
         db: &impl ConnectionTrait,
         recording: &crate::activity_recording::RecordingContext,
-    ) -> Result<(), WorkflowError> {
+    ) -> Result<Self, WorkflowError> {
         let mut derived = crate::activity_data::deserialize_derived_activity_data(self.derived_data_json.as_ref());
         let previous = derived.recording.clone();
         derived.recording.merge(recording.clone());
@@ -94,7 +106,16 @@ impl Model {
                 "Activity changed while merging recording evidence; retry import",
             ));
         }
-        Ok(())
+        if derived.recording != previous {
+            let stored = crate::activity_data::StoredActivityDerivedData::from(&derived);
+            self.derived_data_json = Some(
+                match self.derived_data_json.as_ref().and_then(|data| data.source_metadata()) {
+                    Some(metadata) => stored.with_source_metadata(metadata.clone()),
+                    None => stored,
+                },
+            );
+        }
+        Ok(self)
     }
 
     async fn import_target(

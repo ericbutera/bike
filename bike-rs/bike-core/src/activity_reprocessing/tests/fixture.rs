@@ -30,6 +30,9 @@ pub fn source_reads(mock: MockDatabase) -> MockDatabase {
 pub fn saved_activity() -> activities::Model {
     let parsed = fixtures::parsed_reprocess_activity();
     activities::Model {
+        derived_data_json: Some(crate::activity_data::StoredActivityDerivedData::from(
+            &parsed.derived_data,
+        )),
         title: parsed.draft.title,
         started_at: parsed.draft.started_at,
         updated_at: fixtures::timestamp() + chrono::Duration::seconds(1),
@@ -42,7 +45,8 @@ pub fn mutation(mock: MockDatabase, history_write: Result<u64, DbErr>) -> MockDa
         .append_query_results([vec![fixtures::reprocess_import()]])
         .append_query_results([vec![fixtures::reprocess_activity()]])
         .append_query_results([vec![saved_activity()]])
-        .append_exec_results([fixtures::written(), fixtures::written()]);
+        .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
+        .append_exec_results([fixtures::written(), fixtures::written(), fixtures::written()]);
     match history_write {
         Err(error) => mock.append_exec_errors([error]),
         Ok(rows_affected) => mock.append_exec_results([MockExecResult {
@@ -80,10 +84,15 @@ pub fn artifact() -> ActivityProcessingArtifact {
 pub async fn apply(db: &DatabaseConnection) -> Result<activities::Model, WorkflowError> {
     activities::Model::apply_import(
         db,
+        &objects(),
         &fixtures::reprocess_execution(),
         &artifact(),
         &fixtures::parsed_reprocess_activity(),
         &crate::training_profile::TrainingProfile::default(),
     )
     .await
+}
+
+pub fn objects() -> ObjectStore {
+    fixtures::object_storage(ObjectOwner::BikeTasks).0
 }

@@ -120,12 +120,19 @@ async fn a_new_import_reuses_its_existing_activity_after_a_lost_completion() {
         .append_query_results([vec![import]])
         .append_query_results([vec![activity]])
         .append_query_results([vec![fixture::saved_activity()]])
-        .append_exec_results([fixtures::written(), fixtures::written(), fixtures::written()])
+        .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
+        .append_exec_results([
+            fixtures::written(),
+            fixtures::written(),
+            fixtures::written(),
+            fixtures::written(),
+        ])
         .into_connection();
     let mut execution = fixtures::reprocess_execution();
     execution.command.target = ImportTarget::NewActivity;
     let saved = activities::Model::apply_import(
         &db,
+        &fixture::objects(),
         &execution,
         &fixture::artifact(),
         &fixtures::parsed_reprocess_activity(),
@@ -145,12 +152,19 @@ async fn a_new_import_saves_the_activity_and_links_its_import() {
         .append_query_results([Vec::<activities::Model>::new()])
         .append_query_results([Vec::<activities::Model>::new()])
         .append_query_results([vec![fixture::saved_activity()]])
-        .append_exec_results([fixtures::written(), fixtures::written(), fixtures::written()])
+        .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
+        .append_exec_results([
+            fixtures::written(),
+            fixtures::written(),
+            fixtures::written(),
+            fixtures::written(),
+        ])
         .into_connection();
     let mut execution = fixtures::reprocess_execution();
     execution.command.target = ImportTarget::NewActivity;
     let saved = activities::Model::apply_import(
         &db,
+        &fixture::objects(),
         &execution,
         &fixture::artifact(),
         &fixtures::parsed_reprocess_activity(),
@@ -296,13 +310,16 @@ async fn another_recording_of_the_same_ride_reuses_the_activity() {
     let db = fixture::mock()
         .append_query_results([vec![fixtures::reprocess_import()]])
         .append_query_results([Vec::<activities::Model>::new()])
-        .append_query_results([vec![duplicate.clone()]])
+        .append_query_results([vec![duplicate.clone()], vec![duplicate.clone()]])
         .append_query_results([vec![fixtures::reprocess_import()]])
+        .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
+        .append_exec_results([fixtures::written()])
         .into_connection();
     let mut execution = fixtures::reprocess_execution();
     execution.command.target = ImportTarget::NewActivity;
     let saved = activities::Model::apply_import(
         &db,
+        &fixture::objects(),
         &execution,
         &fixture::artifact(),
         &parsed,
@@ -312,7 +329,113 @@ async fn another_recording_of_the_same_ride_reuses_the_activity() {
     .unwrap();
     assert_eq!(saved.id, duplicate.id);
     let log = format!("{:?}", db.into_transaction_log());
-    assert!(!log.contains("INSERT INTO"));
+    assert!(log.contains("activity_recordings"));
     assert!(log.contains("duplicate"));
     assert!(log.contains("COMMIT"));
+}
+
+#[tokio::test]
+async fn recording_publication_failure_rolls_back_before_import_completion_and_audit() {
+    let db = fixture::mock()
+        .append_query_results([vec![fixtures::reprocess_import()]])
+        .append_query_results([vec![fixtures::reprocess_activity()]])
+        .append_query_results([vec![fixture::saved_activity()]])
+        .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
+        .append_exec_errors([sea_orm::DbErr::Custom("recording reference unavailable".into())])
+        .into_connection();
+    assert_eq!(fixture::apply(&db).await.unwrap_err().status.as_u16(), 500);
+    let log = format!("{:?}", db.into_transaction_log());
+    assert!(log.contains("ROLLBACK"));
+    assert!(!log.contains("activity_event_history"));
+    assert!(!log.contains("analytics_user_states"));
+}
+
+#[tokio::test]
+async fn duplicate_recordings_publish_merged_evidence_without_replacing_the_original_samples() {
+    let parsed = fixtures::parsed_reprocess_activity();
+    let existing = activities::Model {
+        started_at: parsed.draft.started_at,
+        sport: parsed.draft.sport.clone(),
+        total_time_seconds: parsed.draft.total_time_seconds,
+        moving_time_seconds: parsed.draft.moving_time_seconds,
+        distance_meters: parsed.draft.distance_meters,
+        derived_data_json: Some((&parsed.derived_data).into()),
+        ..fixtures::reprocess_activity()
+    };
+    let mut enriched = parsed.clone();
+    enriched.derived_data.recording.trainer("trainer", true);
+    let db = fixture::mock()
+        .append_query_results([vec![fixtures::reprocess_import()]])
+        .append_query_results([Vec::<activities::Model>::new()])
+        .append_query_results([vec![existing.clone()], vec![existing.clone()]])
+        .append_query_results([vec![fixtures::reprocess_import()]])
+        .append_query_results([Vec::<crate::entities::activity_recordings::Model>::new()])
+        .append_exec_results([fixtures::written(), fixtures::written()])
+        .into_connection();
+    let objects = fixture::objects();
+    let mut execution = fixtures::reprocess_execution();
+    execution.command.target = ImportTarget::NewActivity;
+    let result = activities::Model::apply_import(
+        &db,
+        &objects,
+        &execution,
+        &fixture::artifact(),
+        &enriched,
+        &crate::training_profile::TrainingProfile::default(),
+    )
+    .await
+    .unwrap();
+    let data = crate::activity_data::ActivityDerivedData::from(result.derived_data_json.unwrap());
+    assert_eq!(data.route_points, parsed.derived_data.route_points);
+    assert!(data.recording.excluded());
+    let expected = objects
+        .transform(
+            "bike/tasks/recordings/7",
+            &crate::entities::activity_recordings::Recording::from(data),
+        )
+        .await
+        .unwrap();
+    let log = format!("{:?}", db.into_transaction_log());
+    assert!(log.contains(&expected.sha256));
+    assert!(log.contains("COMMIT"));
+}
+
+#[tokio::test]
+async fn changed_duplicate_candidate_retries_before_recording_publication() {
+    let parsed = fixtures::parsed_reprocess_activity();
+    let candidate = activities::Model {
+        started_at: parsed.draft.started_at,
+        sport: parsed.draft.sport.clone(),
+        total_time_seconds: parsed.draft.total_time_seconds,
+        moving_time_seconds: parsed.draft.moving_time_seconds,
+        distance_meters: parsed.draft.distance_meters,
+        derived_data_json: Some((&parsed.derived_data).into()),
+        ..fixtures::reprocess_activity()
+    };
+    let changed = activities::Model {
+        updated_at: candidate.updated_at + chrono::Duration::seconds(1),
+        ..candidate.clone()
+    };
+    let db = fixture::mock()
+        .append_query_results([vec![fixtures::reprocess_import()]])
+        .append_query_results([Vec::<activities::Model>::new()])
+        .append_query_results([vec![candidate], vec![changed]])
+        .into_connection();
+    let mut execution = fixtures::reprocess_execution();
+    execution.command.target = ImportTarget::NewActivity;
+    let error = activities::Model::apply_import(
+        &db,
+        &fixture::objects(),
+        &execution,
+        &fixture::artifact(),
+        &parsed,
+        &crate::training_profile::TrainingProfile::default(),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.status.as_u16(), 500);
+    let log = format!("{:?}", db.into_transaction_log());
+    assert!(!log.contains("activity_recordings"));
+    assert!(!log.contains("SET "));
+    assert!(log.contains("ROLLBACK"));
 }
