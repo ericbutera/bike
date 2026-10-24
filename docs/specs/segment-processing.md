@@ -132,9 +132,11 @@ Bike matches stored segment routes against normalized activity route points to c
 - A segment effort is directional. A reverse ride must only match a reverse segment route, not the forward segment.
 - Matching starts with ordered endpoint candidates. The activity must pass near the segment start before it can pass near the segment end.
 - Candidate efforts must remain within the configured segment distance ratio bounds.
-- Candidate efforts are scored against sampled route shape points. The matcher should prefer the lowest-scoring valid candidate when several candidate start/end pairs satisfy the same segment.
+- Candidate efforts are scored against sampled route shape points. Compare scores within one traversal; a cleaner later lap must not discard an earlier valid lap.
 - Repeated segment efforts in a single activity are allowed. After a match is accepted, later searches continue after that effort's end route point.
-- The matcher uses stricter profiles first and only falls back to more lenient profiles when no stricter match is found.
+- Apply strict, normal fallback and eligible reworked-trail profiles to every traversal. A strict lap must not suppress a different lap needing a more lenient profile, in either recording order.
+- Overlapping profile candidates for the same traversal produce one effort with the strictest valid profile's recording bounds. Distinct segments search independently, including overlapping and nested routes.
+- Return all traversals in recording order. The existing persistence operation assigns per-segment attempt numbers from that order; speed and matching quality never reorder attempts.
 - Short segments must not use the broad reworked-trail fallback. Small connector segments are too easy to confuse with nearby trails when the tolerance grows to handle full-route trail reworks. Strict and normal fallback matching still apply to short segments.
 
 ## Reworked Trails
@@ -143,7 +145,7 @@ Some public segments represent routes that have drifted from the current trail b
 
 - Endpoint order and approximate distance remain required.
 - Moderate shape deviation is acceptable when the activity still follows the same practical segment corridor.
-- The reworked-trail fallback must not replace stricter matching when a strict or normal fallback match exists.
+- The reworked-trail fallback must not replace a stricter match for the same traversal; stricter matches on other laps do not disable it.
 - Leniency is for old-vs-current route drift, not for matching unrelated nearby trails or the wrong direction.
 - The broad reworked-trail fallback is intended for longer public trail routes where the same route has moved over time. It must not be used to infer efforts on short, isolated connectors, private-property connectors, or trails the rider did not actually enter.
 

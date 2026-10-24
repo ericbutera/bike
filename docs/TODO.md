@@ -75,6 +75,11 @@
 
 ## Segments
 
+- [x] **P3 Traversals:** Preserve every valid segment traversal across strict,
+  fallback and eligible reworked-trail profiles, in recording order, with stable
+  per-segment attempt numbers. See [matching](specs/segment-processing.md#matching-contract).
+  This slice does not change persistence or workflows.
+
 - [x] Preserve saved effort identities when activity matching repeats unchanged
       traversals; see [activity reconciliation](specs/segment-processing.md#activity-effort-reconciliation).
       LOAD05 still needs narrowed retry invalidation and historical pair writes;

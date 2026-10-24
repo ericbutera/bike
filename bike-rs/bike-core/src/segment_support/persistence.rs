@@ -85,3 +85,58 @@ async fn failed_reconciliation_rolls_back_without_publishing_partial_efforts() {
     let log = db.into_transaction_log();
     assert_eq!(log[0].statements().last().unwrap().sql, "ROLLBACK");
 }
+
+#[tokio::test]
+async fn mixed_profile_attempts_keep_their_recording_order_and_saved_ids_on_retry() {
+    let laps = [
+        (0.0, 600),
+        (60.0, 540),
+        (110.0, 480),
+        (110.0, 420),
+        (60.0, 360),
+        (0.0, 300),
+    ];
+    let recording = super::traversals::lap_recording(&laps);
+    let segment = segments::Model {
+        route_data_json: Some(serialize_segment_route_points(&recording[..41])),
+        ..fixtures::segment()
+    };
+    let starts = [0, 1200, 2340, 3420, 4440, 5400];
+    let saved: Vec<_> = laps
+        .iter()
+        .zip(starts)
+        .enumerate()
+        .map(|(index, ((_, duration), start))| {
+            let attempt = index as i32 + 1;
+            segment_efforts::Model {
+                id: 70 + attempt,
+                effort_index: attempt,
+                start_route_point_index: index as i32 * 41,
+                end_route_point_index: index as i32 * 41 + 40,
+                start_elapsed_seconds: start,
+                end_elapsed_seconds: start + duration,
+                duration_seconds: *duration,
+                distance_meters: Some(2000.0),
+                overall_rank: Some(7 - attempt),
+                user_rank: Some(7 - attempt),
+                ..fixtures::segment_effort()
+            }
+        })
+        .collect();
+    let db = fixtures::postgres_mock()
+        .append_query_results([vec![segment], Vec::new()])
+        .append_query_results([saved])
+        .into_connection();
+
+    replace_segment_efforts_for_activity(&db, 7, 42, &recording)
+        .await
+        .unwrap();
+
+    let log = db.into_transaction_log();
+    let statements = log[0].statements();
+    assert_eq!(statements.first().unwrap().sql, "BEGIN");
+    assert_eq!(statements.last().unwrap().sql, "COMMIT");
+    assert!(statements[1..statements.len() - 1]
+        .iter()
+        .all(|statement| statement.sql.starts_with("SELECT")));
+}
