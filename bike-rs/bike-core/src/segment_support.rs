@@ -293,41 +293,35 @@ fn match_segment_efforts(
         return Vec::new();
     }
 
-    let strict_matches = match_segment_efforts_with_profile(
-        segment_route_points,
-        activity_route_points,
-        STRICT_MATCH_PROFILE,
-        MatchSearchMode::FirstPassingStart,
-    );
-
-    if !strict_matches.is_empty() {
-        return strict_matches;
+    let mut profiles = vec![
+        (STRICT_MATCH_PROFILE, MatchSearchMode::FirstPassingStart),
+        (FALLBACK_MATCH_PROFILE, MatchSearchMode::BestPassingStart),
+    ];
+    if route_distance_meters(segment_route_points)
+        .is_some_and(|distance| distance >= REWORKED_MIN_SEGMENT_DISTANCE_METERS)
+    {
+        profiles.push((REWORKED_TRAIL_MATCH_PROFILE, MatchSearchMode::BestPassingStart));
     }
 
-    let fallback_matches = match_segment_efforts_with_profile(
-        segment_route_points,
-        activity_route_points,
-        FALLBACK_MATCH_PROFILE,
-        MatchSearchMode::BestPassingStart,
-    );
-
-    if !fallback_matches.is_empty() {
-        return fallback_matches;
+    let mut matches: Vec<MatchedSegmentEffort> = Vec::new();
+    for (profile, search_mode) in profiles {
+        let candidates =
+            match_segment_efforts_with_profile(segment_route_points, activity_route_points, profile, search_mode);
+        for candidate in candidates {
+            if !matches.iter().any(|existing| existing.overlaps_recording(&candidate)) {
+                matches.push(candidate);
+            }
+        }
     }
+    matches.sort_unstable_by_key(|effort| effort.start_route_point_index);
+    matches
+}
 
-    let Some(segment_distance_meters) = route_distance_meters(segment_route_points) else {
-        return Vec::new();
-    };
-    if segment_distance_meters < REWORKED_MIN_SEGMENT_DISTANCE_METERS {
-        return Vec::new();
+impl MatchedSegmentEffort {
+    fn overlaps_recording(&self, other: &Self) -> bool {
+        self.start_route_point_index <= other.end_route_point_index
+            && other.start_route_point_index <= self.end_route_point_index
     }
-
-    match_segment_efforts_with_profile(
-        segment_route_points,
-        activity_route_points,
-        REWORKED_TRAIL_MATCH_PROFILE,
-        MatchSearchMode::BestPassingStart,
-    )
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -351,26 +345,20 @@ fn match_segment_efforts_with_profile(
             MatchSearchMode::FirstPassingStart => find_best_match_for_first_passing_start(&context, start_index),
             MatchSearchMode::BestPassingStart => find_best_match_across_starts(&context, start_index),
         };
-
-        if let Some(best_match) = best_match {
-            let candidate_start = &activity_route_points[best_match.start_index];
-            let candidate_end = &activity_route_points[best_match.end_index];
-            matches.push(MatchedSegmentEffort {
-                start_route_point_index: best_match.start_index as i32,
-                end_route_point_index: best_match.end_index as i32,
-                start_elapsed_seconds: candidate_start.elapsed_seconds,
-                end_elapsed_seconds: candidate_end.elapsed_seconds,
-                duration_seconds: candidate_end.elapsed_seconds - candidate_start.elapsed_seconds,
-                distance_meters: best_match.distance_meters,
-            });
-            start_index = best_match.end_index.saturating_add(1);
-        } else {
-            if matches!(search_mode, MatchSearchMode::BestPassingStart) {
-                break;
-            }
-
-            start_index += 1;
-        }
+        let Some(best_match) = best_match else {
+            break;
+        };
+        let candidate_start = &activity_route_points[best_match.start_index];
+        let candidate_end = &activity_route_points[best_match.end_index];
+        matches.push(MatchedSegmentEffort {
+            start_route_point_index: best_match.start_index as i32,
+            end_route_point_index: best_match.end_index as i32,
+            start_elapsed_seconds: candidate_start.elapsed_seconds,
+            end_elapsed_seconds: candidate_end.elapsed_seconds,
+            duration_seconds: candidate_end.elapsed_seconds - candidate_start.elapsed_seconds,
+            distance_meters: best_match.distance_meters,
+        });
+        start_index = best_match.end_index.saturating_add(1);
     }
 
     matches
@@ -459,18 +447,20 @@ fn find_best_match_for_first_passing_start(
 }
 
 fn find_best_match_across_starts(context: &MatchContext<'_>, search_start_index: usize) -> Option<MatchCandidate> {
-    let mut best_match: Option<MatchCandidate> = None;
+    let mut starts = context.start_candidates_from(search_start_index);
+    let mut best_match = starts.find_map(|start| find_best_match_for_start(context, start))?;
+    let traversal_end = best_match.end_index;
 
-    for start_candidate in context.start_candidates_from(search_start_index) {
-        let next_match = find_best_match_for_start(context, start_candidate);
-        match (best_match.as_ref(), next_match) {
-            (Some(current), Some(next)) if current.score <= next.score => {}
-            (_, Some(next)) => best_match = Some(next),
-            _ => {}
+    // Improve the bounds of this occurrence without choosing a cleaner later lap.
+    for start_candidate in starts.take_while(|start| start.index < traversal_end) {
+        if let Some(next) = find_best_match_for_start(context, start_candidate) {
+            if next.score < best_match.score {
+                best_match = next;
+            }
         }
     }
 
-    best_match
+    Some(best_match)
 }
 
 fn find_best_match_for_start(context: &MatchContext<'_>, start_candidate: StartCandidate) -> Option<MatchCandidate> {
@@ -738,7 +728,7 @@ mod tests {
         }
     }
 
-    fn route_point_at_offsets(
+    pub(super) fn route_point_at_offsets(
         elapsed_seconds: i32,
         east_meters: f64,
         north_meters: f64,
@@ -805,3 +795,7 @@ mod tests {
 #[cfg(test)]
 #[path = "segment_support/persistence.rs"]
 mod persistence;
+
+#[cfg(test)]
+#[path = "segment_support/traversals.rs"]
+mod traversals;
