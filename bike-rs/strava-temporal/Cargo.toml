@@ -8,6 +8,7 @@ workspace = true
 
 [dependencies]
 bike-core = { path = "../bike-core" }
+bike-temporal = { path = "../bike-temporal" }
 integrations = { path = "../integrations" }
 sea-orm = { workspace = true }
 tokio = { workspace = true }

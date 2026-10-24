@@ -71,6 +71,16 @@ services:
         bike,
         --search-attribute,
         BikeUserId=Keyword,
+        --search-attribute,
+        BikeCustomerId=Keyword,
+        --search-attribute,
+        StravaAthleteId=Keyword,
+        --search-attribute,
+        StravaEventId=Keyword,
+        --search-attribute,
+        CorrelationId=Keyword,
+        --search-attribute,
+        StravaActivityId=Keyword,
       ]
     healthcheck:
       test:

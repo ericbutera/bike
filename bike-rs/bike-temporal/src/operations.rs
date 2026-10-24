@@ -33,6 +33,14 @@ impl BikeOperations {
 
 #[async_trait::async_trait]
 impl ImportOperations for BikeOperations {
+    async fn process_activity(
+        &self,
+        execution: bike_core::bike_tasks::ActivityProcessingExecution,
+        _context: ActivityContext,
+    ) -> Result<bike_core::bike_tasks::ActivityProcessingResult, WorkflowError> {
+        bike_core::activity_reprocessing::process(&self.db, &self.objects, execution).await
+    }
+
     async fn activity_import(
         &self,
         execution: ImportExecution,

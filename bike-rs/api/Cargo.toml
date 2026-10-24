@@ -45,6 +45,9 @@ chrono = { workspace = true }
 bike-core = { path = "../bike-core" }
 integrations = { path = "../integrations" }
 bike-temporal = { path = "../bike-temporal" }
+strava-temporal = { path = "../strava-temporal" }
+temporalio-sdk = { workspace = true }
+temporalio-client = { workspace = true }
 async-trait = "0.1"
 utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }

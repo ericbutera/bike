@@ -157,3 +157,21 @@
   its generator freshness task remains authoritative for its source formatting.
 
 Image builds and CI prepare must pass the [storage capacity policy](image-storage.md).
+
+## Real activity DAG regression
+
+- Use activity 1671's frozen recording, fixed segments, effort windows and saved
+  metrics as independent expectations for the current source-to-derived path.
+  Keep the private provider payload and full reference outside the repository.
+- Run connected comparisons against one migrated PostgreSQL database on tmpfs.
+  Reuse the pinned E2E services and native fixture command; do not add another CI
+  job, per-stage service startup, image build or PostgreSQL suite.
+- Replace only the provider boundary with captured responses. Execute registered
+  production workflows and operations, then reload typed rows and artifacts.
+  Start new outputs empty; restored legacy rows must not hide missing producers.
+- Compare recording order, nulls, units, matching, duration/distance/speed, metadata,
+  laps, awards, climbs, training and card/heatmap outputs. Preserve old recording
+  precision through its existing codec; explain every intentional matcher change.
+- Repeat unchanged processing and verify effort identity, recording references and
+  immutable awards. Report actual execution time separately from compilation and
+  service setup. Ordinary matching/metric regression units remain fast.

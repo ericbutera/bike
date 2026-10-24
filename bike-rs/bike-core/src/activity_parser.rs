@@ -8,6 +8,8 @@ pub mod strava;
 pub struct ParsedActivityData {
     pub draft: ActivityDraft,
     pub derived_data: ActivityDerivedData,
+    #[serde(default)]
+    pub source_metadata: crate::activity_data::ActivitySourceMetadata,
 }
 
 pub struct ActivityParserArtifact<'a> {
@@ -40,7 +42,11 @@ pub fn parse_activity_data(filename: &str, format: &str, bytes: &[u8]) -> Result
     let draft = summarize_activity_upload(filename, format, bytes)?;
     let derived_data = derive_activity_detail_data(filename, format, bytes)?;
 
-    Ok(ParsedActivityData { draft, derived_data })
+    Ok(ParsedActivityData {
+        draft,
+        derived_data,
+        source_metadata: Default::default(),
+    })
 }
 
 /// Recognize Bike's exact retired cycling export, including its nonstandard

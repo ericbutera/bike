@@ -148,6 +148,8 @@ pub(super) struct HandlerFixture {
     pub domain: Fixture,
     pub provider: Arc<Provider>,
     pub storage: Arc<Storage>,
+    pub objects: bike_core::object_store::ObjectStore,
+    pub backend: Arc<object_store::memory::InMemory>,
 }
 
 impl HandlerFixture {
@@ -156,6 +158,7 @@ impl HandlerFixture {
         let mut domain = Fixture::new();
         domain.event.strava_activity_id = Some(payload.activity.id);
         let storage = Arc::new(Storage::default());
+        let (objects, backend) = bike_core::test_support::object_storage(bike_core::object_store::ObjectOwner::Strava);
         let provider = Arc::new(Provider {
             payload,
             storage: storage.clone(),
@@ -165,6 +168,8 @@ impl HandlerFixture {
         });
         Self {
             domain,
+            objects,
+            backend,
             provider,
             storage,
         }
@@ -177,7 +182,12 @@ impl HandlerFixture {
     }
 
     pub fn operations(&self, db: MockDatabase) -> StravaOperations {
-        StravaOperations::with_dependencies(db.into_connection(), self.provider.clone(), self.storage.clone())
+        StravaOperations::with_dependencies(
+            db.into_connection(),
+            self.provider.clone(),
+            self.storage.clone(),
+            self.objects.clone(),
+        )
     }
 
     pub fn activity_rebuild_mock(&self, activity: &activities::Model) -> MockDatabase {

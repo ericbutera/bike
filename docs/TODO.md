@@ -51,6 +51,11 @@
       include a one-off Temporal backfill for missing climb outputs. See the
       [stage rollout contract](specs/background-work.md#activity-climbs-and-stage-backfills).
 
+- [x] Route Strava intake through the shared parser and activity DAG, retaining
+      provider metadata and replay/ordering guards. Verify activity 1671 and its
+      segments in the existing connected suite with PostgreSQL on tmpfs; see
+      [the regression contract](specs/ci-checks.md#real-activity-dag-regression).
+
 - [x] **P1 Recording:** Persist normalized recording artifacts with typed references,
       integrate both import paths, and convert existing saved recordings with a bounded
       stage-only backfill. See [recording storage](specs/activities.md#normalized-recording-storage).
@@ -85,7 +90,7 @@
 
 - [x] **P6 Current results:** Retry changed standings input before awards; submit
       bounded segment batches and refresh the union of shared/removed activity
-      summaries once. LOAD04 upload caller composition remains P13; see
+      summaries once. Source workflows use the same bounded batch publication; see
       [publication](specs/background-work.md#current-segment-result-publication).
 
 - [x] **P5 Matching bounds:** Persist indexed activity/segment route bounds, narrow

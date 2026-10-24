@@ -42,6 +42,7 @@ pub fn worker(
                 .build(),
         )
         .register_workflow::<ProcessActivityImport>()?
+        .register_workflow::<crate::workflows::ProcessActivity>()?
         .register_workflow::<ReprocessActivityImport>()?
         .register_workflow::<RebuildFitnessFreshness>()?
         .register_workflow::<RebuildSegmentAnalytics>()?

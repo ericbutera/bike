@@ -50,12 +50,9 @@ async fn verify_upsert(update: bool, sport: &str) {
     assert_saved_segment_scope(&transactions, &change);
     assert_eq!(change.dirty_from.is_some(), sport == "Ride" || update);
     assert_eq!(change.event.strava_activity_id, fixture.domain.event.strava_activity_id);
-    let operation = if update { "UPDATE" } else { "INSERT INTO" };
-    assert!(sql.contains(&format!("{operation} \"activities\"")));
-    assert!(sql.contains(&format!("{operation} \"activity_imports\"")));
-    assert!(sql.contains("activity_import_artifacts"));
-    assert!(sql.contains("activity_recordings"));
-    assert_recording_output(&fixture);
+    assert_retained_source_writes(&sql, update);
+    assert_ingestion_sources(&transactions);
+    assert_recording_output(&fixture).await;
     assert!(format!("{transactions:?}").contains(&source_hash));
     assert!(sql.contains("COMMIT"));
     assert!(!sql.contains("ROLLBACK"));
@@ -95,7 +92,7 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
         .append_query_results([Vec::<bike_core::entities::activity_recordings::Model>::new()])
         .append_exec_results([executed()])
         .append_query_results([vec![domain.activity_state()]])
-        .append_exec_results([executed(), executed(), executed()]);
+        .append_exec_results([executed(), executed(), executed(), executed()]);
     let mock = if crate::strava::provider_payload::strava_activity_is_bike(&fixture.provider.payload.activity) || update
     {
         mock.append_exec_results([executed()])
@@ -103,7 +100,7 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
         mock
     };
     mock.append_query_results([vec![audit(domain)], vec![audit(domain)]])
-        .append_exec_results([executed(), executed(), executed()])
+        .append_exec_results([executed(), executed(), executed(), executed()])
 }
 
 fn executed() -> MockExecResult {
@@ -113,13 +110,21 @@ fn executed() -> MockExecResult {
     }
 }
 
-fn assert_recording_output(fixture: &HandlerFixture) {
-    let retained = fixture.storage.objects.lock().unwrap();
-    let recording = retained
-        .iter()
-        .find(|(key, _)| key.starts_with("strava/recordings/7/"))
+async fn assert_recording_output(fixture: &HandlerFixture) {
+    use object_store::{ObjectStore, ObjectStoreExt};
+    use tokio_stream::StreamExt;
+    let prefix = object_store::path::Path::from("bike/tasks/recordings/7");
+    let mut objects = fixture.backend.list(Some(&prefix));
+    let object = objects.next().await.unwrap().unwrap();
+    let bytes = fixture
+        .backend
+        .get(&object.location)
+        .await
+        .unwrap()
+        .bytes()
+        .await
         .unwrap();
-    let restored: bike_core::entities::activity_recordings::Recording = serde_json::from_slice(recording.1).unwrap();
+    let restored: bike_core::entities::activity_recordings::Recording = serde_json::from_slice(&bytes).unwrap();
     let bytes = serde_json::to_vec(&fixture.provider.payload).unwrap();
     let parsed = bike_core::activity_parser::strava::parse_strava_provider_payload(&bytes).unwrap();
     assert_eq!(
@@ -140,4 +145,27 @@ fn assert_saved_segment_scope(transactions: &[sea_orm::Transaction], change: &Ac
         })
         .unwrap();
     assert_eq!(*stored_scope, serde_json::json!(change.segment_ids));
+}
+
+fn assert_retained_source_writes(sql: &str, update: bool) {
+    let operation = if update { "UPDATE" } else { "INSERT INTO" };
+    assert!(sql.contains(&format!("{operation} \"activities\"")));
+    assert!(sql.contains(&format!("{operation} \"activity_imports\"")));
+    assert!(sql.contains("activity_import_artifacts"));
+    assert!(sql.contains("activity_recordings"));
+    assert!(sql.contains("activity_metadata"));
+}
+
+fn assert_ingestion_sources(transactions: &[sea_orm::Transaction]) {
+    for table in ["activities", "activity_imports"] {
+        let prefixes = [format!("INSERT INTO \"{table}\""), format!("UPDATE \"{table}\"")];
+        let write = transactions
+            .iter()
+            .flat_map(|transaction| transaction.statements())
+            .find(|statement| {
+                prefixes.iter().any(|prefix| statement.sql.starts_with(prefix)) && statement.sql.contains("\"source\"")
+            })
+            .unwrap();
+        assert!(write.values.as_ref().unwrap().0.contains(&Value::from("strava_sync")));
+    }
 }

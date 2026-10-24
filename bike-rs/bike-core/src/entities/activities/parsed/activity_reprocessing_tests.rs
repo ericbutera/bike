@@ -5,6 +5,7 @@ use sea_orm::{DatabaseBackend, MockDatabase};
 #[tokio::test]
 async fn reprocessing_preserves_saved_details_and_checks_the_source_version() {
     let activity = activities::Model {
+        source: "archive_url_import".into(),
         title: "My saved ride title".into(),
         activity_type: "race".into(),
         sport: "hike".into(),
@@ -50,6 +51,7 @@ async fn reprocessing_preserves_saved_details_and_checks_the_source_version() {
         .find(|statement| statement.sql.starts_with("UPDATE \"activities\""))
         .unwrap();
     let values = &write.values.as_ref().unwrap().0;
+    assert!(!write.sql.contains("\"source\" ="));
     assert!(values.contains(&sea_orm::Value::from("My saved ride title")));
     assert!(values.contains(&sea_orm::Value::from("race")));
     assert!(values.contains(&sea_orm::Value::from("hike")));

@@ -44,47 +44,36 @@ fn cancellation_before_apply_prevents_mutation_even_after_preparation_succeeds()
         &fixture.activity(),
         &fixture.sources(),
     );
-    let seq = scheduled(&mut workflow, StravaActivities::normalize_activity.name());
+    let seq = scheduled(&mut workflow, StravaActivities::retain_activity.name());
     workflow.cancel();
     assert!(matches!(
         workflow.next_command(),
         workflow_command::Variant::RequestCancelActivity(_)
     ));
-    workflow.complete_activity(seq, &fixture.normalized());
+    workflow.complete_activity(
+        seq,
+        &RetainedActivity {
+            event: fixture.event.clone(),
+            source: fixture.normalized().source,
+        },
+    );
     workflow.assert_cancelled();
     workflow.assert_no_commands();
 }
 
 #[test]
-fn late_upsert_cancellation_settles_the_source_and_every_remaining_publication() {
-    for cancel_after_commit in [false, true] {
-        let fixture = Fixture::reconciling(StravaOperation::Upsert);
-        let change = fixture.change(ActivityStatus::Applied);
-        let mut workflow = WorkflowMock::new::<ReconcileActivity>(fixture.event.clone());
-        prepare(&mut workflow, &fixture);
-        let seq = scheduled(&mut workflow, StravaActivities::persist_activity.name());
-        if !cancel_after_commit {
-            workflow.cancel();
-            workflow.assert_no_commands();
-        }
-        workflow.complete_activity(seq, &change);
-        workflow.activity(StravaActivities::rebuild_activity.name(), &change, &change);
-        let seq = scheduled(&mut workflow, StravaActivities::rebuild_segments.name());
-        if cancel_after_commit {
-            workflow.cancel();
-            workflow.assert_no_commands();
-        }
-        workflow.complete_activity(seq, &change);
-        let mut workflow = workflow.restart::<ReconcileActivity>(fixture.event.clone());
-        for activity in [
-            StravaActivities::rebuild_fitness.name(),
-            StravaActivities::publish_heatmap.name(),
-            StravaActivities::complete_activity.name(),
-        ] {
-            workflow.activity(activity, &change, &change);
-        }
-        assert_eq!(workflow.result::<ActivityChange>().status, ActivityStatus::Applied);
-    }
+fn late_upsert_cancellation_awaits_the_shared_dag_and_preserves_its_result() {
+    let fixture = Fixture::reconciling(StravaOperation::Upsert);
+    let mut workflow = WorkflowMock::new::<ReconcileActivity>(fixture.event.clone());
+    let child = super::activity::prepare_shared(&mut workflow, &fixture);
+    workflow.cancel();
+    workflow.assert_pending();
+    let mut workflow = workflow.restart::<ReconcileActivity>(fixture.event.clone());
+    workflow.complete_child(
+        child,
+        &bike_core::bike_tasks::ActivityProcessingResult::Strava(Box::new(fixture.change(ActivityStatus::Applied))),
+    );
+    assert_eq!(workflow.result::<ActivityChange>().status, ActivityStatus::Applied);
 }
 
 #[test]

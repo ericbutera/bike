@@ -61,7 +61,7 @@ impl Model {
         Ok(saved)
     }
 
-    async fn store_import_outputs(
+    pub(super) async fn store_import_outputs(
         &self,
         db: &impl ConnectionTrait,
         objects: &crate::object_store::ObjectStore,

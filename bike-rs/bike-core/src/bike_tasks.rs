@@ -1,8 +1,85 @@
 //! Inputs for named Bike workflows and Activities. Temporal owns execution state.
 use crate::{object_store::ObjectRef, workflow_error::WorkflowError};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+mod processing;
 mod submission;
 pub use submission::*;
+
+/// Transport adapters supply retained bytes to the same processing DAG.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ActivityProcessingSource {
+    Import(Box<ActivityImport>),
+    Strava(Box<crate::entities::strava_events::RetainedActivity>),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ActivityProcessingResult {
+    Import(ActivityImportResult),
+    Strava(Box<crate::entities::strava_events::ActivityChange>),
+}
+
+impl ActivityProcessingSource {
+    pub fn validate_result(&self, result: &ActivityProcessingResult) -> Result<(), WorkflowError> {
+        match (self, result) {
+            (Self::Import(command), ActivityProcessingResult::Import(imported)) => command.validate_result(imported),
+            (Self::Strava(source), ActivityProcessingResult::Strava(change)) => {
+                let expected = &source.event;
+                let actual = &change.event;
+                let same_owner = (
+                    expected.bike_user_id,
+                    expected.bike_customer_id,
+                    expected.strava_athlete_id,
+                ) == (actual.bike_user_id, actual.bike_customer_id, actual.strava_athlete_id);
+                let same_source = (
+                    expected.strava_event_id,
+                    expected.connection_id,
+                    expected.strava_activity_id,
+                ) == (actual.strava_event_id, actual.connection_id, actual.strava_activity_id);
+                if !same_owner || !same_source {
+                    return Err(WorkflowError::conflict(
+                        "Result does not belong to the requested provider source",
+                    ));
+                }
+                if !expected.has_same_request(actual) {
+                    return Err(WorkflowError::conflict("Result changed its provider request"));
+                }
+                result.activity()?;
+                Ok(())
+            }
+            _ => Err(WorkflowError::conflict("Processing returned a different source result")),
+        }
+    }
+}
+impl ActivityProcessingResult {
+    pub fn activity(&self) -> Result<Option<ActivityImportResult>, WorkflowError> {
+        use crate::entities::strava_events::ActivityStatus;
+        match self {
+            Self::Import(imported) => Ok(Some(imported.clone())),
+            Self::Strava(change) => {
+                if !matches!(change.status, ActivityStatus::Applied | ActivityStatus::Unchanged) {
+                    return Ok(None);
+                }
+                Ok(Some(ActivityImportResult {
+                    activity_id: change
+                        .bike_activity_id
+                        .ok_or_else(|| WorkflowError::invalid_data("Processed source has no activity ID"))?,
+                    activity_import_id: change
+                        .import_id
+                        .ok_or_else(|| WorkflowError::invalid_data("Processed source has no import ID"))?,
+                    user_id: change.event.bike_user_id,
+                    priority: Priority::NewActivity,
+                }))
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ActivityProcessingExecution {
+    pub source: ActivityProcessingSource,
+    pub workflow: JobReference,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReprocessInput {

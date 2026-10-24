@@ -120,6 +120,11 @@ impl StravaActivitySummary {
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned)
         };
+        let location: Vec<_> = ["location_city", "location_state", "location_country"]
+            .into_iter()
+            .filter_map(field)
+            .filter(|value| !value.trim().is_empty())
+            .collect();
         let gear = self.additional_fields.get("gear");
         let gear_id = gear
             .and_then(|gear| gear.get("id"))
@@ -127,7 +132,7 @@ impl StravaActivitySummary {
             .map(str::to_owned)
             .or_else(|| field("gear_id"));
         crate::activity_data::ActivitySourceMetadata {
-            location: None,
+            location: (!location.is_empty()).then(|| location.join(", ")),
             description: field("description"),
             private_notes: field("private_note"),
             gear: gear_id.map(|id| crate::activity_data::ActivityGear {
@@ -160,7 +165,11 @@ pub fn parse_strava_provider_payload(bytes: &[u8]) -> Result<ParsedActivityData,
     let draft = build_strava_activity_draft(&payload.activity, &payload.streams);
     let mut derived_data = build_strava_derived_data(&draft, &payload.streams);
     derived_data.recording = recording_context(&payload.activity);
-    Ok(ParsedActivityData { draft, derived_data })
+    Ok(ParsedActivityData {
+        draft,
+        derived_data,
+        source_metadata: payload.activity.source_metadata(),
+    })
 }
 
 fn build_strava_activity_draft(activity: &StravaActivitySummary, streams: &StravaActivityStreams) -> ActivityDraft {

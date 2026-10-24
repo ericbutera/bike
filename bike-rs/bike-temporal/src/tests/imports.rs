@@ -6,17 +6,15 @@ pub(super) fn complete_derived_tasks(mock: &mut WorkflowMock, imported: &Activit
     mock.activity("rebuild_activity_segments", &task, &vec![18_i32, 19]);
     mock.activity("rebuild_activity_climbs", &task, &());
     mock.activity("rebuild_activity_card", &task, &());
-    for segment_id in [18, 19] {
-        let segment = SegmentChange {
-            segment_id,
-            priority: imported.priority,
-        };
-        let child = mock.start_child("rebuild_segment_analytics", &segment);
-        mock.assert_pending();
-        let mut segments = WorkflowMock::new::<RebuildSegmentAnalytics>(segment.clone().into());
-        segments.activity("rebuild_segment_analytics", &segment, &());
-        mock.complete_child(child, &segments.result::<()>());
-    }
+    let segment = SegmentAnalyticsTask::Batch {
+        segment_ids: vec![18, 19],
+        priority: imported.priority,
+    };
+    let child = mock.start_child("rebuild_segment_analytics", &segment);
+    mock.assert_pending();
+    let mut segments = WorkflowMock::new::<RebuildSegmentAnalytics>(segment.clone());
+    segments.activity("rebuild_segment_analytics", &segment, &());
+    mock.complete_child(child, &segments.result::<()>());
     mock.activity("rebuild_activity_achievements", &task, &());
     let child = mock.start_child("prepare_heatmap", &task);
     mock.assert_pending();
@@ -101,8 +99,8 @@ fn segment_child_failure_fails_the_parent_before_achievements() {
     mock.activity("rebuild_activity_card", &result.activity(), &());
     let child = mock.start_child(
         "rebuild_segment_analytics",
-        &SegmentChange {
-            segment_id: 18,
+        &SegmentAnalyticsTask::Batch {
+            segment_ids: vec![18],
             priority: result.priority,
         },
     );
@@ -196,8 +194,8 @@ fn replay_after_segment_completion_resumes_with_achievements() {
     mock.activity("rebuild_activity_card", &result.activity(), &());
     let child = mock.start_child(
         "rebuild_segment_analytics",
-        &SegmentChange {
-            segment_id: 18,
+        &SegmentAnalyticsTask::Batch {
+            segment_ids: vec![18],
             priority: result.priority,
         },
     );
@@ -348,4 +346,47 @@ fn replay_of_an_import_with_climbs_and_without_cards_keeps_its_recorded_branches
     );
     mock.complete_child(child, &());
     assert_eq!(mock.result::<ActivityImportResult>(), result);
+}
+
+#[test]
+fn retained_strava_sources_await_the_exact_same_derived_stages_as_file_imports() {
+    use bike_core::bike_tasks::{ActivityProcessingResult, ActivityProcessingSource};
+    use bike_core::entities::strava_events::{ActivityChange, RetainedActivity};
+    let fixture = fixtures::strava_fixture::Fixture::new();
+    let normalized = fixture.normalized_activity();
+    let source = ActivityProcessingSource::Strava(Box::new(RetainedActivity {
+        event: normalized.event,
+        source: normalized.source,
+    }));
+    let change = ActivityChange::applied(
+        fixture.event.clone(),
+        42,
+        18,
+        fixture.activity().started_at.date_naive(),
+    );
+    let result = ActivityProcessingResult::Strava(Box::new(change));
+    let imported = result.activity().unwrap().unwrap();
+    let mut mock = WorkflowMock::new::<ProcessActivity>(source.clone());
+    mock.activity("process_activity", &source, &result);
+    complete_derived_tasks(&mut mock, &imported);
+    assert_eq!(
+        mock.result::<ActivityProcessingResult>().activity().unwrap(),
+        Some(imported)
+    );
+}
+
+#[test]
+fn a_superseded_provider_source_finishes_without_any_derived_stage() {
+    use bike_core::bike_tasks::{ActivityProcessingResult, ActivityProcessingSource};
+    use bike_core::entities::strava_events::{ActivityStatus, RetainedActivity};
+    let fixture = fixtures::strava_fixture::Fixture::new();
+    let normalized = fixture.normalized_activity();
+    let source = ActivityProcessingSource::Strava(Box::new(RetainedActivity {
+        event: normalized.event,
+        source: normalized.source,
+    }));
+    let result = ActivityProcessingResult::Strava(Box::new(fixture.change(ActivityStatus::Superseded)));
+    let mut mock = WorkflowMock::new::<ProcessActivity>(source.clone());
+    mock.activity("process_activity", &source, &result);
+    assert!(mock.result::<ActivityProcessingResult>().activity().unwrap().is_none());
 }

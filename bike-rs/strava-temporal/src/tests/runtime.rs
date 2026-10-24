@@ -36,6 +36,16 @@ impl WorkflowAssertions for StravaAssertions {
 
     fn child(input: &serde_json::Value, command: &StartChildWorkflowExecution) {
         assert!(command.retry_policy.is_none());
+        if command.workflow_type == "process_activity" {
+            let source: bike_core::bike_tasks::ActivityProcessingSource =
+                serde_json::from_value(input.clone()).unwrap();
+            assert!(matches!(
+                source,
+                bike_core::bike_tasks::ActivityProcessingSource::Strava(_)
+            ));
+            assert_eq!(command.task_queue, bike_temporal::TASK_QUEUE);
+            return;
+        }
         let input: StravaEvent = serde_json::from_value(input.clone()).unwrap();
         let attributes = command.search_attributes.as_ref().unwrap();
         for (key, expected) in [

@@ -1,118 +1,25 @@
-//! Transactional domain writes and direct derived-data publication.
+//! Provider deletion and replay adapters; ingestion belongs to the shared activity pipeline.
 use super::*;
-use bike_core::{
-    activity_parser::ParsedActivityData,
-    entities::{activity_event_history, activity_imports, strava_activity_states, strava_events},
-};
+use bike_core::entities::{activity_event_history, activity_imports, strava_activity_states, strava_events};
 use sea_orm::{DatabaseTransaction, TransactionTrait};
 
 #[cfg(test)]
 mod tests;
 
 impl StravaOperations {
+    /// Old histories resume through the same parser/save operation as new imports.
     pub async fn persist_activity(&self, input: NormalizedActivity) -> Result<ActivityChange, WorkflowError> {
-        self.connection(&input.event).await?;
-        if let Some(change) = strava_events::Model::stored_mutation(&self.db, &input.event).await? {
-            return Ok(change);
-        }
-        let bytes = self.store.read(&input.source).await?;
-        let summary: super::super::provider_payload::StoredStravaProviderPayload =
-            serde_json::from_slice(&bytes).map_err(|error| WorkflowError::bad_request(error.to_string()))?;
-        let parsed_ref = input
-            .parsed
-            .as_ref()
-            .ok_or_else(|| WorkflowError::bad_request("Strava activity has no normalized data"))?;
-        let parsed: ParsedActivityData = self.store.read_json(parsed_ref).await?;
-        let profile = bike_core::training_profile::load_training_profile(&self.db, input.event.bike_user_id).await?;
-        self.persist_summary(input, parsed, summary, profile).await
-    }
-
-    async fn persist_summary(
-        &self,
-        input: NormalizedActivity,
-        parsed: ParsedActivityData,
-        summary: super::super::provider_payload::StoredStravaProviderPayload,
-        profile: bike_core::training_profile::TrainingProfile,
-    ) -> Result<ActivityChange, WorkflowError> {
-        let txn = self.db.begin().await?;
-        strava_connections::Model::lock_event(&txn, &input.event).await?;
-        if let Some(change) = Self::resolve_source_conflict(&txn, &input.event).await? {
-            txn.commit().await?;
-            return Ok(change);
-        }
-        if strava_activity_states::Model::supersedes(&txn, &input.event, false).await? {
-            let change = ActivityChange::unchanged(input.event, ActivityStatus::Superseded);
-            strava_events::Model::record_mutation(&txn, &change).await?;
-            txn.commit().await?;
-            return Ok(change);
-        }
-        let existing =
-            activities::Model::lock_strava_activity(&txn, input.event.bike_user_id, input.event.activity_id()?).await?;
-        if let Some(change) = Self::persist_matching_content(&txn, &input, existing.as_ref()).await? {
-            txn.commit().await?;
-            return Ok(change);
-        }
-        let previous_segment_ids = match &existing {
-            Some(activity) => bike_core::activity_lifecycle::load_segment_ids_for_activity(&txn, activity.id).await?,
-            None => vec![],
-        };
-        let (saved, import) = self
-            .save_activity_recording(
-                &txn,
-                &input,
-                existing.as_ref().and_then(|activity| activity.activity_import_id),
-                &parsed,
-                &profile,
-                &summary,
-            )
-            .await?;
-        let mut change =
-            ActivityChange::applied(input.event, saved.id, import.id, parsed.draft.started_at.date_naive());
-        change.segment_ids = previous_segment_ids;
-        let state =
-            strava_activity_states::Model::apply_event(&txn, &change.event, Some(input.source.sha256), false).await?;
-        change.dirty_from = Self::mark_fitness_change(&txn, &change.event, &parsed.draft, existing.as_ref()).await?;
-        activity_event_history::Model::record_strava(&txn, &change, &state, existing.as_ref(), Some(&saved)).await?;
-        strava_events::Model::record_mutation(&txn, &change).await?;
-        txn.commit().await?;
-        Ok(change)
-    }
-
-    async fn save_activity_recording(
-        &self,
-        txn: &DatabaseTransaction,
-        input: &NormalizedActivity,
-        import_id: Option<i32>,
-        parsed: &ParsedActivityData,
-        profile: &bike_core::training_profile::TrainingProfile,
-        summary: &super::super::provider_payload::StoredStravaProviderPayload,
-    ) -> Result<(activities::Model, activity_imports::Model), WorkflowError> {
-        let upload = super::super::build_activity_upload(&summary.activity, &summary.streams)?;
-        let import =
-            activity_imports::Entity::native_strava_source(txn, &input.event, import_id, &input.source, &upload)
-                .await?;
-        let recording = self
-            .store
-            .transform(
-                &format!("strava/recordings/{}", input.event.bike_user_id),
-                &bike_core::entities::activity_recordings::Recording::from(parsed.derived_data.clone()),
-            )
-            .await?;
-        let saved = activities::Model::save_parsed_strava(
-            txn,
-            &recording,
-            &input.event,
-            &import,
-            parsed,
-            profile,
-            &summary.activity,
+        bike_core::activity_reprocessing::process_strava_source(
+            &self.db,
+            &self.objects,
+            RetainedActivity {
+                event: input.event,
+                source: input.source,
+            },
         )
-        .await?;
-        Ok((saved, import))
+        .await
     }
 
-    /// Called under the connection lock. A committed original result wins over
-    /// classification of a retry's older fetched snapshot.
     async fn resolve_source_conflict(
         db: &DatabaseTransaction,
         event: &StravaEvent,
@@ -127,56 +34,6 @@ impl StravaOperations {
             )));
         }
         Ok(None)
-    }
-
-    async fn mark_fitness_change(
-        db: &impl sea_orm::ConnectionTrait,
-        event: &StravaEvent,
-        draft: &bike_core::activity_summary::ActivityDraft,
-        previous: Option<&activities::Model>,
-    ) -> Result<Option<chrono::NaiveDate>, WorkflowError> {
-        let cycling_changed = bike_core::activity_sport::is_bike_activity_sport(&draft.sport)
-            || previous.is_some_and(activities::Model::is_bike_activity);
-        if !cycling_changed {
-            return Ok(None);
-        }
-        let started_on = draft.started_at.date_naive();
-        let dirty_from = previous.map_or(started_on, |activity| activity.started_at.date_naive().min(started_on));
-        bike_core::analytics::mark_user_fitness_dirty(db, event.bike_user_id, dirty_from, chrono::Utc::now()).await?;
-        Ok(Some(dirty_from))
-    }
-
-    async fn persist_matching_content(
-        db: &DatabaseTransaction,
-        input: &NormalizedActivity,
-        activity: Option<&activities::Model>,
-    ) -> Result<Option<ActivityChange>, WorkflowError> {
-        let Some(activity) = activity else {
-            return Ok(None);
-        };
-        if !strava_activity_states::Model::matches_content(db, &input.event, &input.source.sha256).await? {
-            return Ok(None);
-        }
-        Self::persist_unchanged(db, input, activity).await.map(Some)
-    }
-
-    async fn persist_unchanged(
-        db: &DatabaseTransaction,
-        input: &NormalizedActivity,
-        activity: &activities::Model,
-    ) -> Result<ActivityChange, WorkflowError> {
-        let mut change = ActivityChange::unchanged(input.event.clone(), ActivityStatus::Unchanged);
-        change.event.bike_activity_id = Some(activity.id);
-        change.bike_activity_id = Some(activity.id);
-        change.import_id = activity.activity_import_id;
-        change.segment_ids = bike_core::activity_lifecycle::load_segment_ids_for_activity(db, activity.id).await?;
-        change.dirty_from = activity.is_bike_activity().then_some(activity.started_at.date_naive());
-        let state =
-            strava_activity_states::Model::apply_event(db, &change.event, Some(input.source.sha256.clone()), false)
-                .await?;
-        activity_event_history::Model::record_strava(db, &change, &state, Some(activity), Some(activity)).await?;
-        strava_events::Model::record_mutation(db, &change).await?;
-        Ok(change)
     }
 
     pub async fn capture_deletion(&self, mut event: StravaEvent) -> Result<ActivityChange, WorkflowError> {

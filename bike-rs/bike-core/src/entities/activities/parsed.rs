@@ -14,6 +14,7 @@ use crate::{
     training_profile::{serialize_activity_heart_rate_zones, summarize_heart_rate_zones, TrainingProfile},
     workflow_error::WorkflowError,
 };
+use sea_orm::TryIntoModel;
 pub(crate) struct ActivitySaveData {
     pub activity_type: ActivityType,
     pub estimated_ftp_watts: Option<i32>,
@@ -33,11 +34,22 @@ pub(crate) fn build_save_data(
         parsed.draft.average_heart_rate_bpm,
         profile.heart_rate_zone_bounds_bpm.as_deref(),
     );
+    let cycling = crate::activity_sport::is_bike_activity_sport(&parsed.draft.sport);
+    let stored = serialize_derived_activity_data(&parsed.derived_data)?;
+    let stored = if parsed.source_metadata == Default::default() {
+        stored
+    } else {
+        stored.with_source_metadata(parsed.source_metadata.clone())
+    };
     Ok(ActivitySaveData {
         activity_type: ActivityType::infer(&parsed.draft.title, filename),
-        estimated_ftp_watts: profile.estimated_ftp_watts,
-        heart_rate_zones_json: serialize_activity_heart_rate_zones(&zones)?,
-        derived_data_json: serialize_derived_activity_data(&parsed.derived_data)?,
+        estimated_ftp_watts: if cycling { profile.estimated_ftp_watts } else { None },
+        heart_rate_zones_json: if cycling {
+            serialize_activity_heart_rate_zones(&zones)?
+        } else {
+            None
+        },
+        derived_data_json: stored,
     })
 }
 
@@ -73,54 +85,39 @@ pub(crate) fn apply_fields(
 }
 
 impl Model {
-    pub async fn save_parsed_strava(
+    pub(crate) async fn save_parsed_strava(
         db: &impl ConnectionTrait,
-        recording: &crate::object_store::ObjectRef,
+        objects: &crate::object_store::ObjectStore,
         event: &crate::entities::strava_events::StravaEvent,
         import: &crate::entities::activity_imports::Model,
         parsed: &ParsedActivityData,
         profile: &TrainingProfile,
-        summary: &crate::activity_parser::strava::StravaActivitySummary,
     ) -> Result<Self, WorkflowError> {
         let existing = Self::strava_activity(db, event.bike_user_id, event.activity_id()?).await?;
         let update = existing.is_some();
-        let mut active = existing.map(ActiveModel::from).unwrap_or_default();
+        let mut active = existing.clone().map(ActiveModel::from).unwrap_or_default();
         active.user_id = Set(event.bike_user_id);
         active.activity_import_id = Set(Some(import.id));
         active.source = Set("strava_sync".into());
-        active.source_correlation_id = Set(event.strava_activity_id.map(|id| id.to_string()));
+        active.source_correlation_id = Set(Some(event.activity_id()?.to_string()));
         apply_fields(
             &mut active,
             &import.original_filename,
             "json",
             parsed,
-            build_strava_save_data(parsed, &import.original_filename, profile, summary)?,
+            build_save_data(parsed, &import.original_filename, profile)?,
         );
-        let saved = if update {
+        let unchanged = existing.filter(|before| active.clone().try_into_model().is_ok_and(|after| after == *before));
+        let saved = if let Some(unchanged) = unchanged {
+            unchanged
+        } else if update {
             active.update(db).await?
         } else {
             active.insert(db).await?
         };
-        crate::entities::activity_metadata::Model::store(db, &saved).await?;
-        crate::entities::activity_recordings::Model::store_reference(db, &saved, recording).await?;
-        crate::entities::route_matching_bounds::Model::store_source(db, &saved).await?;
+        saved.store_import_outputs(db, objects).await?;
         Ok(saved)
     }
-}
-
-fn build_strava_save_data(
-    parsed: &ParsedActivityData,
-    filename: &str,
-    profile: &TrainingProfile,
-    summary: &crate::activity_parser::strava::StravaActivitySummary,
-) -> Result<ActivitySaveData, WorkflowError> {
-    let mut data = build_save_data(parsed, filename, profile)?;
-    data.derived_data_json = data.derived_data_json.with_source_metadata(summary.source_metadata());
-    if !crate::activity_sport::is_bike_activity_sport(&parsed.draft.sport) {
-        data.estimated_ftp_watts = None;
-        data.heart_rate_zones_json = None;
-    }
-    Ok(data)
 }
 
 impl Model {
@@ -228,7 +225,7 @@ mod tests {
                 estimated_ftp_watts: Some(250),
                 ..Default::default()
             };
-            let saved = build_strava_save_data(&parsed, "fixture.json", &profile, &payload.activity).unwrap();
+            let saved = build_save_data(&parsed, "fixture.json", &profile).unwrap();
             let json = serde_json::to_vec(&saved.derived_data_json).unwrap();
             let restored: crate::activity_data::StoredActivityDerivedData = serde_json::from_slice(&json).unwrap();
             assert_eq!(restored.source_metadata(), Some(&payload.activity.source_metadata()));
@@ -241,5 +238,43 @@ mod tests {
                 assert!(saved.heart_rate_zones_json.is_none());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod shared_source_tests {
+    use super::*;
+
+    #[test]
+    fn ordinary_import_storage_keeps_strava_description_gear_and_private_notes() {
+        use crate::activity_parser::strava::StoredStravaProviderPayload;
+        let mut payload: StoredStravaProviderPayload =
+            serde_json::from_slice(crate::test_support::STRAVA_REAL_RIDE).unwrap();
+        payload
+            .activity
+            .additional_fields
+            .insert("description".into(), serde_json::json!("Ride description"));
+        payload
+            .activity
+            .additional_fields
+            .insert("private_note".into(), serde_json::json!("Rider note"));
+        payload
+            .activity
+            .additional_fields
+            .insert("gear".into(), serde_json::json!({"id":"bike-1","name":"Trail bike"}));
+        let bytes = serde_json::to_vec(&payload).unwrap();
+        let parsed = crate::activity_parser::parse_activity_artifact(crate::activity_parser::ActivityParserArtifact {
+            original_filename: "provider.json",
+            format: "json",
+            artifact_kind: "provider_payload",
+            source_quality: "strava_streams",
+            bytes: &bytes,
+        })
+        .unwrap();
+        let saved = build_save_data(&parsed, "provider.json", &TrainingProfile::default()).unwrap();
+        assert_eq!(
+            saved.derived_data_json.source_metadata(),
+            Some(&payload.activity.source_metadata())
+        );
     }
 }

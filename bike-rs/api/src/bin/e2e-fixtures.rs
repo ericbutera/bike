@@ -10,6 +10,8 @@ use sea_orm::{ActiveModelTrait, DatabaseTransaction, EntityTrait, IntoActiveMode
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 
+#[path = "e2e-fixtures/activity_dag.rs"]
+mod activity_dag;
 #[path = "e2e-fixtures/segment_matching.rs"]
 mod segment_matching;
 
@@ -25,6 +27,8 @@ struct Dataset {
     reconcile_pairs: Vec<ActivitySegmentPair>,
     #[serde(default)]
     prepare_recordings: Vec<bike_core::bike_tasks::ActivityTask>,
+    #[serde(default)]
+    activity_dag: Option<activity_dag::Input>,
 }
 
 #[derive(Deserialize)]
@@ -87,7 +91,11 @@ where
     Ok(())
 }
 
-async fn seed(db: &sea_orm::DatabaseConnection, dataset: Dataset) -> Result<(), sea_orm::DbErr> {
+async fn seed(
+    db: &sea_orm::DatabaseConnection,
+    dataset: Dataset,
+    initialize_outputs: bool,
+) -> Result<(), sea_orm::DbErr> {
     let activity_ids: Vec<i32> = dataset
         .records
         .iter()
@@ -105,6 +113,9 @@ async fn seed(db: &sea_orm::DatabaseConnection, dataset: Dataset) -> Result<(), 
         store_record(&tx, record).await?;
     }
     tx.commit().await?;
+    if !initialize_outputs {
+        return Ok(());
+    }
     prepare_climbs(db, activity_ids).await?;
     for id in segment_ids {
         bike_core::personal_achievements::rebuild(db, id).await?;
@@ -181,9 +192,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::io::stdin().read_to_string(&mut input)?;
     let mut dataset: Dataset = serde_json::from_str(&input)?;
     let matching = dataset.segment_matching.take();
+    let activity_dag = dataset.activity_dag.take();
     let pairs = std::mem::take(&mut dataset.reconcile_pairs);
     let recordings = std::mem::take(&mut dataset.prepare_recordings);
     let acceptance = matching.is_some() || !pairs.is_empty() || !recordings.is_empty();
+    let acceptance = acceptance || activity_dag.is_some();
     if staging && acceptance {
         return Err("Matching acceptance requires a disposable E2E project".into());
     }
@@ -195,12 +208,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Existing staging fixtures preserved");
         return Ok(());
     }
-    seed(&db, dataset).await?;
+    seed(&db, dataset, activity_dag.is_none()).await?;
     let objects = bike_core::object_store::ObjectStore::filesystem(
         &bike_core::config::Config::get().uploads_dir,
         bike_core::object_store::ObjectOwner::ActivityImports,
     );
     prepare_matching(&db, &objects, recordings, pairs).await?;
+    if let Some(input) = activity_dag {
+        let report = activity_dag::run(&db, input)
+            .await
+            .map_err(|error| -> Box<dyn std::error::Error> { error })?;
+        println!("{}", serde_json::to_string(&report)?);
+        if !report.failures.is_empty() {
+            return Err("Activity DAG regression failed; see the comparison report".into());
+        }
+    }
     if let Some(input) = matching {
         println!("{}", serde_json::to_string(&segment_matching::run(&db, input).await?)?);
     }

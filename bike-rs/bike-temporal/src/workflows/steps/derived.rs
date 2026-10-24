@@ -57,8 +57,25 @@ pub(crate) async fn segments<W>(ctx: &WorkflowContext<W>, imported: &ActivityImp
 
 pub(crate) async fn activity_segments<W>(ctx: &WorkflowContext<W>, task: ActivityTask) -> WorkflowResult<()> {
     let priority = task.priority;
+    let task_user_id = task.user_id;
     let options = options::activity(task.priority, format!("user-{}", task.user_id));
     let segment_ids = options::run(ctx, DerivedActivities::rebuild_activity_segments, task, options).await?;
+    if ctx.patched("activity-segment-results-batch-v1") {
+        for ids in segment_ids.chunks(500) {
+            children::run(
+                ctx,
+                RebuildSegmentAnalytics::run,
+                bike_core::bike_tasks::SegmentAnalyticsTask::Batch {
+                    segment_ids: ids.to_vec(),
+                    priority,
+                },
+                priority,
+                format!("user-{}", task_user_id),
+            )
+            .await?;
+        }
+        return Ok(());
+    }
     for segment_id in segment_ids {
         let task = SegmentChange { segment_id, priority };
         children::run(
