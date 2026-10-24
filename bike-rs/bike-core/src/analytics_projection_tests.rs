@@ -102,6 +102,8 @@ fn segment_mutation_scope() -> MockDatabase {
 #[tokio::test]
 async fn segment_deletion_locks_affected_activities_before_deleting_efforts() {
     let db = segment_mutation_scope()
+        .append_query_results([vec![fixtures::segment()]])
+        .append_query_results([vec![BTreeMap::from([("activity_id", 42.into())])]])
         .append_query_results([vec![fixtures::activity_id_row()]])
         .append_query_results([vec![fixtures::activity_analytics()]])
         .append_query_results([Vec::<segment_efforts::Model>::new()])
@@ -360,4 +362,21 @@ async fn failed_segment_batch_leaves_award_summary_refresh_for_retry() {
     assert!(!statements.iter().any(|s| s.sql.contains("activity_earned_awards")));
     assert!(!statements.iter().any(|s| s.sql.contains("activity_analytics")));
     assert_eq!(statements.iter().filter(|s| s.sql == "COMMIT").count(), 1);
+}
+
+#[tokio::test]
+async fn segment_deletion_retries_if_an_import_adds_an_activity_outside_its_locked_scope() {
+    let db = segment_mutation_scope()
+        .append_query_results([vec![fixtures::segment()]])
+        .append_query_results([vec![
+            BTreeMap::from([("activity_id", 42.into())]),
+            BTreeMap::from([("activity_id", 43.into())]),
+        ]])
+        .into_connection();
+    let error = fixtures::segment().delete_with_derived_state(&db).await.unwrap_err();
+    assert!(error.to_string().contains("changed during deletion; retry"));
+    let log = db.into_transaction_log();
+    let statements = log.last().unwrap().statements();
+    assert_eq!(statements.last().unwrap().sql, "ROLLBACK");
+    assert!(!statements.iter().any(|statement| statement.sql.starts_with("DELETE")));
 }

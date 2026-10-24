@@ -46,7 +46,7 @@ impl ImportOperations for BikeOperations {
 impl DerivedOperations for BikeOperations {
     async fn rebuild_activity_segments(&self, task: ActivityTask) -> Result<Vec<i32>, WorkflowError> {
         let activity = self.activity(&task).await?;
-        bike_core::segment_regeneration::match_activity(&self.db, &activity).await
+        bike_core::segment_regeneration::match_activity(&self.db, &self.objects, &activity).await
     }
 
     async fn rebuild_activity_achievements(&self, task: ActivityTask) -> Result<(), WorkflowError> {

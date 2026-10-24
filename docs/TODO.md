@@ -99,15 +99,20 @@
       per-segment attempt numbers. See [matching](specs/segment-processing.md#matching-contract).
       This slice does not change persistence or workflows.
 
+- [ ] **P4 Pair writes:** Reuse activity reconciliation for historical pairs,
+      preserve retry identities, and limit refreshes to old/new segments plus pending
+      saved results. Pair persistence and shared matching preserve frozen activity
+      1671 efforts and awards. The full ingestion-workflow gate from PR 100 remains
+      pending the replacement Strava import path. Historical paging and candidate
+      selection remain separate;
+      see [reconciliation](specs/segment-processing.md#activity-effort-reconciliation).
 - [x] Preserve saved effort identities when activity matching repeats unchanged
-      traversals; see [activity reconciliation](specs/segment-processing.md#activity-effort-reconciliation).
-      LOAD05 still needs narrowed retry invalidation and historical pair writes;
-      LOAD06 and LOAD19 remain prerequisites for gradual historical matching.
+      traversals; historical pairs and retry scope now share that contract.
+      LOAD19 remains the prerequisite for gradual historical matching.
 - [x] Fix segment geometry after creation and keep creator renaming as a metadata
       update without matching or standings work; see the
       [fixed-geometry contract](specs/segment-processing.md#fixed-geometry-and-creator-renaming).
-      PR 100 follow-ups LOAD05, LOAD06, and LOAD19 still own stable effort
-      persistence, lock ordering, and gradual historical matching.
+      Gradual historical candidate selection and Temporal paging remain LOAD19.
 
 - [x] Isolate personal segment results and comparison recordings by authenticated
       user, and isolate browser query data across account changes and logout; see

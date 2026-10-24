@@ -28,13 +28,27 @@ pub enum Relation {}
 crate::timestamps::impl_timestamps!(ActiveModel);
 
 impl Model {
-    /// Existing summaries include segments whose last effort was removed by a
-    /// prior matching attempt. Rebuilding this broader scope is safe on retry.
-    pub async fn segment_ids_for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<i32>, DbErr> {
+    /// Recover interrupted refreshes, including removal of a rider's last effort.
+    pub async fn pending_segment_ids_for_user(db: &impl ConnectionTrait, user_id: i32) -> Result<Vec<i32>, DbErr> {
+        use super::segments;
+        use sea_orm::sea_query::{Expr, ExprTrait, Query};
+
         Entity::find()
             .select_only()
             .column(Column::SegmentId)
             .filter(Column::UserId.eq(user_id))
+            .filter(
+                Column::SegmentId.in_subquery(
+                    Query::select()
+                        .column(segments::Column::Id)
+                        .from(segments::Entity)
+                        .and_where(
+                            Expr::col((segments::Entity, segments::Column::LastActivityChangeAt))
+                                .gt(Expr::col((Entity, Column::UpdatedAt))),
+                        )
+                        .to_owned(),
+                ),
+            )
             .into_tuple::<i32>()
             .all(db)
             .await

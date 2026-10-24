@@ -46,6 +46,38 @@ impl Model {
             .await
     }
 
+    pub(crate) async fn list_for_owned_pair(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        activity_id: i32,
+        segment_id: i32,
+    ) -> Result<Vec<Self>, DbErr> {
+        Entity::find()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::ActivityId.eq(activity_id))
+            .filter(Column::SegmentId.eq(segment_id))
+            .order_by_asc(Column::Id)
+            .all(db)
+            .await
+    }
+
+    pub(crate) async fn owned_activity_ids_for_segment(
+        db: &impl ConnectionTrait,
+        user_id: i32,
+        segment_id: i32,
+    ) -> Result<Vec<i32>, DbErr> {
+        Entity::find()
+            .select_only()
+            .column(Column::ActivityId)
+            .distinct()
+            .filter(Column::UserId.eq(user_id))
+            .filter(Column::SegmentId.eq(segment_id))
+            .order_by_asc(Column::ActivityId)
+            .into_tuple::<i32>()
+            .all(db)
+            .await
+    }
+
     pub async fn count_for_activity(db: &impl ConnectionTrait, activity_id: i32) -> Result<u64, DbErr> {
         use sea_orm::PaginatorTrait;
         Entity::find()
@@ -167,25 +199,6 @@ impl Entity {
             .filter(Column::ActivityId.eq(activity_id))
             .exec(db)
             .await?;
-        Ok(())
-    }
-
-    pub(crate) async fn store_matches(
-        db: &impl ConnectionTrait,
-        user_id: i32,
-        segment_id: i32,
-        activity_id: i32,
-        matches: &[crate::segment_support::MatchedSegmentEffort],
-    ) -> Result<(), DbErr> {
-        if matches.is_empty() {
-            return Ok(());
-        }
-        let efforts = matches.iter().enumerate().map(|(index, matched)| {
-            matched
-                .clone()
-                .into_effort(user_id, activity_id, segment_id, (index + 1) as i32)
-        });
-        Self::insert_many(efforts).exec(db).await?;
         Ok(())
     }
 }

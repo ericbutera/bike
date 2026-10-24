@@ -217,3 +217,22 @@ fn owned_reference(path: &str, user_id: i32) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+impl Model {
+    /// Matching reads only the normalized output saved by the recording producer.
+    pub async fn matching_route(
+        db: &impl ConnectionTrait,
+        objects: &ObjectStore,
+        activity: &super::activities::Model,
+    ) -> Result<Vec<ActivityRoutePoint>, WorkflowError> {
+        if !activity.is_bike_activity() {
+            return Ok(Vec::new());
+        }
+        let recording = Self::load(db, objects, activity.id, activity.user_id)
+            .await?
+            .ok_or_else(|| {
+                WorkflowError::invalid_data("Activity has no normalized recording; run the recording backfill")
+            })?;
+        Ok(recording.route_points)
+    }
+}
