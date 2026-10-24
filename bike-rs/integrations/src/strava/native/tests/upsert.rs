@@ -47,23 +47,15 @@ async fn verify_upsert(update: bool, sport: &str) {
     assert_eq!(change.bike_activity_id, Some(42));
     assert_eq!(change.import_id, Some(18));
     assert_eq!(change.segment_ids, if update { vec![1, 2] } else { vec![] });
-    let stored_scope = transactions
-        .iter()
-        .flat_map(|txn| txn.statements())
-        .filter(|statement| statement.sql.starts_with("UPDATE \"strava_events\""))
-        .flat_map(|statement| &statement.values.as_ref().unwrap().0)
-        .find_map(|value| match value {
-            Value::Json(Some(value)) => value.get("segment_ids"),
-            _ => None,
-        })
-        .unwrap();
-    assert_eq!(*stored_scope, serde_json::json!(change.segment_ids));
+    assert_saved_segment_scope(&transactions, &change);
     assert_eq!(change.dirty_from.is_some(), sport == "Ride" || update);
     assert_eq!(change.event.strava_activity_id, fixture.domain.event.strava_activity_id);
     let operation = if update { "UPDATE" } else { "INSERT INTO" };
     assert!(sql.contains(&format!("{operation} \"activities\"")));
     assert!(sql.contains(&format!("{operation} \"activity_imports\"")));
     assert!(sql.contains("activity_import_artifacts"));
+    assert!(sql.contains("activity_recordings"));
+    assert_recording_output(&fixture);
     assert!(format!("{transactions:?}").contains(&source_hash));
     assert!(sql.contains("COMMIT"));
     assert!(!sql.contains("ROLLBACK"));
@@ -74,6 +66,9 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
     let domain = &fixture.domain;
     let mut activity = domain.activity();
     activity.activity_import_id = Some(18);
+    let bytes = serde_json::to_vec(&fixture.provider.payload).unwrap();
+    let parsed = bike_core::activity_parser::strava::parse_strava_provider_payload(&bytes).unwrap();
+    activity.derived_data_json = Some((&parsed.derived_data).into());
     let existing = if update { vec![activity.clone()] } else { vec![] };
     let mut mock = fixture
         .connection_mock()
@@ -97,7 +92,9 @@ fn upsert_mock(fixture: &HandlerFixture, update: bool) -> MockDatabase {
         .append_query_results([vec![imports::artifact(domain)]])
         .append_query_results([existing])
         .append_query_results([vec![activity]])
-        .append_query_results([vec![domain.activity_state()]]);
+        .append_query_results([Vec::<bike_core::entities::activity_recordings::Model>::new()])
+        .append_query_results([vec![domain.activity_state()]])
+        .append_exec_results([executed()]);
     let mock = if crate::strava::provider_payload::strava_activity_is_bike(&fixture.provider.payload.activity) || update
     {
         mock.append_exec_results([executed()])
@@ -113,4 +110,33 @@ fn executed() -> MockExecResult {
         rows_affected: 1,
         last_insert_id: 0,
     }
+}
+
+fn assert_recording_output(fixture: &HandlerFixture) {
+    let retained = fixture.storage.objects.lock().unwrap();
+    let recording = retained
+        .iter()
+        .find(|(key, _)| key.starts_with("strava/recordings/7/"))
+        .unwrap();
+    let restored: bike_core::entities::activity_recordings::Recording = serde_json::from_slice(recording.1).unwrap();
+    let bytes = serde_json::to_vec(&fixture.provider.payload).unwrap();
+    let parsed = bike_core::activity_parser::strava::parse_strava_provider_payload(&bytes).unwrap();
+    assert_eq!(
+        restored,
+        bike_core::entities::activity_recordings::Recording::from(parsed.derived_data)
+    );
+}
+
+fn assert_saved_segment_scope(transactions: &[sea_orm::Transaction], change: &ActivityChange) {
+    let stored_scope = transactions
+        .iter()
+        .flat_map(|txn| txn.statements())
+        .filter(|statement| statement.sql.starts_with("UPDATE \"strava_events\""))
+        .flat_map(|statement| &statement.values.as_ref().unwrap().0)
+        .find_map(|value| match value {
+            Value::Json(Some(value)) => value.get("segment_ids"),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(*stored_scope, serde_json::json!(change.segment_ids));
 }

@@ -75,6 +75,7 @@ pub(crate) fn apply_fields(
 impl Model {
     pub async fn save_parsed_strava(
         db: &impl ConnectionTrait,
+        recording: &crate::object_store::ObjectRef,
         event: &crate::entities::strava_events::StravaEvent,
         import: &crate::entities::activity_imports::Model,
         parsed: &ParsedActivityData,
@@ -95,11 +96,13 @@ impl Model {
             parsed,
             build_strava_save_data(parsed, &import.original_filename, profile, summary)?,
         );
-        if update {
-            active.update(db).await.map_err(WorkflowError::from)
+        let saved = if update {
+            active.update(db).await?
         } else {
-            active.insert(db).await.map_err(WorkflowError::from)
-        }
+            active.insert(db).await?
+        };
+        crate::entities::activity_recordings::Model::store_reference(db, &saved, recording).await?;
+        Ok(saved)
     }
 }
 

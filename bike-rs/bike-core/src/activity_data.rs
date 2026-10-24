@@ -235,8 +235,10 @@ impl<'de> Deserialize<'de> for StoredActivityDerivedData {
         if is_schemaful {
             let value = StoredActivityDerivedDataV2::deserialize(value).map_err(serde::de::Error::custom)?;
             if value.v != STORAGE_FORMAT_VERSION {
-                tracing::warn!(version = value.v, "unsupported activity derived data format version");
-                return Ok(Self::default());
+                return Err(serde::de::Error::custom(format!(
+                    "Unsupported activity recording format version {}",
+                    value.v
+                )));
             }
 
             Ok(Self {
@@ -250,8 +252,10 @@ impl<'de> Deserialize<'de> for StoredActivityDerivedData {
         } else {
             let value = CompactStoredActivityDerivedDataV1::deserialize(value).map_err(serde::de::Error::custom)?;
             if value.v != 1 {
-                tracing::warn!(version = value.v, "unsupported activity derived data format version");
-                return Ok(Self::default());
+                return Err(serde::de::Error::custom(format!(
+                    "Unsupported activity recording format version {}",
+                    value.v
+                )));
             }
 
             Ok(Self::from(value))
@@ -409,6 +413,17 @@ fn decode_scaled_metric(value: Option<i32>, scale: f64) -> Option<f64> {
 mod recording_tests {
     use super::*;
     use crate::activity_recording::{RecordingContext, RecordingEnvironment};
+
+    #[test]
+    fn unknown_storage_versions_cannot_convert_into_empty_recording_success() {
+        for value in [
+            serde_json::json!({"v": 99, "r": []}),
+            serde_json::json!({"v": 99, "route_points": []}),
+        ] {
+            let error = serde_json::from_value::<StoredActivityDerivedData>(value).unwrap_err();
+            assert!(error.to_string().contains("Unsupported activity recording format"));
+        }
+    }
 
     #[test]
     fn recording_evidence_survives_storage_and_legacy_format_upgrade() {

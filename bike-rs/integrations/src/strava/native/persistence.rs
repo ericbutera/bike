@@ -52,22 +52,20 @@ impl StravaOperations {
             txn.commit().await?;
             return Ok(change);
         }
-        let upload = super::super::build_activity_upload(&summary.activity, &summary.streams)?;
         let previous_segment_ids = match &existing {
             Some(activity) => bike_core::activity_lifecycle::load_segment_ids_for_activity(&txn, activity.id).await?,
             None => vec![],
         };
-        let import = activity_imports::Entity::native_strava_source(
-            &txn,
-            &input.event,
-            existing.as_ref().and_then(|activity| activity.activity_import_id),
-            &input.source,
-            &upload,
-        )
-        .await?;
-        let saved =
-            activities::Model::save_parsed_strava(&txn, &input.event, &import, &parsed, &profile, &summary.activity)
-                .await?;
+        let (saved, import) = self
+            .save_activity_recording(
+                &txn,
+                &input,
+                existing.as_ref().and_then(|activity| activity.activity_import_id),
+                &parsed,
+                &profile,
+                &summary,
+            )
+            .await?;
         let mut change =
             ActivityChange::applied(input.event, saved.id, import.id, parsed.draft.started_at.date_naive());
         change.segment_ids = previous_segment_ids;
@@ -78,6 +76,39 @@ impl StravaOperations {
         strava_events::Model::record_mutation(&txn, &change).await?;
         txn.commit().await?;
         Ok(change)
+    }
+
+    async fn save_activity_recording(
+        &self,
+        txn: &DatabaseTransaction,
+        input: &NormalizedActivity,
+        import_id: Option<i32>,
+        parsed: &ParsedActivityData,
+        profile: &bike_core::training_profile::TrainingProfile,
+        summary: &super::super::provider_payload::StoredStravaProviderPayload,
+    ) -> Result<(activities::Model, activity_imports::Model), WorkflowError> {
+        let upload = super::super::build_activity_upload(&summary.activity, &summary.streams)?;
+        let import =
+            activity_imports::Entity::native_strava_source(txn, &input.event, import_id, &input.source, &upload)
+                .await?;
+        let recording = self
+            .store
+            .transform(
+                &format!("strava/recordings/{}", input.event.bike_user_id),
+                &bike_core::entities::activity_recordings::Recording::from(parsed.derived_data.clone()),
+            )
+            .await?;
+        let saved = activities::Model::save_parsed_strava(
+            txn,
+            &recording,
+            &input.event,
+            &import,
+            parsed,
+            profile,
+            &summary.activity,
+        )
+        .await?;
+        Ok((saved, import))
     }
 
     /// Called under the connection lock. A committed original result wins over

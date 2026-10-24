@@ -13,7 +13,7 @@ pub const STRAVA_REAL_RIDE: &[u8] =
 mod activity_history;
 pub use activity_history::{activity_history, activity_history_event};
 mod storage;
-pub use storage::object_storage;
+pub use storage::{activity_recording, object_storage};
 mod tasks;
 pub mod temporal_client;
 pub use tasks::{

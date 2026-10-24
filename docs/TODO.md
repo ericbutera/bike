@@ -30,9 +30,8 @@
 ## Activities
 
 - [x] **P9 Climb facts:** Save the existing report detector facts with typed artifact
-  references and convert/backfill only climb output. See
-  [saved climb report facts](specs/background-work.md#saved-climb-report-facts).
-
+      references and convert/backfill only climb output. See
+      [saved climb report facts](specs/background-work.md#saved-climb-report-facts).
 
 - [x] **LOAD09:** Read saved activity effort ranks and personal-best summaries,
       preserving nulls and stale saved values without history ranking or request
@@ -46,6 +45,10 @@
 - [x] Generate and persist ordered activity climbs in the upload/reprocessing DAG;
       include a one-off Temporal backfill for missing climb outputs. See the
       [stage rollout contract](specs/background-work.md#activity-climbs-and-stage-backfills).
+
+- [x] **P1 Recording:** Persist normalized recording artifacts with typed references,
+      integrate both import paths, and convert existing saved recordings with a bounded
+      stage-only backfill. See [recording storage](specs/activities.md#normalized-recording-storage).
 
 - [x] Show accessible sport icons before feed titles, with original mountain/fat
       bike artwork and baseline-aligned location/date metadata; see the
@@ -76,9 +79,9 @@
 ## Segments
 
 - [x] **P3 Traversals:** Preserve every valid segment traversal across strict,
-  fallback and eligible reworked-trail profiles, in recording order, with stable
-  per-segment attempt numbers. See [matching](specs/segment-processing.md#matching-contract).
-  This slice does not change persistence or workflows.
+      fallback and eligible reworked-trail profiles, in recording order, with stable
+      per-segment attempt numbers. See [matching](specs/segment-processing.md#matching-contract).
+      This slice does not change persistence or workflows.
 
 - [x] Preserve saved effort identities when activity matching repeats unchanged
       traversals; see [activity reconciliation](specs/segment-processing.md#activity-effort-reconciliation).
