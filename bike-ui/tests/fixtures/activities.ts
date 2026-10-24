@@ -1,5 +1,6 @@
 import type {
   Activity,
+  ActivityCard,
   ActivityEarnedAward,
   ActivityLap,
   ActivityRoutePoint,
@@ -94,4 +95,19 @@ export function climbOutput(
   climbs = [savedClimb()],
 ): NonNullable<Activity["climb_output"]> {
   return { detector_version: 1, recording_sha256: "fixture-recording", climbs };
+}
+
+export function activityCard(
+  overrides: Partial<ActivityCard> = {},
+): ActivityCard {
+  const source = activity();
+  return {
+    id: source.id,
+    title: source.title,
+    sport: source.sport,
+    started_at: source.started_at,
+    route_points: [],
+    earned_awards: [],
+    ...overrides,
+  };
 }

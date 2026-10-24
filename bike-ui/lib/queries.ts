@@ -139,6 +139,8 @@ export type Activity = Pick<
   can_download_source_file?: boolean;
 };
 
+export type ActivityCard = components["schemas"]["ActivityCardResponse"];
+
 export type AdminActivity = {
   id: number;
   user_id: number;
@@ -1492,7 +1494,7 @@ export function useActivities(opts?: {
     { enabled: opts?.enabled ?? true },
   );
 
-  const pageData = response.data as PaginatedResponse<Activity> | undefined;
+  const pageData = response.data;
 
   return {
     ...response,

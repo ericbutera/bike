@@ -59,18 +59,30 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaginatedResponse_ActivityResponse"
+                  "$ref": "#/components/schemas/PaginatedResponse_ActivityCardResponse"
                 },
                 "example": {
                   "data": [
                     {
-                      "activity_type": "training",
+                      "average_heart_rate_bpm": 148,
+                      "average_speed_mps": 6.05,
                       "distance_meters": 25430.5,
+                      "earned_awards": [],
+                      "elevation_gain_meters": 312.4,
                       "id": 42,
-                      "source": "manual_upload",
+                      "location": "Detroit, Michigan",
+                      "moving_time_seconds": 4200,
+                      "route_points": [
+                        {
+                          "elapsed_seconds": 900,
+                          "latitude": 42.3314,
+                          "longitude": -83.0458
+                        }
+                      ],
                       "sport": "ride",
                       "started_at": "2026-09-26T13:00:00Z",
-                      "title": "Saturday hill repeats"
+                      "title": "Saturday hill repeats",
+                      "total_time_seconds": 4320
                     }
                   ],
                   "metadata": {
@@ -5436,6 +5448,116 @@
           "total_entries": 120
         }
       },
+      "ActivityCardPreviewPoint": {
+        "type": "object",
+        "required": [
+          "elapsed_seconds",
+          "latitude",
+          "longitude"
+        ],
+        "properties": {
+          "elapsed_seconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "ActivityCardResponse": {
+        "type": "object",
+        "description": "Compact saved inputs for one activity-stream card.",
+        "required": [
+          "id",
+          "title",
+          "sport",
+          "started_at",
+          "route_points",
+          "earned_awards"
+        ],
+        "properties": {
+          "average_heart_rate_bpm": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "average_speed_mps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "distance_meters": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "earned_awards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityEarnedAward"
+            }
+          },
+          "elevation_gain_meters": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "moving_time_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "route_points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityCardPreviewPoint"
+            }
+          },
+          "sport": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string"
+          },
+          "total_time_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "ActivityChartPoint": {
         "type": "object",
         "required": [
@@ -8539,7 +8661,7 @@
           }
         }
       },
-      "PaginatedResponse_ActivityResponse": {
+      "PaginatedResponse_ActivityCardResponse": {
         "type": "object",
         "description": "Standard paginated response wrapper",
         "required": [
@@ -8551,94 +8673,36 @@
             "type": "array",
             "items": {
               "type": "object",
+              "description": "Compact saved inputs for one activity-stream card.",
               "required": [
                 "id",
                 "title",
                 "sport",
-                "source",
-                "activity_type",
                 "started_at",
+                "route_points",
                 "earned_awards"
               ],
               "properties": {
-                "activity_import_id": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int32"
-                },
-                "activity_type": {
-                  "$ref": "#/components/schemas/ActivityType"
-                },
-                "average_cadence_rpm": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int32"
-                },
                 "average_heart_rate_bpm": {
                   "type": [
                     "integer",
                     "null"
                   ],
-                  "format": "int32",
-                  "example": 148
+                  "format": "int32"
                 },
                 "average_speed_mps": {
                   "type": [
                     "number",
                     "null"
                   ],
-                  "format": "double",
-                  "example": 6.05
-                },
-                "calories": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int32"
-                },
-                "can_download_source_file": {
-                  "type": "boolean",
-                  "example": true
-                },
-                "can_regenerate": {
-                  "type": "boolean",
-                  "example": true
-                },
-                "chart_points": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ActivityChartPoint"
-                  }
-                },
-                "climb_output": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "$ref": "#/components/schemas/ClimbOutput",
-                      "description": "Saved climb rows; activity detail returns an empty list when none are stored."
-                    }
-                  ]
-                },
-                "description": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "format": "double"
                 },
                 "distance_meters": {
                   "type": [
                     "number",
                     "null"
                   ],
-                  "format": "double",
-                  "example": 25430.5
+                  "format": "double"
                 },
                 "earned_awards": {
                   "type": "array",
@@ -8651,116 +8715,19 @@
                     "number",
                     "null"
                   ],
-                  "format": "double",
-                  "example": 312.4
-                },
-                "elevation_loss_meters": {
-                  "type": [
-                    "number",
-                    "null"
-                  ],
                   "format": "double"
-                },
-                "ended_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "example": "2026-09-26T14:12:00Z"
-                },
-                "estimated_ftp_watts": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int32",
-                  "example": 245
-                },
-                "format": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "example": "fit"
-                },
-                "gear": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "$ref": "#/components/schemas/ActivityGear"
-                    }
-                  ]
-                },
-                "heart_rate_zones": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ActivityHeartRateZoneSummary"
-                  }
                 },
                 "id": {
                   "type": "integer",
-                  "format": "int32",
-                  "example": 42
-                },
-                "laps": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ActivityLap"
-                  }
+                  "format": "int32"
                 },
                 "location": {
                   "type": [
                     "string",
                     "null"
-                  ],
-                  "example": "Detroit, Michigan"
-                },
-                "max_cadence_rpm": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int32"
-                },
-                "max_heart_rate_bpm": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int32"
-                },
-                "max_speed_mps": {
-                  "type": [
-                    "number",
-                    "null"
-                  ],
-                  "format": "double"
-                },
-                "moving_time_seconds": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int32",
-                  "example": 4200
-                },
-                "original_filename": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "example": "saturday-hills.fit"
-                },
-                "private_notes": {
-                  "type": [
-                    "string",
-                    "null"
                   ]
                 },
-                "relative_effort": {
+                "moving_time_seconds": {
                   "type": [
                     "integer",
                     "null"
@@ -8770,89 +8737,26 @@
                 "route_points": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/ActivityRoutePoint"
-                  },
-                  "example": [
-                    {
-                      "distance_meters": 4200.5,
-                      "elapsed_seconds": 900,
-                      "elevation_meters": 183.2,
-                      "latitude": 42.3314,
-                      "longitude": -83.0458
-                    }
-                  ]
-                },
-                "segment_efforts": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ActivitySegmentEffort"
+                    "$ref": "#/components/schemas/ActivityCardPreviewPoint"
                   }
                 },
-                "source": {
-                  "type": "string",
-                  "example": "manual_upload"
-                },
                 "sport": {
-                  "type": "string",
-                  "example": "ride"
+                  "type": "string"
                 },
                 "started_at": {
                   "type": "string",
-                  "format": "date-time",
-                  "example": "2026-09-26T13:00:00Z"
+                  "format": "date-time"
                 },
                 "title": {
-                  "type": "string",
-                  "example": "Saturday hill repeats"
+                  "type": "string"
                 },
                 "total_time_seconds": {
                   "type": [
                     "integer",
                     "null"
                   ],
-                  "format": "int32",
-                  "example": 4320
-                },
-                "training_analysis": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "$ref": "#/components/schemas/ActivityTrainingAnalysisResponse"
-                    }
-                  ]
+                  "format": "int32"
                 }
-              },
-              "example": {
-                "activity_type": "training",
-                "average_heart_rate_bpm": 148,
-                "average_speed_mps": 6.05,
-                "can_download_source_file": true,
-                "can_regenerate": true,
-                "distance_meters": 25430.5,
-                "elevation_gain_meters": 312.4,
-                "ended_at": "2026-09-26T14:12:00Z",
-                "estimated_ftp_watts": 245,
-                "format": "fit",
-                "id": 42,
-                "location": "Detroit, Michigan",
-                "moving_time_seconds": 4200,
-                "original_filename": "saturday-hills.fit",
-                "route_points": [
-                  {
-                    "distance_meters": 4200.5,
-                    "elapsed_seconds": 900,
-                    "elevation_meters": 183.2,
-                    "latitude": 42.3314,
-                    "longitude": -83.0458
-                  }
-                ],
-                "source": "manual_upload",
-                "sport": "ride",
-                "started_at": "2026-09-26T13:00:00Z",
-                "title": "Saturday hill repeats",
-                "total_time_seconds": 4320
               }
             },
             "description": "Recordset"

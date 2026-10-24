@@ -1176,6 +1176,38 @@ export interface components {
        */
       total_entries: number;
     };
+    ActivityCardPreviewPoint: {
+      /** Format: int32 */
+      elapsed_seconds: number;
+      /** Format: double */
+      latitude: number;
+      /** Format: double */
+      longitude: number;
+    };
+    /** @description Compact saved inputs for one activity-stream card. */
+    ActivityCardResponse: {
+      /** Format: int32 */
+      average_heart_rate_bpm?: number | null;
+      /** Format: double */
+      average_speed_mps?: number | null;
+      /** Format: double */
+      distance_meters?: number | null;
+      earned_awards: components["schemas"]["ActivityEarnedAward"][];
+      /** Format: double */
+      elevation_gain_meters?: number | null;
+      /** Format: int32 */
+      id: number;
+      location?: string | null;
+      /** Format: int32 */
+      moving_time_seconds?: number | null;
+      route_points: components["schemas"]["ActivityCardPreviewPoint"][];
+      sport: string;
+      /** Format: date-time */
+      started_at: string;
+      title: string;
+      /** Format: int32 */
+      total_time_seconds?: number | null;
+    };
     /**
      * @example {
      *       "cadence_rpm": 82,
@@ -2566,115 +2598,30 @@ export interface components {
       metadata: components["schemas"]["PaginationMetadata"];
     };
     /** @description Standard paginated response wrapper */
-    PaginatedResponse_ActivityResponse: {
+    PaginatedResponse_ActivityCardResponse: {
       /** @description Recordset */
       data: {
         /** Format: int32 */
-        activity_import_id?: number | null;
-        activity_type: components["schemas"]["ActivityType"];
-        /** Format: int32 */
-        average_cadence_rpm?: number | null;
-        /**
-         * Format: int32
-         * @example 148
-         */
         average_heart_rate_bpm?: number | null;
-        /**
-         * Format: double
-         * @example 6.05
-         */
+        /** Format: double */
         average_speed_mps?: number | null;
-        /** Format: int32 */
-        calories?: number | null;
-        /** @example true */
-        can_download_source_file?: boolean;
-        /** @example true */
-        can_regenerate?: boolean;
-        chart_points?: components["schemas"]["ActivityChartPoint"][];
-        climb_output?: null | components["schemas"]["ClimbOutput"];
-        description?: string | null;
-        /**
-         * Format: double
-         * @example 25430.5
-         */
+        /** Format: double */
         distance_meters?: number | null;
         earned_awards: components["schemas"]["ActivityEarnedAward"][];
-        /**
-         * Format: double
-         * @example 312.4
-         */
-        elevation_gain_meters?: number | null;
         /** Format: double */
-        elevation_loss_meters?: number | null;
-        /**
-         * Format: date-time
-         * @example 2026-09-26T14:12:00Z
-         */
-        ended_at?: string | null;
-        /**
-         * Format: int32
-         * @example 245
-         */
-        estimated_ftp_watts?: number | null;
-        /** @example fit */
-        format?: string | null;
-        gear?: null | components["schemas"]["ActivityGear"];
-        heart_rate_zones?: components["schemas"]["ActivityHeartRateZoneSummary"][];
-        /**
-         * Format: int32
-         * @example 42
-         */
+        elevation_gain_meters?: number | null;
+        /** Format: int32 */
         id: number;
-        laps?: components["schemas"]["ActivityLap"][];
-        /** @example Detroit, Michigan */
         location?: string | null;
         /** Format: int32 */
-        max_cadence_rpm?: number | null;
-        /** Format: int32 */
-        max_heart_rate_bpm?: number | null;
-        /** Format: double */
-        max_speed_mps?: number | null;
-        /**
-         * Format: int32
-         * @example 4200
-         */
         moving_time_seconds?: number | null;
-        /** @example saturday-hills.fit */
-        original_filename?: string | null;
-        private_notes?: string | null;
-        /** Format: int32 */
-        relative_effort?: number | null;
-        /**
-         * @example [
-         *       {
-         *         "distance_meters": 4200.5,
-         *         "elapsed_seconds": 900,
-         *         "elevation_meters": 183.2,
-         *         "latitude": 42.3314,
-         *         "longitude": -83.0458
-         *       }
-         *     ]
-         */
-        route_points?: components["schemas"]["ActivityRoutePoint"][];
-        segment_efforts?: components["schemas"]["ActivitySegmentEffort"][];
-        /** @example manual_upload */
-        source: string;
-        /** @example ride */
+        route_points: components["schemas"]["ActivityCardPreviewPoint"][];
         sport: string;
-        /**
-         * Format: date-time
-         * @example 2026-09-26T13:00:00Z
-         */
+        /** Format: date-time */
         started_at: string;
-        /** @example Saturday hill repeats */
         title: string;
-        /**
-         * Format: int32
-         * @example 4320
-         */
+        /** Format: int32 */
         total_time_seconds?: number | null;
-        training_analysis?:
-          null | components["schemas"]["ActivityTrainingAnalysisResponse"];
       }[];
       /** @description Pagination metadata */
       metadata: components["schemas"]["PaginationMetadata"];
@@ -4711,13 +4658,25 @@ export interface operations {
            * @example {
            *       "data": [
            *         {
-           *           "activity_type": "training",
+           *           "average_heart_rate_bpm": 148,
+           *           "average_speed_mps": 6.05,
            *           "distance_meters": 25430.5,
+           *           "earned_awards": [],
+           *           "elevation_gain_meters": 312.4,
            *           "id": 42,
-           *           "source": "manual_upload",
+           *           "location": "Detroit, Michigan",
+           *           "moving_time_seconds": 4200,
+           *           "route_points": [
+           *             {
+           *               "elapsed_seconds": 900,
+           *               "latitude": 42.3314,
+           *               "longitude": -83.0458
+           *             }
+           *           ],
            *           "sport": "ride",
            *           "started_at": "2026-09-26T13:00:00Z",
-           *           "title": "Saturday hill repeats"
+           *           "title": "Saturday hill repeats",
+           *           "total_time_seconds": 4320
            *         }
            *       ],
            *       "metadata": {
@@ -4728,7 +4687,7 @@ export interface operations {
            *       }
            *     }
            */
-          "application/json": components["schemas"]["PaginatedResponse_ActivityResponse"];
+          "application/json": components["schemas"]["PaginatedResponse_ActivityCardResponse"];
         };
       };
       /** @description Not authenticated */

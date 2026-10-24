@@ -2,6 +2,7 @@ pub mod activities;
 pub mod activity_analytics;
 pub mod activity_archive_import_jobs;
 pub mod activity_award_outputs;
+pub mod activity_cards;
 pub mod activity_climbs;
 pub mod activity_earned_awards;
 pub mod activity_event_history;

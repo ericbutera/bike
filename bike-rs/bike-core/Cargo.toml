@@ -45,6 +45,7 @@ tracing-opentelemetry = { workspace = true }
 tracing-subscriber = { workspace = true }
 utoipa = { workspace = true }
 roxmltree = "0.20"
+reverse_geocoder = "4.1.1"
 fitparser = "0.11"
 flate2 = "1.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }

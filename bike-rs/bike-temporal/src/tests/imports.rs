@@ -5,6 +5,7 @@ pub(super) fn complete_derived_tasks(mock: &mut WorkflowMock, imported: &Activit
     let task = imported.activity();
     mock.activity("rebuild_activity_segments", &task, &vec![18_i32, 19]);
     mock.activity("rebuild_activity_climbs", &task, &());
+    mock.activity("rebuild_activity_card", &task, &());
     for segment_id in [18, 19] {
         let segment = SegmentChange {
             segment_id,
@@ -97,6 +98,7 @@ fn segment_child_failure_fails_the_parent_before_achievements() {
     mock.activity("activity_import", &command, &result);
     mock.activity("rebuild_activity_segments", &result.activity(), &vec![18_i32]);
     mock.activity("rebuild_activity_climbs", &result.activity(), &());
+    mock.activity("rebuild_activity_card", &result.activity(), &());
     let child = mock.start_child(
         "rebuild_segment_analytics",
         &SegmentChange {
@@ -116,6 +118,7 @@ fn empty_segments_still_rebuild_activity_achievements_and_other_outputs() {
     mock.activity("activity_import", &command, &result);
     mock.activity("rebuild_activity_segments", &result.activity(), &Vec::<i32>::new());
     mock.activity("rebuild_activity_climbs", &result.activity(), &());
+    mock.activity("rebuild_activity_card", &result.activity(), &());
     mock.activity("rebuild_activity_achievements", &result.activity(), &());
     let child = mock.start_child("prepare_heatmap", &result.activity());
     mock.complete_child(child, &());
@@ -190,6 +193,7 @@ fn replay_after_segment_completion_resumes_with_achievements() {
     mock.activity("activity_import", &input.clone().into_command(), &result);
     mock.activity("rebuild_activity_segments", &result.activity(), &vec![18_i32]);
     mock.activity("rebuild_activity_climbs", &result.activity(), &());
+    mock.activity("rebuild_activity_card", &result.activity(), &());
     let child = mock.start_child(
         "rebuild_segment_analytics",
         &SegmentChange {
@@ -229,6 +233,7 @@ fn saved_import_waiting_for_heatmap(reprocessing: bool) -> (WorkflowMock, Activi
     mock.activity("activity_import", &command, &result);
     mock.activity("rebuild_activity_segments", &result.activity(), &Vec::<i32>::new());
     mock.activity("rebuild_activity_climbs", &result.activity(), &());
+    mock.activity("rebuild_activity_card", &result.activity(), &());
     mock.activity("rebuild_activity_achievements", &result.activity(), &());
     let child = mock.start_child("prepare_heatmap", &result.activity());
     mock.assert_pending();
@@ -270,4 +275,77 @@ fn cancelled_child_cancels_processing_and_reprocessing_without_starting_later_wo
         mock.cancel_child(child);
         mock.assert_cancelled();
     }
+}
+
+#[test]
+fn replay_of_import_without_saved_card_patch_keeps_the_original_activity_sequence() {
+    let command = fixtures::import_command();
+    let result = fixtures::import_result();
+    let mut mock = WorkflowMock::with_replay::<ProcessActivityImport>(command.source.clone(), true);
+    mock.activity("activity_import", &command, &result);
+    mock.activity("rebuild_activity_segments", &result.activity(), &Vec::<i32>::new());
+    mock.activity("rebuild_activity_achievements", &result.activity(), &());
+    let child = mock.start_child("prepare_heatmap", &result.activity());
+    mock.complete_child(child, &());
+    mock.activity("rebuild_activity_training", &result.activity(), &());
+    let child = mock.start_child(
+        "rebuild_fitness_freshness",
+        &FitnessChange {
+            user_id: result.user_id,
+            priority: result.priority,
+        },
+    );
+    mock.complete_child(child, &());
+    assert_eq!(mock.result::<ActivityImportResult>(), result);
+}
+
+#[test]
+fn imports_await_the_independent_card_before_reporting_success() {
+    let command = fixtures::import_command();
+    let result = fixtures::import_result();
+    let mut mock = WorkflowMock::new::<ProcessActivityImport>(command.source.clone());
+    mock.activity("activity_import", &command, &result);
+    mock.activity("rebuild_activity_segments", &result.activity(), &Vec::<i32>::new());
+    mock.activity("rebuild_activity_climbs", &result.activity(), &());
+    mock.fail_activity("rebuild_activity_card", "card failed");
+    mock.activity("rebuild_activity_achievements", &result.activity(), &());
+    let child = mock.start_child("prepare_heatmap", &result.activity());
+    mock.complete_child(child, &());
+    mock.activity("rebuild_activity_training", &result.activity(), &());
+    let child = mock.start_child(
+        "rebuild_fitness_freshness",
+        &FitnessChange {
+            user_id: result.user_id,
+            priority: result.priority,
+        },
+    );
+    mock.complete_child(child, &());
+    mock.assert_failure_message("card failed");
+}
+
+#[test]
+fn replay_of_an_import_with_climbs_and_without_cards_keeps_its_recorded_branches() {
+    use temporalio_common::protos::coresdk::workflow_activation::{self, workflow_activation_job::Variant};
+    let command = fixtures::import_command();
+    let result = fixtures::import_result();
+    let mut mock = WorkflowMock::with_replay::<ProcessActivityImport>(command.source.clone(), true);
+    mock.activate(Variant::NotifyHasPatch(workflow_activation::NotifyHasPatch {
+        patch_id: "activity-climbs-v1".into(),
+    }));
+    mock.activity("activity_import", &command, &result);
+    mock.activity("rebuild_activity_segments", &result.activity(), &Vec::<i32>::new());
+    mock.activity("rebuild_activity_climbs", &result.activity(), &());
+    mock.activity("rebuild_activity_achievements", &result.activity(), &());
+    let child = mock.start_child("prepare_heatmap", &result.activity());
+    mock.complete_child(child, &());
+    mock.activity("rebuild_activity_training", &result.activity(), &());
+    let child = mock.start_child(
+        "rebuild_fitness_freshness",
+        &FitnessChange {
+            user_id: result.user_id,
+            priority: result.priority,
+        },
+    );
+    mock.complete_child(child, &());
+    assert_eq!(mock.result::<ActivityImportResult>(), result);
 }

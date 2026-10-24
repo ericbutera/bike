@@ -11,13 +11,34 @@ pub(crate) async fn rebuild<W>(ctx: &WorkflowContext<W>, imported: &ActivityImpo
         heatmap(ctx, imported).await?;
         training_and_fitness(ctx, imported).await
     };
-    if ctx.patched("activity-climbs-v1") {
-        let (derived, climbs) = futures::join!(existing, activity_climbs(ctx, imported));
+    let with_climbs = ctx.patched("activity-climbs-v1");
+    let with_cards = ctx.patched("activity-cards-v1");
+    let derived = async {
+        if with_climbs {
+            let (derived, climbs) = futures::join!(existing, activity_climbs(ctx, imported));
+            derived?;
+            climbs
+        } else {
+            existing.await
+        }
+    };
+    if with_cards {
+        let (derived, card) = futures::join!(derived, activity_card(ctx, imported));
         derived?;
-        climbs
+        card
     } else {
-        existing.await
+        derived.await
     }
+}
+
+async fn activity_card<W>(ctx: &WorkflowContext<W>, imported: &ActivityImportResult) -> WorkflowResult<()> {
+    options::run(
+        ctx,
+        DerivedActivities::rebuild_activity_card,
+        imported.activity(),
+        options::activity(imported.priority, format!("user-{}", imported.user_id)),
+    )
+    .await
 }
 
 async fn activity_climbs<W>(ctx: &WorkflowContext<W>, imported: &ActivityImportResult) -> WorkflowResult<()> {

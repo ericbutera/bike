@@ -66,6 +66,10 @@ impl BatchOperations for BikeOperations {
         Ok(bike_core::entities::activity_climbs::output::Model::pending_tasks(&self.db, after_id).await?)
     }
 
+    async fn activity_card_page(&self, after_id: i32) -> Result<Vec<ActivityTask>, WorkflowError> {
+        Ok(bike_core::entities::activity_cards::Model::backfill_page(&self.db, after_id).await?)
+    }
+
     async fn pending_heatmaps(&self, after_id: i32) -> Result<Vec<ActivityTask>, WorkflowError> {
         bike_core::heatmaps::projection::Projection::pending_tasks(&self.db, after_id)
             .await

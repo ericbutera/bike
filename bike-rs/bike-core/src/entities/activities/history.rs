@@ -76,6 +76,7 @@ impl Model {
             .await?
             .ok_or_else(|| WorkflowError::not_found("Activity not found"))?;
         let sport_changed = update.sport.is_some_and(|sport| sport.as_str() != before.sport);
+        let location = update.location.clone().map(optional_text);
         let active = update.apply(&before);
         if !active.is_changed() {
             transaction.commit().await?;
@@ -86,6 +87,9 @@ impl Model {
             });
         }
         let after = active.update(&transaction).await?;
+        if let Some(location) = location {
+            crate::entities::activity_cards::Model::set_location(&transaction, after.id, location).await?;
+        }
         let cycling = before.is_bike_activity() || after.is_bike_activity();
         let affects_cycling = sport_changed && cycling;
         if sport_changed {

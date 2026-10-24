@@ -3,11 +3,11 @@ use crate::{
     activities::{BatchActivities, DerivedActivities, ImportActivities},
     operations::BikeOperations,
     workflows::{
-        ActivityArchiveImport, BackfillActivityClimbs, BackfillEarnedAwards, BackfillOverallAchievements,
-        BackfillPersonalAchievements, BackfillUserXcTraining, PrepareHeatmap, ProcessActivityImport,
-        RebuildFitnessFreshness, RebuildSegmentAnalytics, ReconcileHeatmaps, RegenerateActivitySegments,
-        RegenerateSegmentEfforts, RegenerateUserSegments, ReprocessActivityImport, ReprocessArchiveFitActivityImports,
-        ReprocessUserActivityImports,
+        ActivityArchiveImport, BackfillActivityCards, BackfillActivityClimbs, BackfillEarnedAwards,
+        BackfillOverallAchievements, BackfillPersonalAchievements, BackfillUserXcTraining, PrepareHeatmap,
+        ProcessActivityImport, RebuildFitnessFreshness, RebuildSegmentAnalytics, ReconcileHeatmaps,
+        RegenerateActivitySegments, RegenerateSegmentEfforts, RegenerateUserSegments, ReprocessActivityImport,
+        ReprocessArchiveFitActivityImports, ReprocessUserActivityImports,
     },
     TASK_QUEUE,
 };
@@ -52,6 +52,7 @@ pub fn worker(
         .register_workflow::<ActivityArchiveImport>()?
         .register_workflow::<ReconcileHeatmaps>()?
         .register_workflow::<BackfillActivityClimbs>()?
+        .register_workflow::<BackfillActivityCards>()?
         .register_workflow::<BackfillPersonalAchievements>()?
         .register_workflow::<BackfillOverallAchievements>()?
         .register_workflow::<BackfillEarnedAwards>()?
